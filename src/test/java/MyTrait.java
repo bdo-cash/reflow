@@ -6,7 +6,7 @@ import hobby.wei.c.reflow.TaskFlow;
 import hobby.wei.c.reflow.Trait;
 
 /**
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 15/05/2016
  */
 public class MyTrait extends Trait<Client.MyTask> {

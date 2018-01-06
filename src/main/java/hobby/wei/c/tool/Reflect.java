@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-present, Wei.Chou(weichou2010@gmail.com)
+ * Copyright (C) 2016-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import java.util.Locale;
 /**
  * 摘自Gson源码。
  *
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 02/07/2016
  */
 public class Reflect {

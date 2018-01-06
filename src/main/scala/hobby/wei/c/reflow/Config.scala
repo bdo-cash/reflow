@@ -14,16 +14,24 @@
  * limitations under the License.
  */
 
-package hobby.wei.c.reflow;
+package hobby.wei.c.reflow
 
 /**
- * 用于将{@link Feedback}传送到目标线程(如UI线程)去运行的时光机。
- *
- * @author Wei Chou(weichou2010@gmail.com)
- * @version 1.0, 23/07/2016
- */
-public interface Poster {
-    void post(Runnable r);
+  * @author Wei Chou(weichou2010@gmail.com)
+  * @version 1.0, 11/04/2016
+  */
+class Config protected() {
+  def corePoolSize() = Config.CPU_COUNT + 1
 
-    // TODO: 16/7/24 增加最低反馈时间间隔, 拥挤的消息需要丢弃
+  def maxPoolSize() = Config.CPU_COUNT * 5 + 1
+
+  /**
+    * 空闲线程保留时间。单位: 秒。
+    */
+  def keepAliveTime() = 5
+}
+
+object Config {
+  val CPU_COUNT = Runtime.getRuntime.availableProcessors
+  val DEF = new Config
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-present, Wei.Chou(weichou2010@gmail.com)
+ * Copyright (C) 2016-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 03/10/2016
  */
 public class Step<PREV, OUTPUT, TRACKER extends Tracker<T>, T> {

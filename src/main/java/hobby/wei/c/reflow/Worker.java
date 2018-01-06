@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-present, Wei.Chou(weichou2010@gmail.com)
+ * Copyright (C) 2017-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 优化的线程池实现。
  *
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 11/02/2017
  */
 class Worker {

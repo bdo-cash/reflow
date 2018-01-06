@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-present, Wei.Chou(weichou2010@gmail.com)
+ * Copyright (C) 2016-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import static java.util.Objects.requireNonNull;
  * 定义key及value类型。value类型由泛型指定。
  * 注意: 本类的子类必须在运行时创建, 即匿名子类, 否则泛型信息可能在Proguard时被删除, 从而导致解析失败。
  *
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 21/07/2016
  */
 public abstract class Key$<T> {
@@ -36,30 +36,30 @@ public abstract class Key$<T> {
     /**
      * 泛型参数的类型, 类似于这种结构: java.util.List<java.util.List<int[]>>.
      */
-    public final Type type;
+    public final Type tpe;
     /**
      * 第一级泛型参数的Class表示。
      */
     private final Class<? super T> rawType;
     /**
-     * 第一级泛型参数的子泛型参数, 可能不存在。作用或结构与type类似。
+     * 第一级泛型参数的子泛型参数, 可能不存在。作用或结构与tpe类似。
      */
     private final Type[] subTypes;
 
     protected Key$(String key) {
         this.key = requireNonEmpty(key);
-        this.type = Reflect.getSuperclassTypeParameter(getClass(), true)[0];
+        this.tpe = Reflect.getSuperclassTypeParameter(getClass(), true)[0];
         //noinspection unchecked
-        this.rawType = (Class<? super T>) Reflect.getRawType(type);
-        this.subTypes = Reflect.getSubTypes(type);
+        this.rawType = (Class<? super T>) Reflect.getRawType(tpe);
+        this.subTypes = Reflect.getSubTypes(tpe);
     }
 
-    Key$(String key, Type type) {
+    Key$(String key, Type tpe) {
         this.key = requireNonEmpty(key);
-        this.type = requireNonNull(type);
+        this.tpe = requireNonNull(tpe);
         //noinspection unchecked
-        this.rawType = (Class<? super T>) Reflect.getRawType(type);
-        this.subTypes = Reflect.getSubTypes(type);
+        this.rawType = (Class<? super T>) Reflect.getRawType(tpe);
+        this.subTypes = Reflect.getSubTypes(tpe);
     }
 
     /**
@@ -111,7 +111,7 @@ public abstract class Key$<T> {
             final Class clazz = value.getClass();
             if (!rawType.isAssignableFrom(clazz)) {
                 if (ignoreDiffType) return null;
-                else Assist.Throws.typeNotMatch(this, clazz);
+                else Assist.Throws.tpeNotMatch(this, clazz);
             }
             // 数值对象通常已经失去了泛型参数, 因此不作检查
         }
@@ -144,16 +144,16 @@ public abstract class Key$<T> {
     public final boolean equals(Object o) {
         return o instanceof Key$
                 && ((Key$) o).key.equals(key)
-                && ((Key$) o).type.equals(type);
+                && ((Key$) o).tpe.equals(tpe);
     }
 
     @Override
     public final int hashCode() {
-        return key.hashCode() * 41 + type.hashCode();
+        return key.hashCode() * 41 + tpe.hashCode();
     }
 
     @Override
     public String toString() {
-        return String.format("[%s -> %s]", key, type);
+        return String.format("[%s -> %s]", key, tpe);
     }
 }

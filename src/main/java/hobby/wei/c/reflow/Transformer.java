@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-present, Wei.Chou(weichou2010@gmail.com)
+ * Copyright (C) 2016-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import hobby.wei.c.tools.Reflect;
  * 任务输出转换器。包括key和value的转换，
  * 可定义仅转换value、或仅转换key、或key-value全都转换。
  *
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 31/07/2016
  */
 public abstract class Transformer<IN, OUT> {

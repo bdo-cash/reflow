@@ -4,7 +4,7 @@ import java.util.Set;
 import hobby.wei.c.reflow.*;
 
 /**
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 18/07/2016
  */
 public class Client {

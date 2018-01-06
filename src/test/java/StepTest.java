@@ -10,7 +10,7 @@ import hobby.wei.c.tools.step.Unit;
 import hobby.wei.c.tools.step.UnitM;
 
 /**
- * @author Wei.Chou (weichou2010@gmail.com)
+ * @author Wei Chou(weichou2010@gmail.com)
  * @version 1.0, 06/10/2016
  */
 public class StepTest {
