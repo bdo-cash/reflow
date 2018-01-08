@@ -25,7 +25,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.anno.proguard.Burden
 import hobby.wei.c.log.Logger
 
-import scala.collection.JavaConversions.collectionAsScalaIterable
+import scala.collection.mutable
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -51,15 +51,21 @@ object Assist extends TAG.ClassName {
     s
   }
 
-  def assertElemNonNull[C <: util.Collection[_ <: AnyRef]](col: C): C = {
-    for (t <- col.seq) assertf(t.nonNull, "元素不能为null.")
+  def assertElemNonNull[C <: mutable.Set[_ <: AnyRef]](col: C): C = {
+    col.seq.foreach(t => assertf(t.nonNull, "元素不能为null."))
     col
+  }
+
+  def requireTaskNameDifferent(trat: Trait[_], names: mutable.Set[String]) {
+    val name = trat.name$
+    if (names.contains(name)) Throws.sameName(name)
+    names.add(name)
   }
 
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKey$kDiff[C <: util.Collection[Key$[_]]](keys: C): C = {
+  def requireKey$kDiff[C <: mutable.Set[Key$[_]]](keys: C): C = {
     if (keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -73,12 +79,12 @@ object Assist extends TAG.ClassName {
   /**
     * 要求相同的输入key的type也相同，但不要求不能有相同的输出key，因为输出key由需求决定，而需求已经限制了不同。
     */
-  def requireTransInTypeSame[C <: util.Collection[Transformer]](tranSet: C): C = {
+  def requireTransInTypeSame[C <: mutable.Set[Transformer[_]]](tranSet: C): C = {
     if (tranSet.nonEmpty) {
-      val map = new util.HashMap[String, Transformer]()
+      val map = new mutable.HashMap[String, Transformer[_]]()
       for (t <- tranSet) {
-        if (map.containsKey(t.in.key)) {
-          val trans = map.get(t.in.key)
+        if (map.contains(t.in.key)) {
+          val trans = map(t.in.key)
           if (!t.in.equals(trans.in)) Throws.tranSameKeyButDiffType(t.in, trans.in)
         } else {
           map.put(t.in.key, t)
