@@ -23,18 +23,14 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.anno.proguard.Burden
-import hobby.wei.c.log.Logger
 
-import scala.collection.mutable
+import scala.collection._
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016
   */
 object Assist extends TAG.ClassName {
-  val DEBUG = false
-  val logger = new Logger()
-
   def getRef[T](ref: WeakReference[T]): Option[T] = if (ref.isNull) None else Option(ref.get())
 
   def between(min: Float, value: Float, max: Float) = min max value min max
@@ -44,14 +40,14 @@ object Assist extends TAG.ClassName {
 
   def assertf(b: Boolean, msg: => String = null): Unit = assertf(b, msg, force = true)
 
-  private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || DEBUG) && !b) Throws.assertError(msg)
+  private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || Reflow.debugMode) && !b) Throws.assertError(msg)
 
   def requireNonEmpty(s: String): String = {
     assertf(s.nonNull && s.nonEmpty)
     s
   }
 
-  def assertElemNonNull[C <: mutable.Set[_ <: AnyRef]](col: C): C = {
+  def requireElemNonNull[C <: Set[_ <: AnyRef]](col: C): C = {
     col.seq.foreach(t => assertf(t.nonNull, "元素不能为null."))
     col
   }
@@ -65,7 +61,7 @@ object Assist extends TAG.ClassName {
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKey$kDiff[C <: mutable.Set[Key$[_]]](keys: C): C = {
+  def requireKey$kDiff[C <: Set[Key$[_]]](keys: C): C = {
     if (keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -79,7 +75,7 @@ object Assist extends TAG.ClassName {
   /**
     * 要求相同的输入key的type也相同，但不要求不能有相同的输出key，因为输出key由需求决定，而需求已经限制了不同。
     */
-  def requireTransInTypeSame[C <: mutable.Set[Transformer[_]]](tranSet: C): C = {
+  def requireTransInTypeSame[C <: Set[Transformer[_]]](tranSet: C): C = {
     if (tranSet.nonEmpty) {
       val map = new mutable.HashMap[String, Transformer[_]]()
       for (t <- tranSet) {
@@ -99,7 +95,7 @@ object Assist extends TAG.ClassName {
       work()
     } catch {
       case e: Exception =>
-        logger.w("eatExceptions.", e)
+        Reflow.logger.w("eatExceptions.", e)
         onError
     }
   }
@@ -137,35 +133,35 @@ object Assist extends TAG.ClassName {
   private[reflow] object Monitor extends TAG.ClassName {
     private def tag(name: String): LogTag = new LogTag(TAG + "." + name)
 
-    def duration(name: String, begin: Long, end: Long, period: Reflow.Period) {
+    def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe) {
       val duration = end - begin
       val avg = period.average(duration)
       if (avg == 0 || duration <= avg) {
-        logger.i("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        Reflow.logger.i("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
       } else {
-        logger.w("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        Reflow.logger.w("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
       }
     }
 
-    def abortion(triggerFrom: String, name: String, forError: Boolean) = logger.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
+    def abortion(triggerFrom: String, name: String, forError: Boolean) = Reflow.logger.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
 
     @Burden
     def assertStateOverride(prev: State, state: State, success: Boolean) {
       if (!success) {
-        logger.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
+        Reflow.logger.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
         assertx(success)
       }
     }
 
-    def complete(step: Int, out: Out, flow: Out, trimmed: Out) = logger.i("step:%d, out:%s, flow:%s, trimmed:%s", step, out, flow, trimmed)(tag("complete"))
+    def complete(step: Int, out: Out, flow: Out, trimmed: Out) = Reflow.logger.i("step:%d, out:%s, flow:%s, trimmed:%s", step, out, flow, trimmed)(tag("complete"))
 
-    def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean) = logger.i(
+    def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean) = Reflow.logger.i(
       "{ThreadPool}%s, active/core:(%d/%d/%d), taskCount:%d, largestPool:%d",
       if (reject) "reject runner" else if (addThread) "add thread" else "offer queue",
       pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize,
       pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
 
-    def threadPoolError(t: Throwable) = logger.e(t)(tag("threadPoolError"))
+    def threadPoolError(t: Throwable) = Reflow.logger.e(t)(tag("threadPoolError"))
   }
 
   class FailedException(t: Throwable) extends Exception(t: Throwable)

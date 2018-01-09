@@ -53,7 +53,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     if (basis.traits.isEmpty) {
       basis.traits += trat
     } else {
-      basis.last(false) foreach (_ match {
+      basis.last(false) foreach {
         case tt: Trait.Parallel => tt.traits()
         case last =>
           val parallel = new Trait.Parallel(last)
@@ -61,7 +61,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
           basis.traits.remove(basis.traits.length - 1)
           basis.traits += parallel
           parallel.traits()
-      }).add(trat)
+      }.add(trat)
     }
     this
   }
@@ -128,7 +128,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
 
   private def transition$(tranSet: Set[Transformer[_]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transformers.put(basis.last(true).get.name$(), requireTransInTypeSame(assertElemNonNull(tranSet)))
+      basis.transformers.put(basis.last(true).get.name$(), requireTransInTypeSame(requireElemNonNull(tranSet)))
     )
     this
   }
@@ -151,7 +151,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
 
   private def then$(tranSet: Set[Transformer[_]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTypeSame(assertElemNonNull(tranSet)))
+      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
     this
   }
 
@@ -465,13 +465,13 @@ object Dependency {
   private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_]]): Map[String, Key$[_]] = {
     def inputs = if (in.keys.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.HashMap[String, Key$[_]]
 
-    in.keys.as[Set[Key$[_]]].foreach(k => inputs.put(k.key, k))
+    in.keys.foreach(k => inputs.put(k.key, k))
     transOuts(trans4Input, inputs)
     requireRealInEnough(inputRequired.values.to[Set], inputs)
     inputs
   }
 
-  private def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]) = requires.foreach { k =>
+  private def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]): Unit = requires.foreach { k =>
     realIn.get(k.key).fold(Throws.lackIOKey(k, true)) { kIn =>
       if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
     }

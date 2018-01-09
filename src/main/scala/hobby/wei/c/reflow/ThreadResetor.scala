@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-package hobby.wei.c.reflow;
+package hobby.wei.c.reflow
 
 /**
- * For Android:
- * <code>
- * android.os.Process.setThreadPriority(thread.getId(), android.os.Process.THREAD_PRIORITY_BACKGROUND);
- * </code>
- *
- * @author Wei Chou(weichou2010@gmail.com)
- * @version 1.0, 05/01/2018
- */
-public interface ThreadResetor {
-    void reset(Thread thread);
+  * For Android:
+  * <code>
+  * android.os.Process.setThreadPriority(thread.getId(), android.os.Process.THREAD_PRIORITY_BACKGROUND);
+  * </code>
+  *
+  * @author Wei Chou(weichou2010@gmail.com)
+  * @version 1.0, 05/01/2018
+  */
+trait ThreadResetor {
+  def reset(thread: Thread)
 }

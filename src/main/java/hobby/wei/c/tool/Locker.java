@@ -122,7 +122,7 @@ public class Locker {
         return lazyGet(new CodeZ<ReentrantLock>() {
             @Override
             public ReentrantLock exec() {
-                return Assist.getRef(sLocks.get(lockScope));
+                return Assist.getRef(sLocks.get(lockScope)).get();
             }
         }, new CodeZ<ReentrantLock>() {
             @Override
@@ -161,7 +161,7 @@ public class Locker {
         return lazyGetr(new CodeZ<ReentrantLock>() {
                             @Override
                             public ReentrantLock exec() {
-                                return Assist.getRef(sLocks.get(lockScope));
+                                return Assist.getRef(sLocks.get(lockScope)).get();
                             }
                         },
                 new CodeZ<ReentrantLock>() {
