@@ -112,7 +112,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
   /**
     * @see #transition(Set)
     */
-  def transition(trans: Transformer[_]): Dependency = transition(Set(trans))
+  def transition(trans: Transformer[_, _]): Dependency = transition(Set(trans))
 
   /**
     * 为前面最后添加的任务增加输出转换器，以便能够匹配后面任务的输入或结果的参数类型。
@@ -124,9 +124,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def transition(tranSet: Set[Transformer[_]]): Dependency = transition$(tranSet, true)
+  def transition(tranSet: Set[Transformer[_, _]]): Dependency = transition$(tranSet, true)
 
-  private def transition$(tranSet: Set[Transformer[_]], check: Boolean): Dependency = {
+  private def transition$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
       basis.transformers.put(basis.last(true).get.name$(), requireTransInTypeSame(requireElemNonNull(tranSet)))
     )
@@ -136,7 +136,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
   /**
     * @see #then(Set)
     */
-  def then(trans: Transformer[_]): Dependency = then(Set(trans))
+  def then(trans: Transformer[_, _]): Dependency = then(Set(trans))
 
   /**
     * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
@@ -147,9 +147,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def then(tranSet: Set[Transformer[_]]): Dependency = then$(tranSet, true)
+  def then(tranSet: Set[Transformer[_, _]]): Dependency = then$(tranSet, true)
 
-  private def then$(tranSet: Set[Transformer[_]], check: Boolean): Dependency = {
+  private def then$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
       basis.transGlobal.put(basis.last(false).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
     this
@@ -194,9 +194,9 @@ object Dependency {
       * 注意：可能get出来为null, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
     /** 任务的输出经过转换, 生成最终输出传给下一个任务。 */
-    val transformers: Map[String, Set[Transformer[_]]]
+    val transformers: Map[String, Set[Transformer[_, _]]]
     /** 可把前面任意任务的输出作为输入的全局转换器。 */
-    val transGlobal: Map[String, Set[Transformer[_]]]
+    val transGlobal: Map[String, Set[Transformer[_, _]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? */
     val outsFlowTrimmed: Map[String, Set[Key$[_]]]
     val outs: Set[Key$[_]]
@@ -238,8 +238,8 @@ object Dependency {
 
     override val traits: mutable.ListBuffer[Trait[_]] = new mutable.ListBuffer[Trait[_]]
     override val dependencies: mutable.HashMap[String, mutable.Map[String, Key$[_]]] = new mutable.HashMap[String, mutable.Map[String, Key$[_]]]
-    override val transformers: mutable.HashMap[String, Set[Transformer[_]]] = new mutable.HashMap[String, Set[Transformer[_]]]
-    override val transGlobal: mutable.HashMap[String, Set[Transformer[_]]] = new mutable.HashMap[String, Set[Transformer[_]]]
+    override val transformers: mutable.HashMap[String, Set[Transformer[_, _]]] = new mutable.HashMap[String, Set[Transformer[_, _]]]
+    override val transGlobal: mutable.HashMap[String, Set[Transformer[_, _]]] = new mutable.HashMap[String, Set[Transformer[_, _]]]
     override val outsFlowTrimmed = null
     override val outs = null
 
@@ -248,11 +248,11 @@ object Dependency {
       src.dependencies.foreach { kv: (String, Map[String, Key$[_]]) =>
         dependencies.put(kv._1, kv._2.to[mutable.Map].as[mutable.Map[String, Key$[_]]])
       }
-      src.transformers.foreach { kv: (String, Set[Transformer[_]]) =>
-        transformers.put(kv._1, kv._2.to[immutable.Set].as[Set[Transformer[_]]])
+      src.transformers.foreach { kv: (String, Set[Transformer[_, _]]) =>
+        transformers.put(kv._1, kv._2.to[immutable.Set].as[Set[Transformer[_, _]]])
       }
-      src.transGlobal.foreach { kv: (String, Set[Transformer[_]]) =>
-        transGlobal.put(kv._1, kv._2.to[immutable.Set].as[Set[Transformer[_]]])
+      src.transGlobal.foreach { kv: (String, Set[Transformer[_, _]]) =>
+        transGlobal.put(kv._1, kv._2.to[immutable.Set].as[Set[Transformer[_, _]]])
       }
     }
   }
@@ -338,7 +338,7 @@ object Dependency {
     * @param check 是否进行类型检查(在最后trim的时候，不需要再检查一遍)。
     */
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
-    val tranSet: Set[Transformer[_]] = basis.transGlobal(nameGlobal(prev /*不能是并行的，而这里必然不是*/))
+    val tranSet = basis.transGlobal(nameGlobal(prev /*不能是并行的，而这里必然不是*/))
     val copy = requires.to[mutable.HashMap].as[mutable.HashMap[String, Key$[_]]]
     breakable {
       for (t <- tranSet; k <- copy.values if k.key.equals(t.out.key)) {
@@ -422,10 +422,10 @@ object Dependency {
     }
   }
 
-  private def transOuts(tranSet: Set[Transformer[_]], map: mutable.Map[String, Key$[_]]) {
+  private def transOuts(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Key$[_]]) {
     if (tranSet.nonNull && tranSet.nonEmpty && map.nonEmpty) {
-      val trans = new mutable.HashSet[Transformer[_]]
-      val sameKey = new mutable.HashSet[Transformer[_]]
+      val trans = new mutable.HashSet[Transformer[_, _]]
+      val sameKey = new mutable.HashSet[Transformer[_, _]]
       tranSet.filter(t => map.contains(t.in.key)).foreach { t =>
         // 先不从map移除, 可能多个transformer使用同一个源。
         val from = map(t.in.key)
@@ -462,7 +462,7 @@ object Dependency {
     }
   }
 
-  private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_]]): Map[String, Key$[_]] = {
+  private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_, _]]): Map[String, Key$[_]] = {
     def inputs = if (in.keys.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.HashMap[String, Key$[_]]
 
     in.keys.foreach(k => inputs.put(k.key, k))
@@ -524,11 +524,11 @@ object Dependency {
     * @param nullValueKeys 输出为<code>null</code>的值的{ @link Key$}集合。
     * @param global        对于一个全局的转换，在最终输出集合里不用删除所有转换的输入。
     */
-  def doTransform(tranSet: Set[Transformer[_]], map: mutable.Map[String, Any], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
+  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Any], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
     if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullValueKeys.nonEmpty)) {
       val out = if (map.isEmpty) mutable.Map.empty[String, _] else new mutable.HashMap[String, _]
       val nulls = if (nullValueKeys.isEmpty) mutable.Set.empty[Key$[_]] else new mutable.HashSet[Key$[_]]
-      val trans = new mutable.HashSet[Transformer[_]]
+      val trans = new mutable.HashSet[Transformer[_, _]]
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
       // val sameKey = new mutable.HashSet[Transformer[_]]
       tranSet.foreach { t =>
