@@ -22,7 +22,6 @@ import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.tool.Locker
 
 import scala.collection._
-import scala.collection.JavaConversions.collectionAsScalaIterable
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -40,7 +39,7 @@ abstract class In protected(_keys: Set[Key$[_]]) {
   }
 
   private[reflow] def fillValues(out: Out) {
-    out.keysDef().filter(keys.contains).foreach(key =>
+    out.keysDef().intersect(keys).foreach(key =>
       out.put(key.key, loadValue(key.key))
     )
   }

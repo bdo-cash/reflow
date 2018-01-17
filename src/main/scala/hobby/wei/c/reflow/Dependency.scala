@@ -21,10 +21,9 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency._
+import hobby.wei.c.reflow.Reflow._
 
 import scala.collection.{Set, _}
-import scala.collection.JavaConversions.asScalaBuffer
-import scala.collection.convert.WrapAsJava.mapAsJavaMap
 import scala.util.control.Breaks._
 
 /**
@@ -53,7 +52,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     if (basis.traits.isEmpty) {
       basis.traits += trat
     } else {
-      basis.last(false) foreach {
+      (basis.last(false).get match {
         case tt: Trait.Parallel => tt.traits()
         case last =>
           val parallel = new Trait.Parallel(last)
@@ -61,7 +60,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
           basis.traits.remove(basis.traits.length - 1)
           basis.traits += parallel
           parallel.traits()
-      }.add(trat)
+      }).+=(trat)
     }
     this
   }
@@ -127,9 +126,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
   def transition(tranSet: Set[Transformer[_, _]]): Dependency = transition$(tranSet, true)
 
   private def transition$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
-    if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transformers.put(basis.last(true).get.name$(), requireTransInTypeSame(requireElemNonNull(tranSet)))
-    )
+    if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
+      basis.transformers.put(basis.last(true).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
+    }
     this
   }
 
@@ -406,7 +405,7 @@ object Dependency {
       val map = new mutable.HashMap[String, Key$[_]]
       trat.outs$.as[Set[Key$[_]]].foreach(k => map.put(k.key, k))
       // 先加入转换
-      transOuts(basis.transformers(trat.name$()), map)
+      transOuts(basis.transformers(trat.name$), map)
       // 再看看有没有相同的输出
       if (mapPal.nonNull) {
         if (mapPal.nonEmpty) map.values.foreach { k =>
@@ -493,11 +492,11 @@ object Dependency {
   private def trimOutsFlow(outsFlow: mutable.HashMap[String, Set[Key$[_]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Key$[_]]) {
     consumeRequiresOnTransGlobal(trat, trimmed, basis, false)
     val flow = trimmed.values.toSet
-    outsFlow.put(trat.name$(), flow)
+    outsFlow.put(trat.name$, flow)
     if (trat.isParallel) {
       val inputs = new mutable.HashMap[String, Key$[_]]
       val outs = new mutable.HashMap[String, Key$[_]]
-      for (tt <- trat.asParallel.traits) {
+      for (tt <- trat.asParallel.traits()) {
         // 根据Tracker实现的实际情况，弃用这行。
         // outsFlow.put(tt.name$(), flow);
         basis.dependencies.get(tt.name$).fold() {
@@ -513,7 +512,7 @@ object Dependency {
       }
       putAll(trimmed, trat.requires$)
     }
-    if (DEBUG) requireKey$kDiff(trimmed.values)
+    if (debugMode) requireKey$kDiff(trimmed.values)
   }
 
   /**

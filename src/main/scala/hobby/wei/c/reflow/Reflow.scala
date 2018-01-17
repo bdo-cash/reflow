@@ -81,11 +81,11 @@ object Reflow {
     * 任务大概时长。
     */
   object Period extends Enumeration {
-    type Tpe = Prod
+    type Tpe = Period
     /**
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
-    case class Prod(weight: Int) extends Val {
+    case class Period(weight: Int) extends Val {
       private var average = 0L
       private var count = 0L
 
@@ -105,15 +105,15 @@ object Reflow {
     /**
       * 任务执行时间：瞬间。
       */
-    val TRANSIENT = Prod(1)
+    val TRANSIENT = Period(1)
     /**
       * 任务执行时间：很短。
       */
-    val SHORT = Prod(2)
+    val SHORT = Period(2)
     /**
       * 任务执行时间：很长。
       */
-    val LONG = Prod(5)
+    val LONG = Period(5)
     /**
       * 任务执行时间：无限长。
       * <p>
@@ -123,7 +123,7 @@ object Reflow {
       *
       * @see #weight
       */
-    val INFINITE = Prod(20)
+    val INFINITE = Period(20)
   }
 
   private var _debugMode = true

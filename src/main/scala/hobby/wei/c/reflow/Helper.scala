@@ -26,7 +26,7 @@ import scala.collection._
   */
 object Helper {
   object Keys {
-    def empty(): Set[Key$[_]] = Set.empty
+    def empty(): immutable.Set[Key$[_]] = immutable.Set.empty
 
     def add(key: Key$[_]): Builder = new Builder().add(key)
 
