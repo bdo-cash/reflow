@@ -42,7 +42,7 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 创建任务。
     */
-  protected def newTask(): T
+  /*protected*/ def newTask(): T
 
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。
@@ -92,9 +92,9 @@ trait Trait[T <: Task] extends Equals {
 }
 
 object Trait {
-  final class Parallel private[reflow](trats: Seq[Trait[_]]) extends Trait[Task] {
+  final class Parallel private[reflow](trats: Seq[Trait[_ <: Task]]) extends Trait[Task] {
     // 提交调度器之后具有不变性
-    private val _traits = new mutable.ListBuffer[Trait[_]]
+    private val _traits = new mutable.ListBuffer[Trait[_ <: Task]]
 
     _traits ++= trats
 
@@ -102,7 +102,7 @@ object Trait {
 
     private[reflow] def traits() = _traits
 
-    private[reflow] def add(t: Trait[_]): Unit = {
+    private[reflow] def add(t: Trait[_ <: Task]): Unit = {
       assertf(!t.isInstanceOf[Parallel])
       _traits += t
     }

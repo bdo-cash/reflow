@@ -56,7 +56,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
         case tt: Trait.Parallel => tt.traits()
         case last =>
           val parallel = new Trait.Parallel(last)
-          // 注意：必须用 remove 和 +=，只有这俩是 ArrayBuffer 的方法，其他 Seq 方法会出现意想不到的状况。
+          // 注意：必须用 remove 和 +=，只有这俩是 ListBuffer 的方法，其他 Seq 方法会出现意想不到的状况。
           basis.traits.remove(basis.traits.length - 1)
           basis.traits += parallel
           parallel.traits()
@@ -206,7 +206,7 @@ object Dependency {
       var step = traits.indexOf(trat)
       breakable {
         if (step < 0) for (tt <- traits)
-          if (tt.isInstanceOf[Trait.Parallel] && tt.as[Trait.Parallel].traits.indexOf(trat) >= 0) {
+          if (tt.isInstanceOf[Trait.Parallel] && tt.as[Trait.Parallel].traits().indexOf(trat) >= 0) {
             step = traits.indexOf(tt)
             assertx(step >= 0)
             break
@@ -523,7 +523,7 @@ object Dependency {
     * @param nullValueKeys 输出为<code>null</code>的值的{ @link Key$}集合。
     * @param global        对于一个全局的转换，在最终输出集合里不用删除所有转换的输入。
     */
-  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Any], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
+  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, _], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
     if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullValueKeys.nonEmpty)) {
       val out = if (map.isEmpty) mutable.Map.empty[String, _] else new mutable.HashMap[String, _]
       val nulls = if (nullValueKeys.isEmpty) mutable.Set.empty[Key$[_]] else new mutable.HashSet[Key$[_]]
@@ -546,7 +546,7 @@ object Dependency {
         map.remove(t.in.key)
         nullValueKeys.remove(t.in)
       }
-      if (out.nonEmpty) map ++= out
+      if (out.nonEmpty) map.as[mutable.Map[String, Any]] ++= out
       if (nulls.nonEmpty) nullValueKeys ++= nulls
     }
   }

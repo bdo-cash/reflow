@@ -163,51 +163,51 @@ object Scheduler {
         !d.as[Tracker].reinforceRequired.get()
       } || state == FAILED || state == ABORTED || state == UPDATED
     }
+  }
 
-    class State$ {
-      private var state = State.IDLE
-      private var state$ = State.IDLE
-      private var overrided = false
+  class State$ {
+    private var state = State.IDLE
+    private var state$ = State.IDLE
+    private var overrided = false
 
-      def forward(state: State.Tpe): Boolean = synchronized {
-        if (this.state.canOverrideWith(state)) {
-          this.state = state
-          this.state$ = state
-          if (!overrided) overrided = true
-          return true
-        }
-        return false
+    def forward(state: State.Tpe): Boolean = synchronized {
+      if (this.state.canOverrideWith(state)) {
+        this.state = state
+        this.state$ = state
+        if (!overrided) overrided = true
+        return true
       }
-
-      /**
-        * 更新中断后的状态。
-        *
-        * @return 返回值与forward(State)方法互补的值。
-        */
-      def abort(): Boolean = synchronized {
-        state$ = State.ABORTED
-        state match {
-          case State.REINFORCE_PENDING | State.REINFORCING =>
-            state = State.COMPLETED
-            true
-          case State.COMPLETED | State.UPDATED => true
-          case _ => false
-        }
-      }
-
-      def get(): Tpe = synchronized(state)
-
-      def get$(): Tpe = synchronized(state$)
-
-      private[Scheduler] def reset(): Unit = synchronized {
-        state = State.IDLE
-        state$ = State.IDLE
-      }
-
-      /**
-        * 可用于标识是否启动过。
-        */
-      private[Scheduler] def isOverrided: Boolean = synchronized(overrided)
+      return false
     }
+
+    /**
+      * 更新中断后的状态。
+      *
+      * @return 返回值与forward(State)方法互补的值。
+      */
+    def abort(): Boolean = synchronized {
+      state$ = State.ABORTED
+      state match {
+        case State.REINFORCE_PENDING | State.REINFORCING =>
+          state = State.COMPLETED
+          true
+        case State.COMPLETED | State.UPDATED => true
+        case _ => false
+      }
+    }
+
+    def get(): Tpe = synchronized(state)
+
+    def get$(): Tpe = synchronized(state$)
+
+    private[Scheduler] def reset(): Unit = synchronized {
+      state = State.IDLE
+      state$ = State.IDLE
+    }
+
+    /**
+      * 可用于标识是否启动过。
+      */
+    private[Scheduler] def isOverrided: Boolean = synchronized(overrided)
   }
 }
