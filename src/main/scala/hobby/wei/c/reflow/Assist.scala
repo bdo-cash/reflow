@@ -17,7 +17,6 @@
 package hobby.wei.c.reflow
 
 import java.util
-import java.lang.ref.WeakReference
 import java.util.concurrent.ThreadPoolExecutor
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
@@ -25,13 +24,14 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.anno.proguard.Burden
 
 import scala.collection._
+import scala.ref.WeakReference
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016
   */
 object Assist extends TAG.ClassName {
-  def getRef[T](ref: WeakReference[T]): Option[T] = if (ref.isNull) None else Option(ref.get())
+  def getRef[T](ref: WeakReference[T]): Option[T] = if (ref.isNull) None else ref.get
 
   def between(min: Float, value: Float, max: Float) = min max value min max
 

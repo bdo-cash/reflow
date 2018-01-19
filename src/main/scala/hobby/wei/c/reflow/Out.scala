@@ -19,15 +19,16 @@ package hobby.wei.c.reflow
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 
-import scala.collection._
+import scala.collection.{mutable, _}
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-class Out private[reflow](_map: Map[String, Key$[_]]) {
+// TODO: 改为 AnyRefMap
+class Out private[reflow](_map: mutable.AnyRefMap[String, Key$[_]]) {
   private[reflow] def this(_keys: Set[Key$[_]]) = this(
-    (new mutable.HashMap[String, Key$[_]] /: _keys) {
+    (new mutable.AnyRefMap[String, Key$[_]] /: _keys) {
       (m, k) =>
         m.put(k.key, k)
         m

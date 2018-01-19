@@ -33,6 +33,7 @@ import scala.collection._
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConversions.asScalaSet
 
+// TODO: 改为 AnyRefMap
 private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_], inputTrans:immutable.Set[Transformer[_, _]],
                         state:Scheduler.State$, feedback:Feedback, poster:Poster) extends Scheduler {
       // 本数据结构是同步操作的, 不需要ConcurrentLinkedQueue
@@ -153,7 +154,7 @@ private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_]
       }
 
       private def resetOutFlow(out: Out): Unit = {
-        Locker.syncr(() -> {
+        Locker.syncr({
           prevOutFlow = outFlowTrimmed;
           outFlowTrimmed = out;
           joinOutFlow(prevOutFlow);
@@ -162,7 +163,7 @@ private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_]
       }
 
       private def joinOutFlow(out: Out) {
-        Locker.syncr(() -> {
+        Locker.syncr({
           outFlowTrimmed.putWith(out.map, out.nullValueKeys, true, false);
           return null;
         }, this)
