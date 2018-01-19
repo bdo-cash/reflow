@@ -25,8 +25,7 @@ import scala.collection.{mutable, _}
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-// TODO: 改为 AnyRefMap
-class Out private[reflow](_map: mutable.AnyRefMap[String, Key$[_]]) {
+class Out private[reflow](_map: Map[String, Key$[_]]) {
   private[reflow] def this(_keys: Set[Key$[_]]) = this(
     (new mutable.AnyRefMap[String, Key$[_]] /: _keys) {
       (m, k) =>
@@ -35,9 +34,9 @@ class Out private[reflow](_map: mutable.AnyRefMap[String, Key$[_]]) {
     })
 
   // 仅读取
-  private[reflow] val _keys: Map[String, Key$[_]] = _map.to[immutable.Map].as[Map[String, Key$[_]]]
+  private[reflow] val _keys = _map.to[immutable.Map].as[immutable.Map[String, Key$[_]]]
   // 作了synchronized同步
-  private[reflow] val map: mutable.Map[String, AnyRef] = new mutable.HashMap[String, AnyRef]
+  private[reflow] val map: mutable.AnyRefMap[String, AnyRef] = new mutable.AnyRefMap[String, AnyRef]
   private[reflow] val nullValueKeys: mutable.Set[Key$[_]] = new mutable.HashSet[Key$[_]]
 
   private[reflow] def fillWith(out: Out) {
@@ -45,7 +44,7 @@ class Out private[reflow](_map: mutable.AnyRefMap[String, Key$[_]]) {
   }
 
   private[reflow] def verify() {
-    putWith(Map.empty, Set.empty, true, true)
+    putWith(mutable.AnyRefMap.empty, Set.empty, true, true)
   }
 
   /**
@@ -56,7 +55,7 @@ class Out private[reflow](_map: mutable.AnyRefMap[String, Key$[_]]) {
     * @param ignoreDiffType 是否忽略不同值类型({Key$})。
     * @param fullVerify     检查{#keys}是否全部输出。
     */
-  private[reflow] def putWith(map: Map[String, AnyRef], nullValueKeys: Set[Key$[_]], ignoreDiffType: Boolean, fullVerify: Boolean): Unit = synchronized {
+  private[reflow] def putWith(map: mutable.AnyRefMap[String, AnyRef], nullValueKeys: Set[Key$[_]], ignoreDiffType: Boolean, fullVerify: Boolean): Unit = synchronized {
     _keys.values.foreach { k =>
       if (map.contains(k.key)) {
         if (k.putValue(this.map, map.get(k.key), ignoreDiffType)) {

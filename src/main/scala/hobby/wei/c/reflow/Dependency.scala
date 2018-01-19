@@ -37,8 +37,8 @@ class Dependency private[reflow]() extends TAG.ClassName {
   private val basis = new BasisMutable
   private val names = new mutable.HashSet[String]
   // Key$是transform后的
-  private val useless = new mutable.HashMap[String, mutable.Map[String, Key$[_]]]
-  private val inputRequired = new mutable.HashMap[String, Key$[_]]
+  private val useless = new mutable.AnyRefMap[String, mutable.Map[String, Key$[_]]]
+  private val inputRequired = new mutable.AnyRefMap[String, Key$[_]]
 
   /**
     * 给前面最后添加的任务增加并行任务。
@@ -46,7 +46,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param trat 新增的任务具有的特性。
     * @return 当前依赖组装器。
     */
-  def and(trat: Trait[_]): Dependency = {
+  def and(trat: Trait[_ <: Task]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
     requireTaskNameDifferent(trat, names)
     if (basis.traits.isEmpty) {
@@ -236,9 +236,9 @@ object Dependency {
     if (basis.nonNull) copyFrom(basis)
 
     override val traits: mutable.ListBuffer[Trait[_]] = new mutable.ListBuffer[Trait[_]]
-    override val dependencies: mutable.HashMap[String, mutable.Map[String, Key$[_]]] = new mutable.HashMap[String, mutable.Map[String, Key$[_]]]
-    override val transformers: mutable.HashMap[String, Set[Transformer[_, _]]] = new mutable.HashMap[String, Set[Transformer[_, _]]]
-    override val transGlobal: mutable.HashMap[String, Set[Transformer[_, _]]] = new mutable.HashMap[String, Set[Transformer[_, _]]]
+    override val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Key$[_]]] = new mutable.AnyRefMap[String, mutable.Map[String, Key$[_]]]
+    override val transformers: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
+    override val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
     override val outsFlowTrimmed = null
     override val outs = null
 
@@ -282,15 +282,15 @@ object Dependency {
   private def genIOPrev(last: Trait[_], mapParallelOuts: mutable.Map[String, Key$[_]], basis: BasisMutable,
                         inputRequired: mutable.Map[String, Key$[_]], mapUseless: mutable.Map[String, mutable.Map[String, Key$[_]]]) {
     if (last.isParallel) {
-      val outsPal = new mutable.HashMap[String, Key$[_]]
-      for (tt <- last.asParallel.traits) {
+      val outsPal = new mutable.AnyRefMap[String, Key$[_]]
+      for (tt <- last.asParallel.traits()) {
         genIOPrev(tt, outsPal, basis, inputRequired, mapUseless)
       }
       if (outsPal.nonEmpty) mapUseless.values.foreach(useless => outsPal.keySet.foreach(useless.remove))
       mapUseless.put(last.name$, outsPal)
     } else {
       /*##### for requires #####*/
-      val requires = new mutable.HashMap[String, Key$[_]]
+      val requires = new mutable.AnyRefMap[String, Key$[_]]
       putAll(requires, last.requires$)
       breakable {
         for (trat <- basis.traits.reverse.tail /*从倒数第{二}个开始*/ ) {
@@ -321,7 +321,7 @@ object Dependency {
     */
   private def genIOuts(outs: Set[Key$[_]], basis: BasisMutable, inputRequired: mutable.Map[String, Key$[_]],
                        mapUseless: Map[String, mutable.Map[String, Key$[_]]]) {
-    val requires = new mutable.HashMap[String, Key$[_]]
+    val requires = new mutable.AnyRefMap[String, Key$[_]]
     putAll(requires, outs)
     breakable {
       for (trat <- basis.traits.reverse /*从倒数第{一}个开始*/ ) {
@@ -338,7 +338,7 @@ object Dependency {
     */
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
     val tranSet = basis.transGlobal(nameGlobal(prev /*不能是并行的，而这里必然不是*/))
-    val copy = requires.to[mutable.HashMap].as[mutable.HashMap[String, Key$[_]]]
+    val copy = requires.to[mutable.AnyRefMap].as[mutable.AnyRefMap[String, Key$[_]]]
     breakable {
       for (t <- tranSet; k <- copy.values if k.key.equals(t.out.key)) {
         // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
@@ -367,7 +367,7 @@ object Dependency {
       }
     } else {
       val outs = basis.dependencies.get(prev.name$).fold {
-        if (prev.outs$.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.HashMap[String, Key$[_]]
+        if (prev.outs$.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.AnyRefMap[String, Key$[_]]
       }(m => m)
       consumeRequires(prev, requires, outs, mapUseless((if (parent.isNull) prev else parent).name$))
     }
@@ -402,7 +402,7 @@ object Dependency {
   private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Key$[_]], basis: Basis): mutable.Map[String, Key$[_]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
     else {
-      val map = new mutable.HashMap[String, Key$[_]]
+      val map = new mutable.AnyRefMap[String, Key$[_]]
       trat.outs$.as[Set[Key$[_]]].foreach(k => map.put(k.key, k))
       // 先加入转换
       transOuts(basis.transformers(trat.name$), map)
@@ -462,7 +462,7 @@ object Dependency {
   }
 
   private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_, _]]): Map[String, Key$[_]] = {
-    def inputs = if (in.keys.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.HashMap[String, Key$[_]]
+    def inputs = if (in.keys.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.AnyRefMap[String, Key$[_]]
 
     in.keys.foreach(k => inputs.put(k.key, k))
     transOuts(trans4Input, inputs)
@@ -477,8 +477,8 @@ object Dependency {
   }
 
   private def trimOutsFlow(basis: Basis): Map[String, Set[Key$[_]]] = {
-    val outsFlow = new mutable.HashMap[String, Set[Key$[_]]]
-    val trimmed = new mutable.HashMap[String, Key$[_]]
+    val outsFlow = new mutable.AnyRefMap[String, Set[Key$[_]]]
+    val trimmed = new mutable.AnyRefMap[String, Key$[_]]
     putAll(trimmed, basis.outs)
     basis.traits.reverse.foreach { trat =>
       trimOutsFlow(outsFlow, trat, basis, trimmed)
@@ -489,13 +489,13 @@ object Dependency {
   /**
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行trim。
     */
-  private def trimOutsFlow(outsFlow: mutable.HashMap[String, Set[Key$[_]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Key$[_]]) {
+  private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Key$[_]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Key$[_]]) {
     consumeRequiresOnTransGlobal(trat, trimmed, basis, false)
     val flow = trimmed.values.toSet
     outsFlow.put(trat.name$, flow)
     if (trat.isParallel) {
-      val inputs = new mutable.HashMap[String, Key$[_]]
-      val outs = new mutable.HashMap[String, Key$[_]]
+      val inputs = new mutable.AnyRefMap[String, Key$[_]]
+      val outs = new mutable.AnyRefMap[String, Key$[_]]
       for (tt <- trat.asParallel.traits()) {
         // 根据Tracker实现的实际情况，弃用这行。
         // outsFlow.put(tt.name$(), flow);
@@ -525,7 +525,7 @@ object Dependency {
     */
   def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, _], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
     if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullValueKeys.nonEmpty)) {
-      val out = if (map.isEmpty) mutable.Map.empty[String, _] else new mutable.HashMap[String, _]
+      val out = if (map.isEmpty) mutable.Map.empty[String, _] else new mutable.AnyRefMap[String, _]
       val nulls = if (nullValueKeys.isEmpty) mutable.Set.empty[Key$[_]] else new mutable.HashSet[Key$[_]]
       val trans = new mutable.HashSet[Transformer[_, _]]
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。

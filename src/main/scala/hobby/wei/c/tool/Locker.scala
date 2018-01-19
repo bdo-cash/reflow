@@ -47,7 +47,7 @@ object Locker {
     * @throws InterruptedException 锁中断, codes并未开始执行。
     */
   @throws[InterruptedException]
-  def sync[T](codes: => T, lockScope: AnyRef): Option[T] = sync(new CodeZ[T] {
+  def sync[T](lockScope: AnyRef)(codes: => T): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, getLock(lockScope))
 
@@ -55,7 +55,7 @@ object Locker {
   def sync[T](codes: Codes[T], lockScope: AnyRef): Option[T] = sync(codes, getLock(lockScope))
 
   @throws[InterruptedException]
-  def sync[T](codes: => T, lock: ReentrantLock): Option[T] = sync(new CodeZ[T] {
+  def sync[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, lock)
 
@@ -80,7 +80,7 @@ object Locker {
   /**
     * {@link #sync(Codes, AnyRef)}的无{@link InterruptedException 中断}版。
     */
-  def syncr[T](codes: => T, lockScope: AnyRef): Option[T] = syncr(new CodeZ[T] {
+  def syncr[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr(new CodeZ[T] {
     override def exec() = codes
   }, getLockr(lockScope))
 
@@ -89,7 +89,7 @@ object Locker {
   /**
     * {@link #sync(Codes, ReentrantLock)}的无{@link InterruptedException 中断}版。
     */
-  def syncr[T](codes: => T, lock: ReentrantLock): Option[T] = syncr(new CodeZ[T] {
+  def syncr[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = syncr(new CodeZ[T] {
     override def exec() = codes
   }, lock)
 
@@ -115,7 +115,7 @@ object Locker {
     * @throws InterruptedException 被中断。
     */
   @throws[InterruptedException]
-  def lazyGet[T](get: => T, create: => T, lock: ReentrantLock): Option[T] = lazyGet(
+  def lazyGet[T](get: => T)(create: => T)(implicit lock: ReentrantLock): Option[T] = lazyGet(
     new CodeZ[T] {
       override def exec() = get
     }, new CodeZ[T] {
@@ -133,15 +133,22 @@ object Locker {
 
   @throws[InterruptedException]
   def getLock(lockScope: AnyRef): ReentrantLock = lazyGet(
-    Assist.getRef(sLocks(lockScope)).get, {
-      val lock = new ReentrantLock(true) // 公平锁
-      sLocks.put(lockScope, new WeakReference(lock))
-      lock
-    }, sLock).get
+    Assist.getRef(sLocks(lockScope)).get) {
+    val lock = new ReentrantLock(true) // 公平锁
+    sLocks.put(lockScope, new WeakReference(lock))
+    lock
+  }(sLock).get
 
   /**
     * {@link #lazyGet(Codes, Codes, ReentrantLock)}的无{@link InterruptedException 中断}版。
     */
+  def lazyGetr[T](get: => T)(create: => T)(implicit lock: ReentrantLock): Option[T] = lazyGetr(
+    new CodeZ[T] {
+      override def exec() = get
+    }, new CodeZ[T] {
+      override def exec() = create
+    }, lock)
+
   def lazyGetr[T](get: CodeZ[T], create: CodeZ[T], lock: ReentrantLock): Option[T] = {
     callr(get, lock).orElse {
       syncr(new CodeZ[T]() {
@@ -156,15 +163,11 @@ object Locker {
     * {@link #getLock(AnyRef)}的无{@link InterruptedException 中断}版。
     */
   def getLockr(lockScope: AnyRef): ReentrantLock = lazyGetr(
-    new CodeZ[ReentrantLock]() {
-      override def exec() = Assist.getRef(sLocks(lockScope)).get
-    }, new CodeZ[ReentrantLock]() {
-      override def exec() = {
-        val lock = new ReentrantLock(true) // 公平锁
-        sLocks.put(lockScope, new WeakReference(lock))
-        lock
-      }
-    }, sLock).get
+    Assist.getRef(sLocks(lockScope)).get) {
+    val lock = new ReentrantLock(true) // 公平锁
+    sLocks.put(lockScope, new WeakReference(lock))
+    lock
+  }(sLock).get
 
   private trait Codes[T]
 
@@ -187,17 +190,18 @@ object Locker {
     import CodeC._
 
     @throws[InterruptedException]
-    private[Locker] def exec$(lock: ReentrantLock): T = exec(lazyGet(
-      if (num == 0) EMPTY else sLockCons(lock), {
+    private[Locker] def exec$(lock: ReentrantLock): T = exec(
+      lazyGet(if (num == 0) EMPTY else sLockCons(lock)) {
         val cons = new Array[Condition](num)
         for (i <- cons.indices) cons(i) = lock.newCondition()
         sLockCons.put(lock, cons)
         cons
-      }, lock).get)
+      }(lock).get)
 
     @throws[InterruptedException]
     protected def exec(cons: Array[Condition]): T
   }
+
   object CodeC {
     private val sLockCons = new mutable.WeakHashMap[ReentrantLock, Array[Condition]]
     private val EMPTY = new Array[Condition](0)

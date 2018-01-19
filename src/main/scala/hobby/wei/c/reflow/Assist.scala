@@ -75,9 +75,9 @@ object Assist extends TAG.ClassName {
   /**
     * 要求相同的输入key的type也相同，但不要求不能有相同的输出key，因为输出key由需求决定，而需求已经限制了不同。
     */
-  def requireTransInTypeSame[C <: Set[Transformer[_]]](tranSet: C): C = {
+  def requireTransInTypeSame[C <: Set[Transformer[_, _]]](tranSet: C): C = {
     if (tranSet.nonEmpty) {
-      val map = new mutable.HashMap[String, Transformer[_]]()
+      val map = new mutable.AnyRefMap[String, Transformer[_, _]]()
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {
           val trans = map(t.in.key)
@@ -103,7 +103,7 @@ object Assist extends TAG.ClassName {
   private[reflow] object Throws {
     def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为\"$name\"的Task已存在, 请确认或尝试重写其name()方法。")
 
-    def sameOutKeyParallel(key: Key$[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: \"${key.key}\", Task: \"${trat.name$()}\"。")
+    def sameOutKeyParallel(key: Key$[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: \"${key.key}\", Task: \"${trat.name$}\"。")
 
     def sameCacheKey(key: Key$[_]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: \"${key.key}\"。")
 
@@ -146,7 +146,7 @@ object Assist extends TAG.ClassName {
     def abortion(triggerFrom: String, name: String, forError: Boolean) = Reflow.logger.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
 
     @Burden
-    def assertStateOverride(prev: State, state: State, success: Boolean) {
+    def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {
       if (!success) {
         Reflow.logger.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
         assertx(success)

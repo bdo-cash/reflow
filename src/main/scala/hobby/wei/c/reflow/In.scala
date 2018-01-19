@@ -55,7 +55,7 @@ object In {
   def add(key: String, value: AnyRef): Builder = new Builder().add(key, value)
 
   class Builder private() {
-    private val map = new mutable.HashMap[String, AnyRef]
+    private val map = new mutable.AnyRefMap[String, AnyRef]
     private var tb: Helper.Transformers.Builder = _
 
     def add(key: String, value: AnyRef): Builder = {

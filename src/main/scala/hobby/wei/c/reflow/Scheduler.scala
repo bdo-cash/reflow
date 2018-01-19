@@ -16,10 +16,12 @@
 
 package hobby.wei.c.reflow
 
-import java.lang.ref.WeakReference
+import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.State._
+import hobby.wei.c.tool.Locker
+import hobby.wei.c.tool.Locker.CodeZ
 
 import scala.collection._
 
@@ -95,15 +97,14 @@ object Scheduler {
     * @version 1.0, 07/08/2016
     */
   class Impl(basis: Dependency.Basis, traitIn: Trait[_], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
-    private val state = new State$()
+    private implicit lazy val lock: ReentrantLock = new ReentrantLock
+    private lazy val state = new State$()
     @volatile
-    private var delegatorRef: WeakReference[Scheduler] = _
+    private var delegatorRef: ref.WeakReference[Scheduler] = _
 
     private[Scheduler] def start$: Tracker = {
       var permit = false
-      // TODO: 改为 Locker.xxx
-      // 而且这个写法不对
-      this.synchronized {
+      Locker.sync {
         if (isDone()) {
           state.reset()
           permit = true
@@ -115,17 +116,16 @@ object Scheduler {
         val tracker = new Tracker(basis, traitIn, inputTrans, state, feedback, poster)
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
-        synchronized(this) {
-          delegatorRef = new WeakReference(tracker)
+        Locker.sync {
+          delegatorRef = new ref.WeakReference[Scheduler](tracker)
         }
         tracker.start()
-        return tracker
-      }
-      return null
+        tracker
+      } else null
     }
 
-    private def getDelegator: Option[Scheduler] = synchronized {
-      Assist.getRef(delegatorRef)
+    private def getDelegator: Option[Scheduler] = Locker.sync {
+      Assist.getRef(delegatorRef).get
     }
 
     override def sync(): Out = {
@@ -166,26 +166,27 @@ object Scheduler {
   }
 
   class State$ {
+    private implicit lazy val lock: ReentrantLock = new ReentrantLock
+
     private var state = State.IDLE
     private var state$ = State.IDLE
     private var overrided = false
 
-    def forward(state: State.Tpe): Boolean = synchronized {
+    def forward(state: State.Tpe): Boolean = Locker.sync {
       if (this.state.canOverrideWith(state)) {
         this.state = state
         this.state$ = state
         if (!overrided) overrided = true
-        return true
-      }
-      return false
-    }
+        true
+      } else false
+    }.get
 
     /**
       * 更新中断后的状态。
       *
       * @return 返回值与forward(State)方法互补的值。
       */
-    def abort(): Boolean = synchronized {
+    def abort(): Boolean = Locker.sync {
       state$ = State.ABORTED
       state match {
         case State.REINFORCE_PENDING | State.REINFORCING =>
@@ -194,13 +195,17 @@ object Scheduler {
         case State.COMPLETED | State.UPDATED => true
         case _ => false
       }
-    }
+    }.get
 
-    def get(): Tpe = synchronized(state)
+    def get(): Tpe = Locker.sync(new CodeZ[Tpe] {
+      override def exec() = state
+    }, lock).get
 
-    def get$(): Tpe = synchronized(state$)
+    def get$(): Tpe = Locker.sync(new CodeZ[Tpe] {
+      override def exec() = state$
+    }, lock).get
 
-    private[Scheduler] def reset(): Unit = synchronized {
+    private[Scheduler] def reset(): Unit = Locker.sync {
       state = State.IDLE
       state$ = State.IDLE
     }
@@ -208,6 +213,8 @@ object Scheduler {
     /**
       * 可用于标识是否启动过。
       */
-    private[Scheduler] def isOverrided: Boolean = synchronized(overrided)
+    private[Scheduler] def isOverrided: Boolean = Locker.sync(new CodeZ[Boolean] {
+      override def exec() = overrided
+    }, lock).get
   }
 }

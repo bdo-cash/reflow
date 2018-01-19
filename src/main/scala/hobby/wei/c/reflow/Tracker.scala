@@ -27,13 +27,12 @@ import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{logger => log}
 import hobby.wei.c.tool.Locker
 import Reflow._
-import hobby.wei.c.reflow.Tracker.Runner
+import hobby.wei.c.reflow.Tracker.{Reporter, Runner}
 
-import scala.collection._
+import scala.collection.{mutable, _}
 import scala.collection.mutable.ListBuffer
-import scala.collection.JavaConversions.asScalaSet
+import scala.collection.parallel.mutable.{ParHashMap, ParHashSet}
 
-// TODO: 改为 AnyRefMap
 private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_], inputTrans:immutable.Set[Transformer[_, _]],
                         state:Scheduler.State$, feedback:Feedback, poster:Poster) extends Scheduler {
       // 本数据结构是同步操作的, 不需要ConcurrentLinkedQueue
@@ -43,18 +42,18 @@ private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_]
         seq
       }
 
-      private val runnersParallel = new CopyOnWriteArraySet[Runner]
+      private val runnersParallel = new ParHashSet[Runner]
       @volatile // 用volatile而不在赋值的时候用synchronized是因为读写操作不会同时发生。
       private var reinforce: Seq[Trait[_]] = _
       private[reflow] val reinforceRequired = new AtomicBoolean(false)
-      private val reinforceCaches = new ConcurrentHashMap[String, Out]
-      private val progress = new mutable.HashMap[String, java.lang.Float]
+      private val reinforceCaches = new ParHashMap[String, Out]
+      private val progress = new ParHashMap[String, java.lang.Float]
       private val step = new AtomicInteger(-1 /*第一个任务是系统input任务*/)
       private val sum = remaining.length
       private val sumParallel = new AtomicInteger
       @volatile private var sumReinforce: Int = _
       @volatile private var normalDone, reinforceDone: Boolean = _
-      @volatile private var outFlowTrimmed = new Out(Map.empty[String, Key$[_]])
+      @volatile private var outFlowTrimmed = new Out(mutable.AnyRefMap.empty[String, Key$[_]])
       @volatile private[reflow] var prevOutFlow, reinforceInput: Out = _
       private val reporter = new Reporter(feedback, poster, sum)
 
@@ -76,7 +75,7 @@ private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_]
 
       private def endRunner(runner: Runner): Unit = synchronized {
         log.i("endRunner")(runner.trat.name$)
-        runnersParallel.remove(runner)
+        runnersParallel.-=(runner)
         if (runnersParallel.isEmpty && state.get$ != State.ABORTED && state.get$ != State.FAILED) {
           assertx(sumParallel.get == 0)
           progress.clear
@@ -110,12 +109,12 @@ private[reflow] final class Tracker(val basis:Dependency.Basis, traitIn:Trait[_]
             // 把并行的任务put进去，不然计算子进度会有问题。
             progress.put(t.name$, 0f)
           }
-          runners.foreach(runnersParallel.add)
+          runners.foreach(runnersParallel.+=)
         } else {
           //progress.put(trat.name$, 0f)
-          runnersParallel.add(new Runner(this, trat))
+          runnersParallel += new Runner(this, trat)
         }
-        sumParallel.set(runnersParallel.size())
+        sumParallel.set(runnersParallel.size)
         resetOutFlow(new Out(basis.outsFlowTrimmed(trat.name$)))
         // 在调度之前获得结果比较保险
         val hasMore = sumParallel.get() > 0
