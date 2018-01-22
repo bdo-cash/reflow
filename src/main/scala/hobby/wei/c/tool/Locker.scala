@@ -118,8 +118,9 @@ object Locker {
   def lazyGet[T](get: => T)(create: => T)(implicit lock: ReentrantLock): Option[T] = lazyGet(
     new CodeZ[T] {
       override def exec() = get
-    }, new CodeZ[T] {
-      override def exec() = create
+    }, new CodeC[T](0) { // 使用这个，主要用于在Java版本的代码中接收异常。
+      @throws[InterruptedException]
+      override protected def exec(cons: Array[Condition]) = create
     }, lock)
 
   @throws[InterruptedException]

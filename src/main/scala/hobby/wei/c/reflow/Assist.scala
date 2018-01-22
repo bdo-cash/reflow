@@ -90,7 +90,7 @@ object Assist extends TAG.ClassName {
     tranSet
   }
 
-  def eatExceptions(work: () => Unit, onError: => Unit = ()) {
+  def eatExceptions(work: => Unit)(onError: => Unit = ()) {
     try {
       work()
     } catch {

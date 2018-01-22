@@ -29,7 +29,6 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016
   */
-
 trait Scheduler {
   /**
     * @see #sync(boolean, long)
@@ -51,10 +50,9 @@ trait Scheduler {
   @throws[InterruptedException]
   def sync(reinforce: Boolean, milliseconds: Long): Out
 
-  def abort();
-  Unit
+  def abort(): Unit
 
-  def getState(): Tpe
+  def getState: Tpe
 
   /**
     * 判断整个任务流是否运行结束。
@@ -63,7 +61,7 @@ trait Scheduler {
     *
     * @return true 已结束。
     */
-  def isDone(): Boolean
+  def isDone: Boolean
 }
 
 object Scheduler {
@@ -97,7 +95,7 @@ object Scheduler {
     * @version 1.0, 07/08/2016
     */
   class Impl(basis: Dependency.Basis, traitIn: Trait[_], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
-    private implicit lazy val lock: ReentrantLock = new ReentrantLock
+    private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
     @volatile
     private var delegatorRef: ref.WeakReference[Scheduler] = _
@@ -105,7 +103,7 @@ object Scheduler {
     private[Scheduler] def start$: Tracker = {
       var permit = false
       Locker.sync {
-        if (isDone()) {
+        if (isDone) {
           state.reset()
           permit = true
         } else {
@@ -155,9 +153,9 @@ object Scheduler {
 
     override def abort(): Unit = getDelegator.fold()(_.abort())
 
-    override def getState(): State.Tpe = state.get()
+    override def getState: State.Tpe = state.get()
 
-    override def isDone(): Boolean = {
+    override def isDone: Boolean = {
       val state = this.state.get()
       state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) { d =>
         !d.as[Tracker].reinforceRequired.get()
@@ -166,7 +164,7 @@ object Scheduler {
   }
 
   class State$ {
-    private implicit lazy val lock: ReentrantLock = new ReentrantLock
+    private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
     private var state = State.IDLE
     private var state$ = State.IDLE

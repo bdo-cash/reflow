@@ -23,7 +23,11 @@ package hobby.wei.c.reflow
   * @version 1.0, 23/07/2016
   */
 trait Poster {
-  def post(r: Runnable): Unit
+  def post(f: => Unit) = post(new Runnable {
+    override def run(): Unit = f
+  })
+
+  def post(run: Runnable): Unit
 
   // TODO: 16/7/24 增加最低反馈时间间隔, 拥挤的消息需要丢弃。参见 EasyCache 项目。
 }

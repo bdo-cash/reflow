@@ -16,11 +16,11 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.tool.Locker
-import hobby.wei.c.tool.Locker.CodeZ
 
 /**
   * 任务[串并联]组合调度框架。
@@ -86,21 +86,21 @@ object Reflow {
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
     case class Period(weight: Int) extends Val {
+      private implicit val lock: ReentrantLock = Locker.getLockr(this)
       private var average = 0L
       private var count = 0L
 
-      def average(duration: Long): Long = Locker.sync(new CodeZ[Long] {
-        override def exec() = if (duration <= 0) average
-        else {
+      def average(duration: Long): Long = Locker.sync {
+        if (duration > 0) {
           val prevAvg = average
           val prevCnt = count
           average = (prevAvg * prevCnt + duration) / {
             count += 1
             count
           }
-          prevAvg
         }
-      }, Locker.getLock(this))
+        average
+      }.get
     }
     /**
       * 任务执行时间：瞬间。
