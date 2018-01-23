@@ -16,10 +16,10 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.State._
-import hobby.wei.c.reflow.Tracker
 import hobby.wei.c.tool.Locker
 
 import scala.collection._
@@ -29,6 +29,8 @@ import scala.collection._
   * @version 1.0, 26/06/2016
   */
 abstract class Task {
+  private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
+
   private var thread: Thread = _
   private var tracker: Tracker = _
   private var trat: Trait[_] = _
@@ -62,11 +64,11 @@ abstract class Task {
     * @tparam T
     * @return
     */
-  protected final def input[T](key: String): T = input.get(key)
+  protected final def input[T](key: String): Option[T] = input.get(key)
 
   protected final def output[T](key: String, value: T): Unit = out.put(key, value)
 
-  protected final def output(map: Map[String, AnyRef]): Unit = map.foreach { m: (String, AnyRef) =>
+  protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) =>
     output(m._1, m._2)
   }
 
@@ -80,7 +82,7 @@ abstract class Task {
     */
   protected final def cache[T](key: String, value: T): Unit = if (isReinforceRequired) {
     input.cache(key, null); // 仅用来测试key是否重复。
-    tracker.cache(trat, true).cache(key, value)
+    tracker.cache(trat, create = true).cache(key, value)
   }
 
   protected final def progress(progress: Float): Unit = tracker.onTaskProgress(trat, progress, out)
@@ -108,7 +110,7 @@ abstract class Task {
   @throws[AbortException]
   @throws[FailedException]
   final def exec(): Unit = {
-    this.synchronized {
+    Locker.syncr {
       if (aborted) return
       thread = Thread.currentThread()
       working = true
@@ -130,7 +132,7 @@ abstract class Task {
   }
 
   final def abort(): Unit = {
-    this.synchronized {
+    Locker.syncr {
       aborted = true
     }
     if (working) {
@@ -158,7 +160,7 @@ abstract class Task {
     * @tparam T 返回值类型。
     * @return {Locker.CodeZ#exec()}的返回值。
     */
-  protected final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): T = {
+  protected final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): Option[T] = {
     try {
       Locker.sync(codes, scope.ensuring(_.nonNull))
     } catch {

@@ -92,7 +92,7 @@ object Assist extends TAG.ClassName {
 
   def eatExceptions(work: => Unit)(onError: => Unit = ()) {
     try {
-      work()
+      work
     } catch {
       case e: Exception =>
         Reflow.logger.w("eatExceptions.", e)
@@ -101,19 +101,19 @@ object Assist extends TAG.ClassName {
   }
 
   private[reflow] object Throws {
-    def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为\"$name\"的Task已存在, 请确认或尝试重写其name()方法。")
+    def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`${name}`的Task已存在, 请确认或尝试重写其name()方法。")
 
-    def sameOutKeyParallel(key: Key$[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: \"${key.key}\", Task: \"${trat.name$}\"。")
+    def sameOutKeyParallel(key: Key$[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
 
-    def sameCacheKey(key: Key$[_]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: \"${key.key}\"。")
+    def sameCacheKey(key: Key$[_]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
 
-    def sameKey$k(key: Key$[_]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: \"$key\"。")
+    def sameKey$k(key: Key$[_]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
 
     def lackIOKey(key: Key$[_], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
 
     def lackOutKeys() = throw new IllegalStateException("所有任务的输出都没有提供最终输出, 请检查。")
 
-    def typeNotMatch(key: Key$[_], clazz: Class[_]) = throw new IllegalArgumentException(s"key为\"${key.key}\"的参数值类型与定义不一致: 应为\"${key.tpe}\", 实际为\"$clazz\"。")
+    def typeNotMatch(key: Key$[_], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
 
     def typeNotMatch4Trans(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "转换。")
 
@@ -123,9 +123,9 @@ object Assist extends TAG.ClassName {
 
     def typeNotMatch4RealIn(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "实际输入。")
 
-    private def typeNotMatch(from: Key$[_], to: Key$[_], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: \"${to.tpe}\" but \"${from.tpe}\". 操作: \"$opt\"。")
+    private def typeNotMatch(from: Key$[_], to: Key$[_], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
 
-    def tranSameKeyButDiffType(one: Key$[_], another: Key$[_]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: \"${one.key}\", types: \"${one.tpe}\"、\"${another.tpe}\"。")
+    def tranSameKeyButDiffType(one: Key$[_], another: Key$[_]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
 
     def assertError(msg: String) = throw new AssertionError(msg)
   }

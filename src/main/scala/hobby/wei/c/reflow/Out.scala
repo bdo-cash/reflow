@@ -16,36 +16,37 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 
-import scala.collection.{mutable, _}
+import scala.collection._
+import scala.collection.JavaConversions.mapAsScalaMap
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-class Out private[reflow](_map: Map[String, Key$[_]]) {
-  private[reflow] def this(_keys: Set[Key$[_]]) = this(
-    (new mutable.AnyRefMap[String, Key$[_]] /: _keys) {
+class Out private[reflow](map: Map[String, Key$[_]]) {
+  private[reflow] def this(keys: Set[Key$[_]]) = this(
+    (new mutable.AnyRefMap[String, Key$[_]] /: keys) {
       (m, k) =>
         m.put(k.key, k)
         m
     })
 
   // 仅读取
-  private[reflow] val _keys = _map.to[immutable.Map].as[immutable.Map[String, Key$[_]]]
-  // 作了synchronized同步
-  private[reflow] val map: mutable.AnyRefMap[String, AnyRef] = new mutable.AnyRefMap[String, AnyRef]
-  private[reflow] val nullValueKeys: mutable.Set[Key$[_]] = new mutable.HashSet[Key$[_]]
+  private[reflow] val _keys = map.to[immutable.Map].as[immutable.Map[String, Key$[_]]]
+  // 由于并行的任务，不可能有相同的key, 没有必要让本类的整个方法调用都进行sync, 因此用并行库是最佳方案。
+  private[reflow] val _map = new ConcurrentHashMap[String, Any]
+  private[reflow] val _nullValueKeys = new ConcurrentHashMap[String, Key$[_]]
 
   private[reflow] def fillWith(out: Out) {
-    putWith(out.map, out.nullValueKeys, true, true)
+    putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify = true)
   }
 
-  private[reflow] def verify() {
-    putWith(mutable.AnyRefMap.empty, Set.empty, true, true)
-  }
+  private[reflow] def verify(): Unit = putWith(new ConcurrentHashMap(), new ConcurrentHashMap(),
+    ignoreDiffType = true, fullVerify = true)
 
   /**
     * 若调用本方法, 则必须一次填满, 否则报异常。
@@ -55,37 +56,38 @@ class Out private[reflow](_map: Map[String, Key$[_]]) {
     * @param ignoreDiffType 是否忽略不同值类型({Key$})。
     * @param fullVerify     检查{#keys}是否全部输出。
     */
-  private[reflow] def putWith(map: mutable.AnyRefMap[String, AnyRef], nullValueKeys: Set[Key$[_]], ignoreDiffType: Boolean, fullVerify: Boolean): Unit = synchronized {
+  private[reflow] def putWith(map: ConcurrentMap[String, Any], nullValueKeys: ConcurrentMap[String, Key$[_]],
+                              ignoreDiffType: Boolean, fullVerify: Boolean): Unit = {
     _keys.values.foreach { k =>
-      if (map.contains(k.key)) {
-        if (k.putValue(this.map, map.get(k.key), ignoreDiffType)) {
-          this.nullValueKeys.remove(k)
+      if (map.containsKey(k.key)) {
+        if (k.putValue(_map, map.get(k.key), ignoreDiffType)) {
+          _nullValueKeys.remove(k.key)
         }
-      } else if (!this.map.contains(k.key)) {
-        if (nullValueKeys.contains(k)) {
-          this.nullValueKeys.add(k)
+      } else if (!_map.containsKey(k.key)) {
+        if (nullValueKeys.containsKey(k.key)) {
+          _nullValueKeys.put(k.key, k)
         } else if (fullVerify) {
-          Assist.Throws.lackIOKey(k, false)
+          Assist.Throws.lackIOKey(k, in$out = false)
         }
       }
     }
   }
 
-  private[reflow] def put[T <: AnyRef](key: String, value: T): Boolean = synchronized {
+  private[reflow] def put[T](key: String, value: T): Boolean = {
     if (_keys.contains(key)) {
       val k = _keys(key)
-      if (value.isNull && !map.contains(key)) {
-        nullValueKeys.add(k)
+      if (value.isNull && !_map.containsKey(key)) {
+        _nullValueKeys.put(k.key, k)
       } else {
-        k.putValue(map, value)
-        nullValueKeys.remove(k)
+        k.putValue(_map, value)
+        _nullValueKeys.remove(k.key)
       }
       true
     } else false
   }
 
   private[reflow] def cache(out: Out): Unit = {
-    out.map.foreach { kv: (String, AnyRef) =>
+    out._map.toMap.foreach { kv: (String, Any) =>
       cache(kv._1, kv._2)
     }
   }
@@ -99,11 +101,11 @@ class Out private[reflow](_map: Map[String, Key$[_]]) {
     * @tparam T
     * @return true 成功; false 失败, 说明key重复, 应该换用其它的key。
     */
-  private[reflow] def cache[T <: AnyRef](key: String, value: T): Unit = synchronized {
+  private[reflow] def cache[T](key: String, value: T): Unit = {
     if (_keys.contains(key)) {
       Assist.Throws.sameCacheKey(_keys(key))
     } else if (value.nonNull) {
-      map.put(key, value)
+      _map.put(key, value)
     }
   }
 
@@ -114,7 +116,7 @@ class Out private[reflow](_map: Map[String, Key$[_]]) {
     * @tparam T
     * @return
     */
-  def get[T](key: String): T = get(_keys.get(key).as[Key$[T]])
+  def get[T](key: String): Option[T] = get(_keys.get(key).as[Key$[T]])
 
   /**
     * 取得key对应的value。
@@ -123,35 +125,31 @@ class Out private[reflow](_map: Map[String, Key$[_]]) {
     * @tparam T
     * @return
     */
-  def get[T](key: Key$[T]): T = synchronized {
-    key.takeValue(map)
-  }
+  def get[T](key: Key$[T]): Option[T] = Option(key.takeValue(_map))
 
   /**
     * 取得预定义的keys及类型。即: 希望输出的keys。
     *
     * @return
     */
-  def keysDef(): Set[Key$[_]] = synchronized {
-    _keys.values.toSet
-  }
+  def keysDef(): immutable.Set[Key$[_]] = _keys.values.toSet
 
   /**
     * 取得实际输出的keys。
     *
     * @return
     */
-  def keys(): Set[Key$[_]] = synchronized {
+  def keys(): immutable.Set[Key$[_]] = {
     val result = new mutable.HashSet[Key$[_]]
     _keys.values.foreach { k =>
-      if (map.contains(k.key)) {
+      if (_map.containsKey(k.key)) {
         result.add(k)
-      } else if (nullValueKeys.contains(k)) {
+      } else if (_nullValueKeys.containsKey(k.key)) {
         result.add(k)
       }
     }
-    return result.toSet
+    result.toSet
   }
 
-  override def toString = "keys:" + keys + ", values:" + map + (if (nullValueKeys.isEmpty) "" else ", null:" + nullValueKeys)
+  override def toString = "keys:" + keys + ", values:" + _map + (if (_nullValueKeys.isEmpty) "" else ", null:" + _nullValueKeys.values)
 }

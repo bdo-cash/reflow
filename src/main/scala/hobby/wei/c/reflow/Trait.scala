@@ -152,7 +152,7 @@ object Trait {
       override protected def doWork(): Unit = {
         val input = new Out(requires)
         in.fillValues(input)
-        out.putWith(input.map, outs$, false, true)
+        out.putWith(input._map, outs$, false, true)
       }
     }
 

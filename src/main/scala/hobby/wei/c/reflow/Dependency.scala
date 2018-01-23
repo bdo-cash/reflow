@@ -525,7 +525,7 @@ object Dependency {
     */
   def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, _], nullValueKeys: mutable.Set[Key$[_]], global: Boolean) {
     if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullValueKeys.nonEmpty)) {
-      val out = if (map.isEmpty) mutable.Map.empty[String, _] else new mutable.AnyRefMap[String, _]
+      val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
       val nulls = if (nullValueKeys.isEmpty) mutable.Set.empty[Key$[_]] else new mutable.HashSet[Key$[_]]
       val trans = new mutable.HashSet[Transformer[_, _]]
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
@@ -533,7 +533,7 @@ object Dependency {
       tranSet.foreach { t =>
         if (map.contains(t.in.key)) {
           // 先不从map移除, 可能多个transformer使用同一个源。
-          val o: AnyRef = t.transform(map)
+          val o = t.transform(map)
           if (o.isNull) nulls.add(t.out)
           else out.put(t.out.key, o)
           trans.add(t)

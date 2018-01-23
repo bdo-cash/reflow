@@ -30,7 +30,7 @@ import hobby.wei.c.tool.Locker
 
 import scala.collection.{mutable, _}
 import scala.collection.mutable.ListBuffer
-import scala.collection.parallel.mutable.{ParHashMap, ParHashSet}
+import scala.collection.parallel.mutable.ParHashSet
 
 private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[_], inputTrans: immutable.Set[Transformer[_, _]],
                                     state: Scheduler.State$, feedback: Feedback, poster: Poster) extends Scheduler {
@@ -48,14 +48,14 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
   @volatile // 用volatile而不在赋值的时候用synchronized是因为读写操作不会同时发生。
   private var reinforce: Seq[Trait[_]] = _
   private[reflow] val reinforceRequired = new AtomicBoolean(false)
-  private val reinforceCaches = new ParHashMap[String, Out]
-  private val progress = new ParHashMap[String, Float]
+  private val reinforceCaches = new ConcurrentHashMap[String, Out]
+  private val progress = new ConcurrentHashMap[String, Float]
   private val step = new AtomicInteger(-1 /*第一个任务是系统input任务*/)
   private val sum = remaining.length
   private val sumParallel = new AtomicInteger
   @volatile private var sumReinforce: Int = _
   @volatile private var normalDone, reinforceDone: Boolean = _
-  @volatile private var outFlowTrimmed = new Out(mutable.AnyRefMap.empty[String, Key$[_]])
+  @volatile private var outFlowTrimmed = new Out(Map.empty[String, Key$[_]])
   @volatile private[reflow] var prevOutFlow, reinforceInput: Out = _
   private val reporter = new Reporter(feedback, poster, sum)
 
@@ -165,7 +165,7 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
 
   private def joinOutFlow(out: Out) {
     Locker.syncr({
-      outFlowTrimmed.putWith(out.map, out.nullValueKeys, true, false);
+      outFlowTrimmed.putWith(out._map, out._nullValueKeys, true, false);
       return null;
     }, this)
   }
@@ -343,13 +343,13 @@ private[reflow] object Tracker {
       try {
         task = trat.newTask()
         // 判断放在mTask的创建后面, 配合abort()中的顺序。
-        if (_abort) onAbort(false)
+        if (_abort) onAbort(completed = false)
         else {
           onStart()
           val input = new Out(trat.requires$)
           log.i("input:%s", input)
           input.fillWith(tracker.prevOutFlow)
-          val cached = tracker.cache(trat, false)
+          val cached = tracker.cache(trat, create = false)
           if (cached.nonNull) input.cache(cached)
           val out = new Out(trat.outs$)
           task.env(tracker, trat, input, out)
@@ -362,14 +362,14 @@ private[reflow] object Tracker {
           log.i("dps:%s", dps.get)
           val flow = new Out(dps.getOrElse(Map.empty[String, Key$[_]]))
           log.i("flow0:%s", flow)
-          val map = out.map
-          val nulls = out.nullValueKeys
-          doTransform(tracker.basis.transformers(trat.name$), map, nulls, false)
-          flow.putWith(map, nulls, false, true)
+          val map = out._map
+          val nulls = out._nullValueKeys
+          doTransform(tracker.basis.transformers(trat.name$), map, nulls, global = false)
+          flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
           log.i("flow1:%s", flow)
           working = false
           onComplete(out, flow)
-          if (_abort) onAbort(true)
+          if (_abort) onAbort(completed = true)
         }
       } catch {
         case e: Exception =>

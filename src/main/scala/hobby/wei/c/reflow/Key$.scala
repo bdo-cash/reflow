@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import java.util
 import java.lang.reflect.Type
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
@@ -53,9 +54,9 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     * @param value
     * @return 返回Task在执行时当前key对应值的目标类型。
     */
-  def asType(value: AnyRef): T = value.as[T]
+  def asType(value: Any): T = value.as[T]
 
-  def putValue(map: mutable.Map[String, AnyRef], value: AnyRef): Boolean = putValue(map, value, false)
+  def putValue(map: util.Map[String, Any], value: Any): Boolean = putValue(map, value, ignoreDiffType = false)
 
   /**
     * 将输出值按指定类型(作类型检查)插入Map。
@@ -65,7 +66,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     * @param ignoreDiffType 如果value参数类型不匹配，是否忽略。
     * @return true成功，else失败。
     */
-  def putValue(map: mutable.Map[String, AnyRef], value: AnyRef, ignoreDiffType: Boolean): Boolean = {
+  def putValue(map: util.Map[String, Any], value: Any, ignoreDiffType: Boolean): Boolean = {
     val v = requireSameType(value, ignoreDiffType)
     if (v.nonNull) {
       map.put(key, v)
@@ -79,13 +80,13 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     * @param map Task的输入参数。
     * @return 返回Task在执行时当前key对应值的目标类型。
     */
-  def takeValue(map: Map[String, _]): T = {
+  def takeValue(map: Map[String, Any]): T = {
     // 强制类型转换比较宽松, 只会检查对象类型, 而不会检查泛型。
     // 但是由于value值对象无法获得泛型类型, 因此这里不再作泛型检查。也避免了性能问题。
     map.get(key).as[T]
   }
 
-  private def requireSameType(value: AnyRef, ignoreDiffType: Boolean): AnyRef = {
+  private def requireSameType(value: Any, ignoreDiffType: Boolean): Any = {
     if (value.nonNull) {
       val clazz = value.getClass
       if (!rawType.isAssignableFrom(clazz)) {

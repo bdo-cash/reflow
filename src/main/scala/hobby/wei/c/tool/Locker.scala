@@ -49,15 +49,19 @@ object Locker {
   @throws[InterruptedException]
   def sync[T](lockScope: AnyRef)(codes: => T): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
-  }, getLock(lockScope))
+  }, asLock(lockScope))
 
   @throws[InterruptedException]
-  def sync[T](codes: Codes[T], lockScope: AnyRef): Option[T] = sync(codes, getLock(lockScope))
+  def sync[T](codes: Codes[T], lockScope: AnyRef): Option[T] = sync(codes, asLock(lockScope))
 
   @throws[InterruptedException]
   def sync[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, lock)
+
+  private def asLock(lockScope: AnyRef, r: Boolean = false): ReentrantLock =
+    if (lockScope.isInstanceOf[ReentrantLock]) lockScope.as[ReentrantLock]
+    else if (r) getLockr(lockScope) else getLock(lockScope)
 
   @throws[InterruptedException]
   def sync[T](codes: Codes[T], lock: ReentrantLock): Option[T] = {
@@ -82,9 +86,9 @@ object Locker {
     */
   def syncr[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr(new CodeZ[T] {
     override def exec() = codes
-  }, getLockr(lockScope))
+  }, asLock(lockScope, r = true))
 
-  def syncr[T](codes: CodeZ[T], lockScope: AnyRef): Option[T] = syncr(codes, getLockr(lockScope))
+  def syncr[T](codes: CodeZ[T], lockScope: AnyRef): Option[T] = syncr(codes, asLock(lockScope, r = true))
 
   /**
     * {@link #sync(Codes, ReentrantLock)}的无{@link InterruptedException 中断}版。

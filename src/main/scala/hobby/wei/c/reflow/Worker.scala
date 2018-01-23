@@ -18,8 +18,10 @@ package hobby.wei.c.reflow
 
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow._
+import hobby.wei.c.tool.Locker
 
 import scala.util.control.Breaks._
 
@@ -30,6 +32,8 @@ import scala.util.control.Breaks._
   * @version 1.0, 11/02/2017
   */
 object Worker {
+  private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
+
   private final val sThreadFactory = new ThreadFactory() {
     private val mIndex = new AtomicInteger(0)
 
@@ -62,20 +66,20 @@ object Worker {
       则threadPool启动reject流程(见ThreadPoolExecutor构造器的最后一个参数)，此时再插入到本队列。
       这样即完美实现[先增加线程数到最大，再入队列，空闲释放线程]这个基本逻辑。*/
       val b = sThreadPoolExecutor.getActiveCount < sThreadPoolExecutor.getPoolSize && super.offer(r)
-      Assist.Monitor.threadPool(sThreadPoolExecutor, b, false)
+      Assist.Monitor.threadPool(sThreadPoolExecutor, b, reject = false)
       b
     }
   }
 
   private def getExecutor: ThreadPoolExecutor = {
     if (sThreadPoolExecutor.isNull) {
-      synchronized {
+      Locker.syncr {
         if (sThreadPoolExecutor == null) {
           val config = Reflow.config
           sThreadPoolExecutor = new ThreadPoolExecutor(config.corePoolSize(), config.maxPoolSize(),
             config.keepAliveTime(), TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
               override def rejectedExecution(r: Runnable, executor: ThreadPoolExecutor): Unit = {
-                Assist.Monitor.threadPool(sThreadPoolExecutor, false, true)
+                Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
                 try {
                   sPoolWorkQueue.offer(r, 0, TimeUnit.MILLISECONDS)
                 } catch {
@@ -90,12 +94,12 @@ object Worker {
     sThreadPoolExecutor
   }
 
-  private[reflow] def setThreadResetor(resetor: ThreadResetor) = synchronized {
+  private[reflow] def setThreadResetor(resetor: ThreadResetor) = Locker.syncr {
     sThreadResetor = resetor
   }
 
   private[reflow] def updateConfig(config: Config) {
-    synchronized {
+    Locker.syncr {
       if (sThreadPoolExecutor == null) return
     }
     sThreadPoolExecutor.setCorePoolSize(config.corePoolSize())
