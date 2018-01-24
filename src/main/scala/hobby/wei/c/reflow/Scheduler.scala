@@ -65,7 +65,7 @@ trait Scheduler {
 }
 
 object Scheduler {
-  trait Starter {
+  trait Reflow {
     /**
       * 启动任务。可并行启动多个。
       *
@@ -75,17 +75,20 @@ object Scheduler {
       * @return true 启动成功, false 正在运行。
       */
     def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler
+
+    // TODO: 待实现。如果给这一个流实现并联？？？
+    //def next(next: Starter)
   }
 
-  object Starter {
-    class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Starter {
+  object Reflow {
+    class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
 
       override def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = {
         requireInputsEnough(inputs, inputRequired, inputs.trans)
         val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
         // 第一个任务是不需要trim的，至少从第二个以后。
         // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
-        new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$
+        new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$()
       }
     }
   }
@@ -94,13 +97,13 @@ object Scheduler {
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  class Impl(basis: Dependency.Basis, traitIn: Trait[_], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
+  class Impl(basis: Dependency.Basis, traitIn: Trait[_<:Task], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
     @volatile
     private var delegatorRef: ref.WeakReference[Scheduler] = _
 
-    private[Scheduler] def start$: Tracker = {
+    private[Scheduler] def start$(): Tracker = {
       var permit = false
       Locker.sync {
         if (isDone) {
@@ -140,7 +143,7 @@ object Scheduler {
       var loop = true
       var delegator: Scheduler = null
       while (loop) {
-        getDelegator.orElse(Option(start$)).fold {
+        getDelegator.orElse(Option(start$())).fold {
           // 如果还没拿到, 说明其他线程也在同时start().
           Thread.`yield`() // 那就等一下下再看看
         } { d =>
@@ -153,12 +156,12 @@ object Scheduler {
 
     override def abort(): Unit = getDelegator.fold()(_.abort())
 
-    override def getState: State.Tpe = state.get()
+    override def getState: State.Tpe = state.get
 
     override def isDone: Boolean = {
-      val state = this.state.get()
+      val state = this.state.get
       state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) { d =>
-        !d.as[Tracker].reinforceRequired.get()
+        !d.as[Tracker].reinforceRequired.get
       } || state == FAILED || state == ABORTED || state == UPDATED
     }
   }
@@ -195,11 +198,11 @@ object Scheduler {
       }
     }.get
 
-    def get(): Tpe = Locker.sync(new CodeZ[Tpe] {
+    def get: Tpe = Locker.sync(new CodeZ[Tpe] {
       override def exec() = state
     }, lock).get
 
-    def get$(): Tpe = Locker.sync(new CodeZ[Tpe] {
+    def get$: Tpe = Locker.sync(new CodeZ[Tpe] {
       override def exec() = state$
     }, lock).get
 

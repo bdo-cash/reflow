@@ -30,4 +30,5 @@ trait Poster {
   def post(run: Runnable): Unit
 
   // TODO: 16/7/24 增加最低反馈时间间隔, 拥挤的消息需要丢弃。参见 EasyCache 项目。
+  // 但应该仅针对于 feedback.onProgress(name, out, step, sum, subProgress, desc) 的 subProgress。
 }

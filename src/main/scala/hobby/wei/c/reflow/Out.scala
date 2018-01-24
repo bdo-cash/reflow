@@ -16,12 +16,11 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 
 import scala.collection._
-import scala.collection.JavaConversions.mapAsScalaMap
+import scala.collection.concurrent.TrieMap
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -31,40 +30,39 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
   private[reflow] def this(keys: Set[Key$[_]]) = this(
     (new mutable.AnyRefMap[String, Key$[_]] /: keys) {
       (m, k) =>
-        m.put(k.key, k)
+        m += (k.key, k)
         m
     })
 
   // 仅读取
-  private[reflow] val _keys = map.to[immutable.Map].as[immutable.Map[String, Key$[_]]]
+  private[reflow] val _keys = map.toMap[String, Key$[_]]
   // 由于并行的任务，不可能有相同的key, 没有必要让本类的整个方法调用都进行sync, 因此用并行库是最佳方案。
-  private[reflow] val _map = new ConcurrentHashMap[String, Any]
-  private[reflow] val _nullValueKeys = new ConcurrentHashMap[String, Key$[_]]
+  private[reflow] val _map = new concurrent.TrieMap[String, Any]
+  private[reflow] val _nullValueKeys = new concurrent.TrieMap[String, Key$[_]]
 
   private[reflow] def fillWith(out: Out) {
     putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify = true)
   }
 
-  private[reflow] def verify(): Unit = putWith(new ConcurrentHashMap(), new ConcurrentHashMap(),
-    ignoreDiffType = true, fullVerify = true)
+  private[reflow] def verify(): Unit = putWith(TrieMap.empty, TrieMap.empty, ignoreDiffType = true, fullVerify = true)
 
   /**
     * 若调用本方法, 则必须一次填满, 否则报异常。
     *
     * @param map
-    * @param nullValueKeys  因为value为null导致无法插入到map的key的集合。
+    * @param nulls          因为value为null导致无法插入到map的key的集合。
     * @param ignoreDiffType 是否忽略不同值类型({Key$})。
     * @param fullVerify     检查{#keys}是否全部输出。
     */
-  private[reflow] def putWith(map: ConcurrentMap[String, Any], nullValueKeys: ConcurrentMap[String, Key$[_]],
+  private[reflow] def putWith(map: concurrent.Map[String, Any], nulls: concurrent.Map[String, Key$[_]],
                               ignoreDiffType: Boolean, fullVerify: Boolean): Unit = {
     _keys.values.foreach { k =>
-      if (map.containsKey(k.key)) {
+      if (map.contains(k.key)) {
         if (k.putValue(_map, map.get(k.key), ignoreDiffType)) {
           _nullValueKeys.remove(k.key)
         }
-      } else if (!_map.containsKey(k.key)) {
-        if (nullValueKeys.containsKey(k.key)) {
+      } else if (!_map.contains(k.key)) {
+        if (nulls.contains(k.key)) {
           _nullValueKeys.put(k.key, k)
         } else if (fullVerify) {
           Assist.Throws.lackIOKey(k, in$out = false)
@@ -76,7 +74,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
   private[reflow] def put[T](key: String, value: T): Boolean = {
     if (_keys.contains(key)) {
       val k = _keys(key)
-      if (value.isNull && !_map.containsKey(key)) {
+      if (value.isNull && !_map.contains(key)) {
         _nullValueKeys.put(k.key, k)
       } else {
         k.putValue(_map, value)
@@ -142,9 +140,9 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
   def keys(): immutable.Set[Key$[_]] = {
     val result = new mutable.HashSet[Key$[_]]
     _keys.values.foreach { k =>
-      if (_map.containsKey(k.key)) {
+      if (_map.contains(k.key)) {
         result.add(k)
-      } else if (_nullValueKeys.containsKey(k.key)) {
+      } else if (_nullValueKeys.contains(k.key)) {
         result.add(k)
       }
     }

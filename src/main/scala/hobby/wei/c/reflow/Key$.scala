@@ -16,7 +16,6 @@
 
 package hobby.wei.c.reflow
 
-import java.util
 import java.lang.reflect.Type
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
@@ -56,7 +55,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     */
   def asType(value: Any): T = value.as[T]
 
-  def putValue(map: util.Map[String, Any], value: Any): Boolean = putValue(map, value, ignoreDiffType = false)
+  def putValue(map: mutable.Map[String, Any], value: Any): Boolean = putValue(map, value, ignoreDiffType = false)
 
   /**
     * 将输出值按指定类型(作类型检查)插入Map。
@@ -66,7 +65,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     * @param ignoreDiffType 如果value参数类型不匹配，是否忽略。
     * @return true成功，else失败。
     */
-  def putValue(map: util.Map[String, Any], value: Any, ignoreDiffType: Boolean): Boolean = {
+  def putValue(map: mutable.Map[String, Any], value: Any, ignoreDiffType: Boolean): Boolean = {
     val v = requireSameType(value, ignoreDiffType)
     if (v.nonNull) {
       map.put(key, v)

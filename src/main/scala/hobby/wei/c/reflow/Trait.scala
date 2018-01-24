@@ -19,6 +19,7 @@ package hobby.wei.c.reflow
 import java.util.concurrent.atomic.AtomicInteger
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{Period, _}
 
 import scala.collection._
@@ -152,7 +153,7 @@ object Trait {
       override protected def doWork(): Unit = {
         val input = new Out(requires)
         in.fillValues(input)
-        out.putWith(input._map, outs$, false, true)
+        out.putWith(input._map, putAll(new concurrent.TrieMap[String, Key$[_]], outs$), ignoreDiffType = false, fullVerify = true)
       }
     }
 

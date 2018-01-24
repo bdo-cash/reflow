@@ -16,12 +16,12 @@
 
 package hobby.wei.c.reflow
 
-import java.lang.ref.WeakReference
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.tool.Locker
 
 import scala.collection._
+import scala.ref.WeakReference
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -40,25 +40,25 @@ abstract class In protected(_keys: Set[Key$[_]]) {
 
   private[reflow] def fillValues(out: Out) {
     out.keysDef().intersect(keys).foreach(key =>
-      out.put(key.key, loadValue(key.key))
+      out.put(key.key, loadValue(key.key).get)
     )
   }
 
-  protected def loadValue(key: String): AnyRef // TODO: 改为 Option[AnyRef]
+  protected def loadValue(key: String): Option[Any]
 }
 
 object In {
-  def map(key: String, value: AnyRef): In = map(Map((key, value)))
+  def map(key: String, value: Any): In = map(Map((key, value)))
 
-  def map(map: Map[String, AnyRef]): In = new M(generate(map), map)
+  def map(map: Map[String, Any]): In = new M(generate(map), map)
 
-  def add(key: String, value: AnyRef): Builder = new Builder().add(key, value)
+  def add(key: String, value: Any): Builder = new Builder().add(key, value)
 
   class Builder private() {
-    private val map = new mutable.AnyRefMap[String, AnyRef]
+    private val map = new mutable.AnyRefMap[String, Any]
     private var tb: Helper.Transformers.Builder = _
 
-    def add(key: String, value: AnyRef): Builder = {
+    def add(key: String, value: Any): Builder = {
       map.put(key, value)
       this
     }
@@ -72,17 +72,17 @@ object In {
     def ok(): In = In.map(map).transition(if (tb.isNull) null else tb.ok())
   }
 
-  private def generate(map: Map[String, AnyRef]): Set[Key$[_]] = {
+  private def generate(map: Map[String, Any]): Set[Key$[_]] = {
     val set = new mutable.HashSet[Key$[_]]
-    map.foreach { kv: (String, AnyRef) => set.add(new Key$(kv._1, kv._2.getClass) {}) }
+    map.foreach { kv: (String, Any) => set.add(new Key$(kv._1, kv._2.getClass) {}) }
     set
   }
 
-  private class M private(keys: Set[Key$[_]], map: Map[String, AnyRef]) extends In(keys: Set[Key$[_]]) {
+  private class M private(keys: Set[Key$[_]], map: Map[String, Any]) extends In(keys: Set[Key$[_]]) {
     override protected def loadValue(key: String) = map.get(key)
   }
 
-  def empty(): In = Locker.lazyGetr(() => getRef(emptyRef).get, () => {
+  def empty(): In = Locker.lazyGetr(getRef(emptyRef).get) {
     val in = new In(Helper.Keys.empty()) {
       override private[reflow] def fillValues(out: Out): Unit = {}
 
@@ -90,7 +90,7 @@ object In {
     }
     emptyRef = new WeakReference(in)
     in
-  }, Locker.getLockr(In))
+  }(Locker.getLockr(this)).get
 
   private var emptyRef: WeakReference[In] = _
 }
