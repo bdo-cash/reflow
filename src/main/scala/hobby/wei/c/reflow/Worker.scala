@@ -74,7 +74,7 @@ object Worker {
   private def getExecutor: ThreadPoolExecutor = {
     if (sThreadPoolExecutor.isNull) {
       Locker.syncr {
-        if (sThreadPoolExecutor == null) {
+        if (sThreadPoolExecutor.isNull) {
           val config = Reflow.config
           sThreadPoolExecutor = new ThreadPoolExecutor(config.corePoolSize(), config.maxPoolSize(),
             config.keepAliveTime(), TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
@@ -100,7 +100,7 @@ object Worker {
 
   private[reflow] def updateConfig(config: Config) {
     Locker.syncr {
-      if (sThreadPoolExecutor == null) return
+      if (sThreadPoolExecutor.isNull) return
     }
     sThreadPoolExecutor.setCorePoolSize(config.corePoolSize())
     sThreadPoolExecutor.setMaximumPoolSize(config.maxPoolSize())
@@ -172,7 +172,7 @@ object Worker {
             index = i
           }
         }
-        if (runner == null) if (!sSnatcher.glance()) break
+        if (runner.isNull) if (!sSnatcher.glance()) break
         else {
           // 队列结构可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
           if (sPreparedBuckets.sQueues(index).remove(runner)) {

@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2016-present, Wei Chou(weichou2010@gmail.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package hobby.wei.c.tool
 
 import java.util.concurrent.atomic.AtomicBoolean
@@ -5,10 +21,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.control.Breaks._
 
 /**
-  * 用于多个线程竞争去做某些事情，但这些事情只需要一个线程做即可（即：只要有人做就ok），其它线程不必等待或阻塞。
+  * 用于多个线程竞争去执行某个任务，但这个任务只需要任意一个线程执行即可（即：主要是做事，只要有人做就ok），其它线程不必等待或阻塞。
   * 但同时也要避免遗漏：{{{
-  * 当做事的线程A认为做完了准备收工的时候，又来的新任务，但此时A还没切换标识（即：A说我正做着呢），
-  * 导致其它线程认为有人在做而略过的情况。
+  * 当执行任务的线程A认为做完了准备收工的时候，又来了新任务，但此时A还没切换标识（即：A说我正做着呢），
+  * 导致其它线程认为有人在做而略过，而A接下来又收工了的情况。
   * }}}
   * 用法示例：{{{
   * val snatcher = new Snatcher()
@@ -28,25 +44,28 @@ import scala.util.control.Breaks._
   * }
   * }}}
   *
-  * @author Chenai Nakam(chenai.nakam@gmail.com)
+  * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 24/01/2018
   */
 class Snatcher {
   private val scheduling = new AtomicBoolean(false)
   private val signature = new AtomicBoolean(false)
 
-  /** 线程尝试抢占执行权并做某事。 */
-  def tryOn[T](doSomething: => T): Option[T] = {
-    var result: Option[T] = None
+  /**
+    * 线程尝试抢占执行权并执行某任务。
+    *
+    * @return `true` 抢占成功并执行任务，`false`抢占失败，未执行任务。
+    */
+  def tryOn(doSomething: => Unit): Boolean = {
     if (snatch()) {
       breakable {
         while (true) {
-          result = Option(doSomething)
+          doSomething
           if (!glance()) break
         }
       }
-    }
-    result
+      true
+    } else false
   }
 
   /**
@@ -75,8 +94,7 @@ class Snatcher {
     // 不能。这个再来一次的问题会递归。
     if (signature.get() && scheduling.compareAndSet(false, true)) {
       signature.set(false) // 等竞争到了再置为false.
-      // continue
-      true
-    } else false
+      true // continue
+    } else false // break
   }
 }
