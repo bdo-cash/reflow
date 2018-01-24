@@ -17,11 +17,11 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent._
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow._
-import hobby.wei.c.tool.Locker
+import hobby.wei.c.tool.{Locker, Snatcher}
 
 import scala.util.control.Breaks._
 
@@ -134,14 +134,10 @@ object Worker {
     val sCounters = Array[AtomicInteger](sTransient, sShort, sLong, sInfinite)
   }
 
-  private val sScheduling = new AtomicBoolean(false)
-  private val sSignature = new AtomicBoolean(false)
+  private val sSnatcher = new Snatcher
 
   def scheduleBuckets() {
-    sSignature.set(true) // 必须放在前面。标识新的调度请求，防止遗漏。
-    if (sScheduling.compareAndSet(false, true)) {
-      sSignature.set(false)
-    } else return
+    if (!sSnatcher.snatch()) return
     val executor = getExecutor
     breakable {
       while (true) {
@@ -176,17 +172,8 @@ object Worker {
             index = i
           }
         }
-        if (runner == null) {
-          // 必须放在sSignature前面，确保不会有某个瞬间丢失调度(外部线程拿不到锁，而本线程认为没有任务了)。
-          sScheduling.set(false)
-          // 再看看是不是又插入了新任务，并重新竞争锁定。
-          // 如果不要sSignature的判断而简单再来一次是不是就解决了问题呢？
-          // 不能。这个再来一次的问题会递归。
-          if (sSignature.get() && sScheduling.compareAndSet(false, true)) {
-            sSignature.set(false) // 等竞争到了再置为false.
-            // continue
-          } else break
-        } else {
+        if (runner == null) if (!sSnatcher.glance()) break
+        else {
           // 队列结构可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
           if (sPreparedBuckets.sQueues(index).remove(runner)) {
             sExecuting.sCounters(index).incrementAndGet
