@@ -47,7 +47,7 @@ object Locker {
     * @throws InterruptedException 锁中断, codes并未开始执行。
     */
   @throws[InterruptedException]
-  def sync[T](lockScope: AnyRef)(codes: => T): Option[T] = sync(new CodeZ[T] {
+  def synca[T](lockScope: AnyRef)(codes: => T): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, asLock(lockScope))
 
@@ -84,7 +84,7 @@ object Locker {
   /**
     * {@link #sync(Codes, AnyRef)}的无{@link InterruptedException 中断}版。
     */
-  def syncr[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr(new CodeZ[T] {
+  def syncar[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr(new CodeZ[T] {
     override def exec() = codes
   }, asLock(lockScope, r = true))
 

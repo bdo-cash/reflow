@@ -35,7 +35,8 @@ import scala.collection.mutable.ListBuffer
 private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
                                     state: Scheduler.State$, feedback: Feedback, poster: Poster) extends Scheduler {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
-  private lazy val lockProgress: ReentrantLock = Locker.getLockr(progress)
+  private lazy val buffer4Reports = new ListBuffer[() => Unit]
+  private lazy val snatcher = new Snatcher()
 
   // 本数据结构是同步操作的, 不需要ConcurrentLinkedQueue。
   private val remaining = {
@@ -44,20 +45,18 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
     seq
   }
 
-  private val runnersParallel = new concurrent.TrieMap[Runner, Any]
-  @volatile // 用volatile而不在赋值的时候用synchronized是因为读写操作不会同时发生。
-  private var reinforce: Seq[Trait[_]] = _
-  private[reflow] val reinforceRequired = new AtomicBoolean(false)
-  private val reinforceCaches = new concurrent.TrieMap[String, Out]
-  private val progress = new concurrent.TrieMap[String, Float]
-  //  private val step = new AtomicInteger(-1 /*第一个任务是系统input任务*/)
   private val sum = remaining.length
-  private val sumParallel = new AtomicInteger
-  @volatile private var sumReinforce: Int = _
+  private[reflow] lazy val reinforceRequired = new AtomicBoolean(false)
+  private lazy val reinforce = new mutable.ListBuffer[Trait[_ <: Task]]
+  private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
+  private lazy val reinforceMode = new AtomicBoolean(false)
+  private lazy val reinforceCaches = new concurrent.TrieMap[String, Out]
+  private lazy val progress = new concurrent.TrieMap[String, Float]
+  private lazy val sumParRunning = new AtomicInteger
+  private lazy val reporter = new Reporter(feedback, poster, sum)
   @volatile private var normalDone, reinforceDone: Boolean = _
   @volatile private var outFlowTrimmed = new Out(Map.empty[String, Key$[_]])
   @volatile private[reflow] var prevOutFlow, reinforceInput: Out = _
-  private val reporter = new Reporter(feedback, poster, sum)
 
   private[reflow] def start(): Boolean = {
     // TODO: 应该先处理这个
@@ -78,15 +77,17 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
     performAbort(runner, forError = true, runner.trat, e)
   }
 
-  private def endRunner(runner: Runner): Unit = Locker.sync {
+  private def endRunner(runner: Runner): Unit = {
     log.w("endRunner")(runner.trat.name$)
     runnersParallel -= runner
     if (runnersParallel.isEmpty && state.get$ != ABORTED && state.get$ != FAILED) {
-      assert(sumParallel.get == 0)
+      assert(sumParRunning.get == 0)
       progress.clear()
-      step.incrementAndGet
-      doTransform()
-      remaining.remove(0) // 原因见下文的peek().
+      if (basis.stepOf(runner.trat) < 0) {
+        doTransform(basis.transGlobal.get(runner.trat.name$), , , global = true)
+      } else Locker.sync {
+        remaining.remove(0)
+      }
       tryScheduleNext(false)
     }
   }
@@ -97,9 +98,10 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
     if (!veryBeginning) {
       if (remaining.isEmpty) {
         if (reinforceRequired.get()) {
-          Dependency.copy(reinforce /*注意写的时候没有synchronized*/ , remaining)
+          copy(reinforce /*注意写的时候没有synchronized*/ , remaining)
           outFlowTrimmed = reinforceInput
-          reinforce = _ // clear()
+          reinforceMode.set(true)
+          reinforce.clear()
         } else return false // 全部运行完毕
       }
     }
@@ -121,12 +123,14 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
       //progress.put(trat.name$, 0f)
       runnersParallel += ((new Runner(this, trat), 0))
     }
-    sumParallel.set(runnersParallel.size)
+    sumParRunning.set(runnersParallel.size)
     resetOutFlow(new Out(basis.outsFlowTrimmed(trat.name$)))
     // 在调度之前获得结果比较保险
-    val hasMore = sumParallel.get() > 0
+    val hasMore = sumParRunning.get() > 0
     runnersParallel.foreach { kv =>
       val runner = kv._1
+
+      fdsfdsfdsfsdfsaf
       // TODO: 看 runner 是不是一个新的 Reflow。当然也可以不在这里处理，而是
       // 重构 runner 不立即回调 endMe，等到 runner 所在的整个 Reflow 结束才 endMe。
       // 但这种方式应该在前面 new Runner(this, t) 时使用不同的 Runner。
@@ -145,10 +149,10 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
 
   private[reflow] def requireReinforce(): Boolean = {
     if (!reinforceRequired.getAndSet(true)) {
-      reinforce = new mutable.ListBuffer[Trait[_]]
-      copy(remaining, reinforce)
-      sumReinforce = reinforce.length
-      reinforceInput = prevOutFlow
+      Locker.sync {
+        copy(remaining, reinforce)
+        reinforceInput = prevOutFlow
+      }
       false
     } else true
   }
@@ -163,26 +167,28 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
     }
   }
 
-  private def resetOutFlow(flow: Out): Unit = Locker.sync {
-    prevOutFlow = outFlowTrimmed
-    outFlowTrimmed = flow
+  private def resetOutFlow(flow: Out): Unit = {
+    Locker.sync {
+      prevOutFlow = outFlowTrimmed
+      outFlowTrimmed = flow
+    }
     joinOutFlow(prevOutFlow)
   }
 
-  private def joinOutFlow(flow: Out): Unit = Locker.sync {
-    outFlowTrimmed.putWith(flow._map, flow._nullValueKeys, ignoreDiffType = true, fullVerify = false)
-  }
+  private def joinOutFlow(flow: Out): Unit = Locker.sync(outFlowTrimmed).get
+    .putWith(flow._map, flow._nullValueKeys, ignoreDiffType = true, fullVerify = false)
 
-  private def verifyOutFlow(): Unit = if (debugMode) outFlowTrimmed.verify()
+  private def verifyOutFlow(): Unit = if (debugMode) Locker.sync(outFlowTrimmed).get.verify()
 
   private def performAbort(trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception) {
     if (state.forward(if (forError) FAILED else ABORTED)) {
-      for (runner <- runnersParallel) {
-        runner._1.abort()
-        Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runner._1.trat.name$, forError)
+      runnersParallel.foreach { r =>
+        val runner = r._1
+        runner.abort()
+        Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runner.trat.name$, forError)
       }
-      if (forError) reporter.reportOnFailed(trat, e)
-      else reporter.reportOnAbort()
+      if (forError) postReport(reporter.reportOnFailed(trat, e))
+      else postReport(reporter.reportOnAbort())
     } else if (state.abort()) {
       // 已经到达COMPLETED/REINFORCE阶段了
     } else {
@@ -214,7 +220,7 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
         }
         outFlowTrimmed
       }
-    }, this)
+    }, lock)
   }.get
 
   private def interruptSync(reinforce: Boolean) {
@@ -226,7 +232,7 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
         override protected def exec(cons: Array[Condition]): Unit = {
           cons(0).signalAll()
         }
-      }, this)
+      }, lock)
     } catch {
       case _: Exception => // 不可能抛异常
     }
@@ -242,63 +248,88 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
   /**
     * 每个Task都执行。
     */
-  private def onTaskStart(trat: Trait[_]): Unit = Locker.sync {
-    val step = basis.stepOf(trat)
-    if (step >= sum) { // reinforce阶段(最后一个任务的step是sum - 1)
-      state.forward(REINFORCING)
-    } else if (step >= 0) {
-      if (state.forward(EXECUTING))
-      // 但反馈有且只有一次
-        if (step == 0) {
-          reporter.reportOnStart()
-        } else {
-          // progress会在任务开始、进行中及结束时report，这里do nothing.
-        }
+  private def onTaskStart(trat: Trait[_]): Unit = {
+    if (reinforceMode.get) state.forward(REINFORCING)
+    else {
+      val step = basis.stepOf(trat)
+      if (step >= 0) {
+        if (state.forward(EXECUTING))
+        // 但反馈有且只有一次（上面forward方法只会成功一次）
+          if (step == 0) {
+            postReport(reporter.reportOnStart())
+          } else {
+            // progress会在任务开始、进行中及结束时report，这里do nothing.
+          }
+      }
     }
   }
 
-  private[reflow] def onTaskProgress(trat: Trait[_], progress: Float, out: Out): Unit = Locker.sync {
-    val step = basis.stepOf(trat)
-    // 不要assert(step >= 0 && step < sum),
+  private[reflow] def onTaskProgress(trat: Trait[_], progress: Float, out: Out): Unit = {
     // 因为对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
-    if (step >= 0 && step < sum) {
-      reporter.reportOnProgress(trat, step, subProgress(trat, progress), out)
+    if (!reinforceMode.get) {
+      val step = basis.stepOf(trat)
+      if (step >= 0) { // 过滤掉input任务
+        Locker.syncr { // 为了保证并行的不同任务间进度的顺序性，这里还必须得同步。
+          val subPogres = subProgress(trat, progress)
+          buffer4Reports += (() => reporter.reportOnProgress(trat, step, subPogres, out))
+        }
+        postReport() // 注意就这一个地方写法不同
+      }
     }
   }
 
-  private def subProgress(trat: Trait[_], pogres: Float): Float =
-    if (progress.size <= 1) between(0, pogres, 1)
+  // 注意：本方法为单线程操作。
+  private def subProgress(trat: Trait[_], pogres: Float): Float = {
+    def result: Float = progress.values.sum /*reduce(_ + _)*/ / progress.size
+
+    val value = between(0, pogres, 1)
+    // 如果只有一个任务，单线程，不需要同步；
+    // 而如果是多个任务，那对于同一个trat，总是递增的（即单线程递增），所以
+    // 总体上，即使是并行，那也是发生在不同的trat之间（即不同的trat并行递增），推导出
+    // progress.values.sum也是递增的，因此也不需要全局同步。
+    if (progress.size <= 1) value
     else {
       if (pogres > 0) {
         assert(progress.contains(trat.name$))
-        Locker.sync { // put操作和下面求和操作应互斥
-          progress.put(trat.name$, between(0, pogres, 1))
-        }(lockProgress)
-      }
-      Locker.sync {
-        progress.values.sum /*reduce(_ + _)*/ / progress.size
-      }(lockProgress).get
+        progress.put(trat.name$, value)
+        result
+      } else result
     }
+  }
 
-  private def onTaskComplete(trat: Trait[_], out: Out, flow: Out) = Locker.sync {
+  private def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit = {
     val step = basis.stepOf(trat)
     if (step < 0) resetOutFlow(flow)
     else joinOutFlow(flow)
     // 由于不是在这里移除(runnersParallel.remove(runner)), 所以不能用这个判断条件：
     //(runnersParallel.size == 1 && runnersParallel.contains(runner))
-    if (sumParallel.decrementAndGet == 0) {
+    if (sumParRunning.decrementAndGet == 0) {
+      不应该在这里，而应该在 endrunner
       verifyOutFlow()
       Monitor.complete(step, out, flow, outFlowTrimmed)
-      if (step == sum - 1) {
+      if (reinforceMode.get) {
+        if (Locker.syncr(remaining.length).get == 1) { // 当前是最后一个
+          Monitor.assertStateOverride(state.get, UPDATED, state.forward(UPDATED))
+          interruptSync(true)
+          // 即使放在interruptSync()的前面，也不能保证事件的到达会在sync()返回结果的前面，因此干脆放在后面算了。
+          postReport(reporter.reportOnUpdate(outFlowTrimmed))
+        }
+      } else if (step == sum - 1) {
         Monitor.assertStateOverride(state.get, COMPLETED, state.forward(COMPLETED))
-        reporter.reportOnComplete(outFlowTrimmed) // 注意参数，因为这里是complete.
         interruptSync(!reinforceRequired.get())
-      } else if (step == sum + sumReinforce - 1) {
-        Monitor.assertStateOverride(state.get, UPDATED, state.forward(UPDATED))
-        reporter.reportOnUpdate(outFlowTrimmed)
-        interruptSync(true)
+        postReport(reporter.reportOnComplete(outFlowTrimmed)) // 注意参数，因为这里是complete.
       } else {
         // 单步任务的完成仅走进度(已反馈，不在这里反馈), 而不反馈完成事件。
+      }
+    }
+  }
+
+  private def postReport(action: => Unit): Unit = {
+    Locker.syncr(buffer4Reports += (() => action))
+    snatcher.tryOn {
+      while (Locker.syncr(buffer4Reports.nonEmpty).get) {
+        val f = Locker.syncr(buffer4Reports.remove(0)).get
+        f()
       }
     }
   }
@@ -306,12 +337,10 @@ private[reflow] final class Tracker(val basis: Dependency.Basis, traitIn: Trait[
 
 private[reflow] object Tracker {
   class Runner(tracker: Tracker, override val trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
-    implicit val TAG: LogTag = new LogTag(trat.name$)
+    private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
 
-    @volatile
-    private var task: Task = _
-    @volatile
-    private var _abort: Boolean = _
+    @volatile private var task: Task = _
+    @volatile private var _abort: Boolean = _
     private var timeBegin: Long = _
 
     override def equals(any: scala.Any) = super.equals(any)
@@ -434,87 +463,46 @@ private[reflow] object Tracker {
 
   /**
     * 该结构的目标是保证进度反馈的递增性。同时保留关键点，丢弃密集冗余。
+    * 注意：事件到达本类，已经是单线程操作了。
     */
   private class Reporter(feedback: Feedback, poster: Poster, sum: Int) {
-    private lazy implicit val lock: ReentrantLock = Locker.getLockr(this)
-
-    private lazy val _buffer4Reports = new ListBuffer[() => Unit]
-    private lazy val _snatcher = new Snatcher()
     private var _step: Int = _
     private var _subProgress: Float = _
     private var _stateResetted = true
 
     private[Tracker] def reportOnStart(): Unit = {
-      val f = () => feedback.onStart()
-      Locker.sync(lock) {
-        assert(_stateResetted)
-        _stateResetted = false
-        _buffer4Reports += f
-      }
-      postReports()
+      assert(_stateResetted)
+      _stateResetted = false
+      wrapReport(feedback.onStart())
     }
 
     private[Tracker] def reportOnProgress(trat: Trait[_], step: Int, subProgress: Float, out: Out): Unit = {
-      val f = () => feedback.onProgress(trat.name$, out, step, sum, subProgress, trat.desc$)
-      Locker.syncr(lock) {
-        assert(subProgress >= _subProgress, s"调用没有同步？`${trat.name$}`:`${trat.desc$}`")
-        if (_stateResetted) {
-          assert(step == _step + 1)
-          _step = step
-          _subProgress = 0
-        } else assert(step == _step)
-        if (subProgress > _subProgress) {
-          _subProgress = subProgress
-          // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
-          if (subProgress == 1) {
-            _stateResetted = true
-          }
+      assert(subProgress >= _subProgress, s"调用没有同步？`${trat.name$}`:`${trat.desc$}`")
+      if (_stateResetted) {
+        assert(step == _step + 1)
+        _step = step
+        _subProgress = 0
+      } else assert(step == _step)
+      if (subProgress > _subProgress) {
+        _subProgress = subProgress
+        // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
+        if (subProgress == 1) {
+          _stateResetted = true
         }
-        _buffer4Reports += f
       }
-      // 在同步块内放进队列，然后再到同步块之外执行，避免阻塞。
-      postReports()
+      wrapReport(feedback.onProgress(trat.name$, out, step, sum, subProgress, trat.desc$))
     }
 
     private[Tracker] def reportOnComplete(out: Out): Unit = {
       assert(_step == sum - 1 && _subProgress == 1)
-      val f = () => feedback.onComplete(out)
-      Locker.syncr(lock) {
-        _buffer4Reports += f
-      }
-      postReports()
+      wrapReport(feedback.onComplete(out))
     }
 
-    private[Tracker] def reportOnUpdate(out: Out): Unit = {
-      val f = () => feedback.onUpdate(out)
-      Locker.syncr(lock) {
-        _buffer4Reports += f
-      }
-      postReports()
-    }
+    private[Tracker] def reportOnUpdate(out: Out): Unit = wrapReport(feedback.onUpdate(out))
 
-    private[Tracker] def reportOnAbort(): Unit = {
-      val f = () => feedback.onAbort()
-      Locker.syncr(lock) {
-        _buffer4Reports += f
-      }
-      postReports()
-    }
+    private[Tracker] def reportOnAbort(): Unit = wrapReport(feedback.onAbort())
 
-    private[Tracker] def reportOnFailed(trat: Trait[_], e: Exception): Unit = {
-      val f = () => feedback.onFailed(trat.name$, e)
-      Locker.syncr(lock) {
-        _buffer4Reports += f
-      }
-      postReports()
-    }
-
-    private def postReports(): Unit = _snatcher.tryOn {
-      while (Locker.syncr(lock)(_buffer4Reports.nonEmpty).get) {
-        val f = Locker.syncr(lock)(_buffer4Reports.remove(0)).get
-        wrapReport(f())
-      }
-    }
+    private[Tracker] def reportOnFailed(trat: Trait[_], e: Exception): Unit = wrapReport(feedback.onFailed(trat.name$, e))
 
     private def wrapReport(work: => Unit) {
       val feedback = this.feedback

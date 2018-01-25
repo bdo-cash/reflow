@@ -71,7 +71,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param trat 新增的任务具有的特性。
     * @return 当前依赖组装器。
     */
-  def then(trat: Trait[_]): Dependency = {
+  def next(trat: Trait[_]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
     requireTaskNameDifferent(trat, names)
     basis.last(false).foreach { last =>
@@ -87,7 +87,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param dependency 已定义的任务流。
     * @return 当前依赖组装器。
     */
-  def then(dependency: Dependency): Dependency = {
+  def next(dependency: Dependency): Dependency = {
     if (basis.traits.isEmpty) copy(dependency)
     else for (trat <- dependency.basis.traits) {
       trat match {
@@ -95,15 +95,15 @@ class Dependency private[reflow]() extends TAG.ClassName {
           var first = true
           for (tt <- trat.traits()) {
             if (first) {
-              then(tt).transition$(dependency.basis.transformers(tt.name$), check = false)
+              next(tt).transition$(dependency.basis.transformers(tt.name$), check = false)
               first = false
             } else {
               and(tt).transition$(dependency.basis.transformers(tt.name$), check = false)
             }
           }
-        case _ => then(trat).transition$(dependency.basis.transformers(trat.name$), check = false)
+        case _ => next(trat).transition$(dependency.basis.transformers(trat.name$), check = false)
       }
-      then$(dependency.basis.transGlobal(trat.name$), check = false)
+      next$(dependency.basis.transGlobal(trat.name$), check = false)
     }
     this
   }
@@ -135,7 +135,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
   /**
     * @see #then(Set)
     */
-  def then(trans: Transformer[_, _]): Dependency = then(Set(trans))
+  def next(trans: Transformer[_, _]): Dependency = next(Set(trans))
 
   /**
     * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
@@ -146,9 +146,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def then(tranSet: Set[Transformer[_, _]]): Dependency = then$(tranSet, check = true)
+  def next(tranSet: Set[Transformer[_, _]]): Dependency = next$(tranSet, check = true)
 
-  private def then$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
+  private def next$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
       basis.transGlobal.put(basis.last(false).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
     this
@@ -160,7 +160,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param outputs 输出值的key列表。
     * @return { @link Scheduler.Starter}接口。
     */
-  def submit(outputs: Set[Key$[_]]): Scheduler.Reflow = {
+  def submit(outputs: Set[Key$[_]]): Reflow = {
     requireKey$kDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
     val uselesx = useless.mapValues(_.mutable.as[mutable.Map[String, Key$[_]]]).mutable
@@ -168,7 +168,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     val basisx = new BasisMutable(basis)
     genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
     genIOuts(outputs, basisx, inputReqx, uselesx)
-    new Scheduler.Reflow.Impl(new Basis {
+    new Reflow.Impl(new Basis {
       override val traits = basis.traits.to[immutable.Seq]
       override val dependencies = basis.dependencies.mapValues(_.toMap).toMap
       override val transformers = basis.transformers.mapValues(_.toSet).toMap
@@ -215,9 +215,9 @@ object Dependency {
       step
     }
 
-    def first(child: Boolean): Option[Trait[_]] = first$last(true, child)
+    def first(child: Boolean): Option[Trait[_]] = first$last(first$last = true, child)
 
-    def last(child: Boolean): Option[Trait[_]] = first$last(false, child)
+    def last(child: Boolean): Option[Trait[_]] = first$last(first$last = false, child)
 
     private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_]] = {
       Option(if (traits.isEmpty) null
@@ -409,9 +409,7 @@ object Dependency {
     }
   }
 
-  private def requireTypeMatch4Consume(require: Key$[_], out: Key$[_]) {
-    if (!require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
-  }
+  private def requireTypeMatch4Consume(require: Key$[_], out: Key$[_]): Unit = if (!require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
   private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Key$[_]], basis: Basis): mutable.Map[String, Key$[_]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
@@ -476,11 +474,10 @@ object Dependency {
   }
 
   private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_, _]]): Map[String, Key$[_]] = {
-    def inputs = if (in.keys.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.AnyRefMap[String, Key$[_]]
-
+    val inputs = new mutable.AnyRefMap[String, Key$[_]]
     in.keys.foreach(k => inputs.put(k.key, k))
     transOuts(trans4Input, inputs)
-    requireRealInEnough(inputRequired.values.to[Set], inputs)
+    requireRealInEnough(inputRequired.values.toSet, inputs)
     inputs
   }
 

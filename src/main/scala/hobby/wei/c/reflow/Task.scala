@@ -21,6 +21,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
+import hobby.wei.c.tool.Locker.CodeZ
 
 import scala.collection._
 
@@ -160,6 +161,10 @@ abstract class Task {
     * @tparam T 返回值类型。
     * @return {Locker.CodeZ#exec()}的返回值。
     */
+  protected final def synca[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
+    override def exec() = codes
+  }, scope)
+
   protected final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): Option[T] = {
     try {
       Locker.sync(codes, scope.ensuring(_.nonNull))

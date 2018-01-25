@@ -20,7 +20,10 @@ import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Dependency.requireInputsEnough
 import hobby.wei.c.tool.Locker
+
+import scala.collection.Map
 
 /**
   * 任务[串并联]组合调度框架。
@@ -86,7 +89,7 @@ object Reflow {
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
     case class Period(weight: Int) extends Val {
-      private implicit val lock: ReentrantLock = Locker.getLockr(this)
+      private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
       private var average = 0L
       private var count = 0L
 
@@ -158,15 +161,15 @@ object Reflow {
     * @param trat 打头的{Trait}。
     * @return 新的任务流。
     */
-  def create(trat: Trait[_]): Dependency = builder.then(trat)
+  def create(trat: Trait[_]): Dependency = builder.next(trat)
 
   /**
-    * 复制参数指定的队列。
+    * 复制参数到新的任务流。
     *
     * @param dependency
     * @return
     */
-  def create(dependency: Dependency): Dependency = builder.then(dependency)
+  def create(dependency: Dependency): Dependency = builder.next(dependency)
 
   /**
     * @see #execute(Runnable, Period, int, String)
@@ -198,4 +201,33 @@ object Reflow {
   }
 
   private def builder = new Dependency()
+
+  //////////////////////////////////////////////////////////////////////////////////////
+  //********************************** Reflow  Impl **********************************//
+
+  class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
+
+    override def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = {
+      requireInputsEnough(inputs, inputRequired, inputs.trans)
+      val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
+      // 第一个任务是不需要trim的，至少从第二个以后。
+      // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
+      new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$()
+    }
+  }
+}
+
+trait Reflow {
+  /**
+    * 启动任务。可并行启动多个。
+    *
+    * @param inputs   输入内容的加载器。
+    * @param feedback 事件反馈回调接口。
+    * @param poster   转移<code>feedback</code>的调用线程, 可为null.
+    * @return true 启动成功, false 正在运行。
+    */
+  def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler
+
+  // TODO: 待实现。如果给这一个流实现并联？？？
+  //def next(next: Starter)
 }

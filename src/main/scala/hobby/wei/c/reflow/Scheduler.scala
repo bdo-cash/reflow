@@ -18,10 +18,8 @@ package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.TypeBring.AsIs
-import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
-import hobby.wei.c.tool.Locker.CodeZ
 
 import scala.collection._
 
@@ -65,45 +63,17 @@ trait Scheduler {
 }
 
 object Scheduler {
-  trait Reflow {
-    /**
-      * 启动任务。可并行启动多个。
-      *
-      * @param inputs   输入内容的加载器。
-      * @param feedback 事件反馈回调接口。
-      * @param poster   转移<code>feedback</code>的调用线程, 可为null.
-      * @return true 启动成功, false 正在运行。
-      */
-    def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler
-
-    // TODO: 待实现。如果给这一个流实现并联？？？
-    //def next(next: Starter)
-  }
-
-  object Reflow {
-    class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
-
-      override def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = {
-        requireInputsEnough(inputs, inputRequired, inputs.trans)
-        val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
-        // 第一个任务是不需要trim的，至少从第二个以后。
-        // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
-        new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$()
-      }
-    }
-  }
-
   /**
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  class Impl(basis: Dependency.Basis, traitIn: Trait[_<:Task], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
+  class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
     @volatile
     private var delegatorRef: ref.WeakReference[Scheduler] = _
 
-    private[Scheduler] def start$(): Tracker = {
+    private[reflow] def start$(): Tracker = {
       var permit = false
       Locker.sync {
         if (isDone) {
@@ -198,13 +168,9 @@ object Scheduler {
       }
     }.get
 
-    def get: Tpe = Locker.sync(new CodeZ[Tpe] {
-      override def exec() = state
-    }, lock).get
+    def get: Tpe = Locker.sync(state).get
 
-    def get$: Tpe = Locker.sync(new CodeZ[Tpe] {
-      override def exec() = state$
-    }, lock).get
+    def get$: Tpe = Locker.sync(state$).get
 
     private[Scheduler] def reset(): Unit = Locker.sync {
       state = State.IDLE
@@ -214,8 +180,6 @@ object Scheduler {
     /**
       * 可用于标识是否启动过。
       */
-    private[Scheduler] def isOverrided: Boolean = Locker.sync(new CodeZ[Boolean] {
-      override def exec() = overrided
-    }, lock).get
+    private[Scheduler] def isOverrided: Boolean = Locker.sync(overrided).get
   }
 }
