@@ -68,7 +68,7 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 任务描述, 将作为进度反馈的部分信息。
     */
-  protected def description(): String
+  protected def desc(): String
 
   private[reflow] lazy val name$: String = requireNonEmpty(name())
 
@@ -80,7 +80,7 @@ trait Trait[T <: Task] extends Equals {
 
   private[reflow] lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
 
-  private[reflow] lazy val desc$: String = description().ensuring(_.nonNull /*可以是""*/)
+  private[reflow] lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
 
   override def equals(any: scala.Any) = super.equals(any)
 
@@ -127,7 +127,7 @@ object Trait {
 
     override protected def period() = ???
 
-    override protected def description() = ???
+    override protected def desc() = ???
   }
 
   trait Empty extends Trait[Task] {
@@ -141,7 +141,7 @@ object Trait {
 
     override protected def priority() = Reflow.P_NORMAL
 
-    override protected def description() = name$
+    override protected def desc() = name$
   }
 
   final class Input(in: In, requires: immutable.Set[Key$[_]], override val priority: Int) extends Empty {

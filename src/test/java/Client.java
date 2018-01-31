@@ -2,6 +2,8 @@ import java.util.Map;
 import java.util.Set;
 
 import hobby.wei.c.reflow.*;
+import mock.hobby.wei.c.reflow.Out;
+import mock.hobby.wei.c.reflow.Trait;
 
 /**
  * @author Wei Chou(weichou2010@gmail.com)

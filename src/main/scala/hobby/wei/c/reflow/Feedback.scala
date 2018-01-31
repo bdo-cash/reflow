@@ -16,10 +16,9 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.CopyOnWriteArraySet
 import hobby.chenai.nakam.lang.J2S.NonNull
 
-import scala.collection.JavaConversions.asScalaSet
+import scala.collection._
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -30,14 +29,14 @@ trait Feedback {
 
   /**
     *
-    * @param name        正在执行(中途会更新进度)或完成的任务名称。来源于`Trait#name()`。
-    * @param out         进度的时刻已经获得的输出。
-    * @param count       任务计数。
-    * @param sum         任务流总数。用于计算主进度(%): `count * 1f / sum`, 和总进度(%): `(count + sub) / sum`。
-    * @param sub         任务内部进度值。
-    * @param description 任务描述`Trait#description()`。
+    * @param name  正在执行(中途会更新进度)或完成的任务名称。来源于`Trait#name()`。
+    * @param out   进度的时刻已经获得的输出。
+    * @param count 任务计数。
+    * @param sum   任务流总数。用于计算主进度(%): `count * 1f / sum`, 和总进度(%): `(count + sub) / sum`。
+    * @param sub   任务内部进度值。
+    * @param desc  任务描述`Trait#description()`。
     */
-  def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit
+  def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit
 
   def onComplete(out: Out): Unit
 
@@ -63,6 +62,23 @@ trait Feedback {
 }
 
 object Feedback {
+  def withPoster(feedback: Feedback, poster: Poster): Feedback = new Feedback {
+
+    override def onStart(): Unit = poster.post(feedback.onStart())
+
+    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit = poster.post(
+      feedback.onProgress(name, out, count, sum, sub, description)
+    )
+
+    override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
+
+    override def onUpdate(out: Out): Unit = poster.post(feedback.onUpdate(out))
+
+    override def onAbort(): Unit = poster.post(feedback.onAbort())
+
+    override def onFailed(name: String, e: Exception): Unit = poster.post(feedback.onFailed(name, e))
+  }
+
   class Adapter extends Feedback {
     override def onStart(): Unit = {}
 
@@ -78,23 +94,24 @@ object Feedback {
   }
 
   class Observable extends Adapter {
-    private val obs = new CopyOnWriteArraySet[Feedback]
+    @volatile
+    private var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
 
-    def addObserver(fb: Feedback) = obs.add(fb.ensuring(_.nonNull))
+    def addObservers(fbs: Feedback*): Unit = obs = (obs.to[mutable.LinkedHashSet] ++= fbs.map(_.ensuring(_.nonNull))).toSeq
 
-    def removeObserver(fb: Feedback) = obs.remove(fb.ensuring(_.nonNull))
+    def removeObservers(fbs: Feedback*): Unit = obs = (obs.to[mutable.LinkedHashSet] --= fbs.map(_.ensuring(_.nonNull))).toSeq
 
-    override def onStart(): Unit = obs.toSeq.foreach(_.onStart())
+    override def onStart(): Unit = obs.foreach(_.onStart())
 
     override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit =
-      obs.toSeq.foreach(_.onProgress(name, out, count, sum, sub, description))
+      obs.foreach(_.onProgress(name, out, count, sum, sub, description))
 
-    override def onComplete(out: Out): Unit = obs.toSeq.foreach(_.onComplete(out))
+    override def onComplete(out: Out): Unit = obs.foreach(_.onComplete(out))
 
-    override def onUpdate(out: Out): Unit = obs.toSeq.foreach(_.onUpdate(out))
+    override def onUpdate(out: Out): Unit = obs.foreach(_.onUpdate(out))
 
-    override def onAbort(): Unit = obs.toSeq.foreach(_.onAbort())
+    override def onAbort(): Unit = obs.foreach(_.onAbort())
 
-    override def onFailed(name: String, e: Exception): Unit = obs.toSeq.foreach(_.onFailed(name, e))
+    override def onFailed(name: String, e: Exception): Unit = obs.foreach(_.onFailed(name, e))
   }
 }

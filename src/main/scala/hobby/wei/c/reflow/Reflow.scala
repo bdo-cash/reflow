@@ -193,7 +193,7 @@ object Reflow {
 
       override protected def period() = _period
 
-      override protected def description() = if (_desc.isNull) name$ else _desc
+      override protected def desc() = if (_desc.isNull) name$ else _desc
 
       override protected def newTask() = null
     }, _runner))

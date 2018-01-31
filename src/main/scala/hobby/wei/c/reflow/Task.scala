@@ -19,7 +19,6 @@ package hobby.wei.c.reflow
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
-import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
 import hobby.wei.c.tool.Locker.CodeZ
 
@@ -29,34 +28,12 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-abstract class Task {
+abstract class Task protected(env: Env) {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
   private var thread: Thread = _
-  private var tracker: Tracker = _
-  private var trat: Trait[_] = _
-  private var input: Out = _
-  private[reflow] var out: Out = _
   private var aborted: Boolean = _
   private var working: Boolean = _
-
-  final def env(tracker: Tracker, trat: Trait[_], input: Out, out: Out): Unit = {
-    this.tracker = tracker
-    this.trat = trat
-    this.input = input
-    this.out = out
-  }
-
-  protected final def isReinforceRequired: Boolean = tracker.reinforceRequired.get()
-
-  protected final def isReinforcing: Boolean = tracker.getState == REINFORCING
-
-  /**
-    * 请求强化运行。
-    *
-    * @return 之前的任务是否已经请求过, 同{isReinforceRequired()}
-    */
-  protected final def requireReinforce(): Boolean = tracker.requireReinforce()
 
   /**
     * 取得输入的value.
@@ -65,9 +42,9 @@ abstract class Task {
     * @tparam T
     * @return
     */
-  protected final def input[T](key: String): Option[T] = input.get(key)
+  protected final def input[T](key: String): T = env.input(key)
 
-  protected final def output[T](key: String, value: T): Unit = out.put(key, value)
+  protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
   protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) =>
     output(m._1, m._2)
@@ -81,12 +58,13 @@ abstract class Task {
     * @param key
     * @param value
     */
-  protected final def cache[T](key: String, value: T): Unit = if (isReinforceRequired) {
-    input.cache(key, null); // 仅用来测试key是否重复。
-    tracker.cache(trat, create = true).cache(key, value)
+  protected final def cache[T](key: String, value: T): Unit = {
+    require(env.isReinforceRequired)
+    env.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
+    env.cache(key, value)
   }
 
-  protected final def progress(progress: Float): Unit = tracker.onTaskProgress(trat, progress, out)
+  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(env.trat, progress, env.out)
 
   /**
     * 如果认为任务失败, 则应该主动调用本方法来强制结束任务。
@@ -142,7 +120,7 @@ abstract class Task {
     }
   }
 
-  protected final def traite: Trait[_] = trat
+  protected final def trat: Trait[_] = env.trat
 
   protected final def isAborted: Boolean = aborted
 
@@ -161,7 +139,7 @@ abstract class Task {
     * @tparam T 返回值类型。
     * @return {Locker.CodeZ#exec()}的返回值。
     */
-  protected final def synca[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
+  protected final def sync[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, scope)
 

@@ -3,7 +3,7 @@ import java.util.Set;
 import hobby.wei.c.reflow.Helper;
 import hobby.wei.c.reflow.Key$;
 import hobby.wei.c.reflow.TaskFlow;
-import hobby.wei.c.reflow.Trait;
+import mock.hobby.wei.c.reflow.Trait;
 
 /**
  * @author Wei Chou(weichou2010@gmail.com)
