@@ -17,6 +17,7 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
+import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
@@ -83,7 +84,7 @@ object Scheduler {
         }
       }
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
-        val tracker = new Tracker.Impl(basis, traitIn, inputTrans, state, Feedback.withPoster(feedback, poster))
+        val tracker = new Tracker.Impl(basis, traitIn, inputTrans, state, if (poster.isNull) feedback else Feedback.withPoster(feedback, poster), None)
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
         delegatorRef = new ref.WeakReference[Scheduler](tracker)

@@ -19,7 +19,7 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import java.util.concurrent.locks.{Condition, ReentrantLock}
-import hobby.chenai.nakam.basis.TAG.LogTag
+import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Assist._
@@ -85,7 +85,14 @@ private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = n
 
   private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit
 
-  private[reflow] def performAbort(trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit
+  /**
+    * @param name    可能是从里层的任务传来的。
+    * @param trigger 当前层的 Runner。
+    * @param forError
+    * @param trat
+    * @param e
+    */
+  private[reflow] def performAbort(name: String, trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit
 
   private[reflow] def endRunner(runner: Runner): Unit
 }
@@ -98,35 +105,13 @@ private[reflow] class Cache {
   lazy val subs = new concurrent.TrieMap[String, Cache]
 }
 
-private[reflow] class SubReflowFeedback(env: Env, runner: Runner) extends Feedback {
-  override def onStart(): Unit = env.tracker.onTaskStart(env.trat)
-
-  override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
-    env.tracker.onTaskProgress(name, env.trat, (count + sub) / sum, out, desc)
-
-  override def onComplete(out: Out): Unit = env.tracker.onTaskComplete(env.trat, out, out)
-
-  override def onUpdate(out: Out): Unit = env.tracker.onTaskComplete(env.trat, out, out)
-
-  override def onAbort(): Unit = env.tracker.performAbort(runner, forError = false, env.trat, null)
-
-  override def onFailed(name: String, e: Exception): Unit = env.tracker.performAbort(runner, forError = true, env.trat, e)
-}
-
-private[reflow] object SubReflowFeedback {
-  def join(env: Env, runner: Runner, fb: Feedback): Feedback = {
-    val feedback = new Feedback.Observable
-    feedback.addObservers(new SubReflowFeedback(env, runner), fb)
-    feedback
-  }
-}
-
 private[reflow] object Tracker {
   private[reflow] final class Impl(val basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
                                    state: Scheduler.State$, feedback: Feedback,
                                    outer: Option[Env], cache: Cache = null, inited: Boolean = false)
     extends Tracker(outer: Option[Env], cache: Cache, inited: Boolean) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
+    private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val buffer4Reports = new ListBuffer[() => Unit]
     private lazy val snatcher = new Snatcher()
 
@@ -162,10 +147,10 @@ private[reflow] object Tracker {
     /**
       * 先于{@link #endRunner(Runner)}执行。
       */
-    private def innerError(runner: Runner, e: Exception): Unit = {
+    private def innerError(name: String, runner: Runner, e: Exception): Unit = {
       log.e("innerError")(runner.trat.name$)
       // 正常情况下是不会走的，仅用于测试。
-      performAbort(runner, forError = true, runner.trat, e)
+      performAbort(name, runner, forError = true, runner.trat, e)
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
@@ -179,7 +164,10 @@ private[reflow] object Tracker {
         } else Locker.sync {
           remaining.remove(0)
         }
-        tryScheduleNext(false)
+        if (!tryScheduleNext(false)) { // 全部运行完毕
+          basis.outsFlowTrimmed
+          basis.outs
+        }
       }
     }
 
@@ -266,14 +254,14 @@ private[reflow] object Tracker {
 
     private def verifyOutFlow(): Unit = if (debugMode) Locker.sync(outFlowTrimmed).get.verify()
 
-    private def performAbort(trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception) {
+    private def performAbort(name: String, trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception) {
       if (state.forward(if (forError) FAILED else ABORTED)) {
         runnersParallel.foreach { r =>
           val runner = r._1
           runner.abort()
           Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runner.trat.name$, forError)
         }
-        if (forError) postReport(reporter.reportOnFailed(trat.name$, e))
+        if (forError) postReport(reporter.reportOnFailed(name /*为null时不会走到这里*/ , e))
         else postReport(reporter.reportOnAbort())
       } else if (state.abort()) {
         // 已经到达COMPLETED/REINFORCE阶段了
@@ -306,7 +294,7 @@ private[reflow] object Tracker {
           }
           outFlowTrimmed
         }
-      }, lock)
+      }, lockSync)
     }.get
 
     private def interruptSync(reinforce: Boolean) {
@@ -318,13 +306,13 @@ private[reflow] object Tracker {
           override protected def exec(cons: Array[Condition]): Unit = {
             cons(0).signalAll()
           }
-        }, lock)
+        }, lockSync)
       } catch {
         case _: Exception => // 不可能抛异常
       }
     }
 
-    override def abort(): Unit = performAbort(null, forError = false, null, null)
+    override def abort(): Unit = performAbort(null, null, forError = false, null, null)
 
     override def getState = state.get
 
@@ -422,11 +410,14 @@ private[reflow] object Tracker {
     }
   }
 
-  class Runner(env: Env, override val trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
+  private[reflow] class Runner private(env: Env, trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
+    def this(env: Env) = this(env, env.trat)
+
     private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
 
+    private val workDone = new AtomicBoolean(false)
+    @volatile private var aborted, runnerDone: Boolean = false
     @volatile private var task: Task = _
-    @volatile private var aborted: Boolean = false
     private var timeBegin: Long = _
 
     override def equals(any: scala.Any) = super.equals(any)
@@ -435,7 +426,7 @@ private[reflow] object Tracker {
 
     override def hashCode() = super.hashCode()
 
-    // 这个场景没有使用synchronized, 跟Task.abort()场景不同。
+    // 该用法遵循 JSR-133
     def abort(): Unit = if (!aborted) {
       aborted = true
       if (task.nonNull) task.abort()
@@ -446,35 +437,14 @@ private[reflow] object Tracker {
       try {
         task = trat.newTask(env)
         // 判断放在task的创建后面, 配合abort()中的顺序。
-        if (aborted) onAbort(completed = false)
+        if (aborted) onAbort()
         else {
           onStart()
-          val input = new Out(trat.requires$)
-          log.i("input: %s", input)
-          input.fillWith(env.tracker.prevOutFlow)
-          val cached = env.tracker.cache(trat, create = false)
-          if (cached.nonNull) input.cache(cached)
-          val out = new Out(trat.outs$)
-          task.env(tracker, trat, input, out)
           working = true
-          log.i("111111111111")
-          task.exec()
-          log.i("222222222222")
-          log.i("out: %s", out)
-          val map = out._map.concurrent
-          val nulls = out._nullValueKeys.concurrent
-          log.w("doTransform, prepared:")
-          doTransform(tracker.basis.transformers(trat.name$), map, nulls, global = false)
-          log.w("doTransform, done.")
-          val dps = tracker.basis.dependencies.get(trat.name$)
-          log.i("dps: %s", dps.get)
-          val flow = new Out(dps.getOrElse(Map.empty[String, Key$[_]]))
-          log.i("flow prepared: %s", flow)
-          flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
-          log.w("flow done: %s", flow)
-          working = false
-          onComplete(out, flow)
-          if (aborted) onAbort(completed = true)
+          if (task.exec(this)) {
+            working = false
+            onWorkDone()
+          }
         }
       } catch {
         case e: Exception =>
@@ -482,7 +452,7 @@ private[reflow] object Tracker {
           if (working) {
             e match {
               case _: AbortException => // 框架抛出的, 表示成功中断
-                onAbort(completed = false)
+                onAbort()
               case e: FailedException =>
                 onFailed(e.getCause.as[Exception])
               case e: CodeException => // 客户代码问题
@@ -494,47 +464,101 @@ private[reflow] object Tracker {
             innerError(e)
           }
       } finally {
-        env.onRunnerDone(this)
+        runnerDone = true
+        endMe()
       }
     }
 
-    private def onStart() {
-      tracker.onTaskStart(trat)
+    private def transOutput(): Out = {
+      log.i("222222222222")
+      log.i("out: %s", env.out)
+      val map = env.out._map.concurrent
+      val nulls = env.out._nullValueKeys.concurrent
+      log.w("doTransform, prepared:")
+      doTransform(env.tracker.basis.transformers(trat.name$), map, nulls, global = false)
+      log.w("doTransform, done.")
+      val dps = tracker.basis.dependencies.get(trat.name$)
+      log.i("dps: %s", dps.get)
+      val flow = new Out(dps.getOrElse(Map.empty[String, Key$[_]]))
+      log.i("flow prepared: %s", flow)
+      flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
+      log.w("flow done: %s", flow)
+      flow
+    }
+
+    private def afterWork(flow: Out) {
+      onComplete(env.out, flow)
+      if (aborted) onAbort()
+    }
+
+    def onWorkDone() {
+      require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
+      afterWork(transOutput())
+      endMe()
+    }
+
+    def endMe(): Unit = if (workDone.get && runnerDone) {
+      if (workDone.getAndSet(false)) env.tracker.endRunner(this)
+    }
+
+    def onStart() {
+      log.i("111111111111")
+      env.tracker.onTaskStart(trat)
       timeBegin = System.currentTimeMillis
     }
 
-    private def onComplete(out: Out, flow: Out) {
+    def onComplete(out: Out, flow: Out) {
       Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
-      tracker.onTaskComplete(trat, out, flow)
+      env.tracker.onTaskComplete(trat, out, flow)
     }
 
     // 人为触发，表示任务失败
-    private def onFailed(e: Exception) {
-      log.i(e)
-      abortAction(e).run()
+    def onFailed(e: Exception, name: String = trat.name$) {
+      log.e(e, name)
+      withAbort(name, e)
     }
 
     // 客户代码异常
-    private def onException(e: CodeException) {
-      log.w(e)
-      abortAction(e).run()
-    }
-
-    private def onAbort(completed: Boolean) {
-      tracker.performAbort(this, forError = false, trat, null)
-    }
-
-    private def abortAction(e: Exception): Runnable = new Runnable {
-      override def run(): Unit = {
-        if (!aborted) aborted = true
-        tracker.performAbort(Runner.this, forError = true, trat, e)
-      }
-    }
-
-    private def innerError(e: Exception) {
+    def onException(e: CodeException) {
       log.e(e)
-      tracker.innerError(this, e)
+      withAbort(trat.name$, e)
+    }
+
+    def onAbort(): Unit = env.tracker.performAbort(trat.name$, this, forError = false, trat, null)
+
+    def withAbort(name: String, e: Exception) {
+      if (!aborted) aborted = true
+      env.tracker.performAbort(name, Runner.this, forError = true, trat, e)
+    }
+
+    def innerError(e: Exception) {
+      log.e(e)
+      env.tracker.innerError(trat.name$, this, e)
       throw new InnerError(e)
+    }
+  }
+
+  private[reflow] class SubReflowFeedback(env: Env, runner: Runner) extends Feedback {
+    override def onStart(): Unit = runner.onStart()
+
+    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
+      env.tracker.onTaskProgress(name, env.trat, (count + sub) / sum, out, desc)
+
+    override def onComplete(out: Out): Unit = if (out ne env.out) env.out.fillWith(out)
+
+    override def onUpdate(out: Out): Unit = if (out ne env.out) env.out.fillWith(out)
+
+    override def onAbort(): Unit = runner.onAbort()
+
+    override def onFailed(name: String, e: Exception): Unit = runner.onFailed(e, name)
+  }
+
+  private[reflow] object SubReflowFeedback {
+    def join(env: Env, runner: Runner, fb: Feedback = null): Feedback = {
+      val feedback = new Feedback.Observable
+      feedback.addObservers(new SubReflowFeedback(env, runner))
+      if (fb.nonNull) feedback.addObservers(fb)
+      feedback
     }
   }
 

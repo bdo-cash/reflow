@@ -19,6 +19,7 @@ package hobby.wei.c.reflow
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.tool.Locker
 import hobby.wei.c.tool.Locker.CodeZ
 
@@ -31,9 +32,10 @@ import scala.collection._
 abstract class Task protected(env: Env) {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
-  private var thread: Thread = _
-  private var aborted: Boolean = _
-  private var working: Boolean = _
+  @volatile private var runner: Runner = _
+  @volatile private var thread: Thread = _
+  @volatile private var aborted: Boolean = _
+  @volatile private var working: Boolean = _
 
   /**
     * 取得输入的value.
@@ -64,7 +66,7 @@ abstract class Task protected(env: Env) {
     env.cache(key, value)
   }
 
-  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(env.trat, progress, env.out)
+  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(env.trat.name$, env.trat, progress, env.out, env.trat.desc$)
 
   /**
     * 如果认为任务失败, 则应该主动调用本方法来强制结束任务。
@@ -84,26 +86,32 @@ abstract class Task protected(env: Env) {
     * 应该在处理好了当前事宜、准备好中断的时候调用本方法以中断整个任务。
     */
   protected final def abortDone[T](): T = throw new AbortError()
+
+  /**
+    * 如果本任务执行的是个异步任务（即`doWork()`返回`false`），则在完成任务之后，应该调用本方法通知进行下一步。
+    */
   protected final def workDone(): Unit = {
     progress(1)
-    env.onWorkDone()
+    runner.onWorkDone()
   }
 
   @throws[CodeException]
   @throws[AbortException]
   @throws[FailedException]
-  final def exec(): Boolean = {
+  final def exec(runner: Runner): Boolean = {
+    this.runner = runner
     Locker.syncr {
       if (aborted) return true
       thread = Thread.currentThread()
       working = true
     }
     try {
-      // 这里反馈进度有两个用途: 1. Feedback subProgress; 2. 并行任务进度统计。
+      // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
       progress(0)
-      val sync = doWork()
-      if (sync) progress(1)
-      sync
+      if (doWork()) {
+        progress(1)
+        true
+      } else false
     } catch {
       case e: FailedError =>
         throw new FailedException(e.getCause)
@@ -131,6 +139,7 @@ abstract class Task protected(env: Env) {
 
   /**
     * 客户代码扩展位置。
+    *
     * @return 是否执行完毕，即是同步任务还是异步任务。如果是异步任务，应该返回`false`，并在完成任务后，调用。
     */
   protected abstract def doWork(): Boolean

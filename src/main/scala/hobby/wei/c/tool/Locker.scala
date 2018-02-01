@@ -208,7 +208,7 @@ object Locker {
   }
 
   object CodeC {
-    private val sLockCons = new mutable.WeakHashMap[ReentrantLock, Array[Condition]]
-    private val EMPTY = new Array[Condition](0)
+    private lazy val sLockCons = new mutable.WeakHashMap[ReentrantLock, Array[Condition]]
+    private lazy val EMPTY = new Array[Condition](0)
   }
 }

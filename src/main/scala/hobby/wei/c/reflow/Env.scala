@@ -18,7 +18,6 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow.{logger => log}
-import hobby.wei.c.reflow.Tracker.Runner
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -31,7 +30,7 @@ trait Env {
     val in = new Out(trat.requires$)
     log.i("input: %s", input)
     in.fillWith(tracker.prevOutFlow)
-    val cached = myCache(false)
+    val cached = myCache(create = false)
     if (cached.nonNull) in.cache(cached)
     in
   }
@@ -54,19 +53,4 @@ trait Env {
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
   final def isReinforcing: Boolean = tracker.isReinforcing
   final def isSubReflow: Boolean = tracker.isSubReflow
-
-  @volatile private var workDone: Boolean = false
-  @volatile private var runnerDone: Boolean = false
-
-  private[reflow] final def onWorkDone(): Unit = {
-    workDone = true
-    end(runner)
-  }
-
-  private[reflow] final def onRunnerDone(runner: Runner): Unit = {
-    runnerDone = true
-    end(runner)
-  }
-
-  private final def end(runner: Runner): Unit = if (workDone && runnerDone) tracker.endRunner(runner)
 }

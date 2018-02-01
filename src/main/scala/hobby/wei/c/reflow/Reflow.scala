@@ -195,7 +195,7 @@ object Reflow {
 
       override protected def desc() = if (_desc.isNull) name$ else _desc
 
-      override protected def newTask() = null
+      override protected def newTask(env: Env) = null
     }, _runner))
     Worker.scheduleBuckets()
   }
@@ -207,7 +207,7 @@ object Reflow {
 
   class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
 
-    override def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = {
+    override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null): Scheduler = {
       requireInputsEnough(inputs, inputRequired, inputs.trans)
       val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
       // 第一个任务是不需要trim的，至少从第二个以后。
