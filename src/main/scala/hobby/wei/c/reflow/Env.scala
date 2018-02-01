@@ -16,31 +16,57 @@
 
 package hobby.wei.c.reflow
 
+import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.wei.c.reflow.Reflow.{logger => log}
+import hobby.wei.c.reflow.Tracker.Runner
+
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/01/2018
   */
-trait Env extends Feedback {
+trait Env {
   private[reflow] val trat: Trait[_]
   private[reflow] val tracker: Tracker
-  private[reflow] val input: Out
-  private[reflow] val out: Out
+  private[reflow] final lazy val input: Out = {
+    val in = new Out(trat.requires$)
+    log.i("input: %s", input)
+    in.fillWith(tracker.prevOutFlow)
+    val cached = myCache(false)
+    if (cached.nonNull) in.cache(cached)
+    in
+  }
+  private[reflow] final lazy val out: Out = new Out(trat.outs$)
 
-  private def superCache: Cache = tracker.getCache(trat.name$)
+  private final def superCache: Cache = tracker.getCache(trat.name$)
   /** 在reinforce阶段，从缓存中取回。 **/
-  def obtainCache: Option[Cache] = superCache.subs.get(trat.name$)
-  def myCache(create: Boolean = false): Out = if (create) {
+  private[reflow] final def obtainCache: Option[Cache] = superCache.subs.get(trat.name$)
+  final def myCache(create: Boolean = false): Out = if (create) {
     superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.Keys.empty()))
   } else superCache.caches.get(trat.name$).orNull
-  def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
+  final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
 
-  def isSubReflow: Boolean = tracker.isSubReflow
-  def isReinforceRequired: Boolean = tracker.isReinforceRequired
-  def isReinforcing: Boolean = tracker.isReinforcing
   /**
     * 请求强化运行。
     *
     * @return 之前的任务是否已经请求过, 同{isReinforceRequired()}
     */
-  def requireReinforce(): Boolean = tracker.requireReinforce()
+  final def requireReinforce(): Boolean = tracker.requireReinforce()
+  final def isReinforceRequired: Boolean = tracker.isReinforceRequired
+  final def isReinforcing: Boolean = tracker.isReinforcing
+  final def isSubReflow: Boolean = tracker.isSubReflow
+
+  @volatile private var workDone: Boolean = false
+  @volatile private var runnerDone: Boolean = false
+
+  private[reflow] final def onWorkDone(): Unit = {
+    workDone = true
+    end(runner)
+  }
+
+  private[reflow] final def onRunnerDone(runner: Runner): Unit = {
+    runnerDone = true
+    end(runner)
+  }
+
+  private final def end(runner: Runner): Unit = if (workDone && runnerDone) tracker.endRunner(runner)
 }

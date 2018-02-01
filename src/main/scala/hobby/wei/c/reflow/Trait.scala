@@ -43,7 +43,7 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 创建任务。
     */
-  /*protected*/ def newTask(): T
+  /*protected*/ def newTask(env: Env): T
 
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。

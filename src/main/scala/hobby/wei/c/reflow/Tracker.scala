@@ -37,36 +37,40 @@ import scala.collection.mutable.ListBuffer
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018
   */
-private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = null, var inited: Boolean = false) {
+private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = null, @volatile var inited: Boolean = false) {
+  private lazy final val snatcher = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
   // 因此有这样的设计。
-  //  private var inited = _inited
-  private lazy val cache = if (_cache.isNull) new Cache else _cache
-  private[reflow] lazy val reinforceRequired = new AtomicBoolean(false)
+  private final lazy val cache = if (_cache.isNull) new Cache else _cache
+  private[reflow] final lazy val reinforceRequired = new AtomicBoolean(false)
 
-  def getCache(trat: String, sub: Option[Cache] = None): Cache = {
+  final def getCache(trat: String, sub: Option[Cache] = None): Cache = {
     if (!inited) {
-      if (!synchronized(inited)) {
-        outer.foreach { env =>
-          env.tracker.getCache(env.trat.name$, Option(cache))
+      snatcher.tryOn {
+        if (!inited) {
+          outer.foreach { env =>
+            env.tracker.getCache(env.trat.name$, Option(cache))
+          }
+          inited = true
         }
-        synchronized(inited = true)
       }
     }
     sub.foreach(cache.subs.putIfAbsent(trat, _))
     cache
   }
 
+  private[reflow] def prevOutFlow: Out
+
   def getState: State.Tpe
 
-  def isSubReflow: Boolean = outer.isDefined
+  final def isSubReflow: Boolean = outer.isDefined
 
-  def isReinforceRequired: Boolean = outer.fold(reinforceRequired.get)(_.isReinforceRequired)
+  final def isReinforceRequired: Boolean = outer.fold(reinforceRequired.get)(_.isReinforceRequired)
 
-  def isReinforcing: Boolean = outer.fold(getState == REINFORCING)(_.isReinforcing)
+  final def isReinforcing: Boolean = outer.fold(getState == REINFORCING)(_.isReinforcing)
 
-  def requireReinforce(): Boolean = outer.fold {
+  final def requireReinforce(): Boolean = outer.fold {
     if (!reinforceRequired.getAndSet(true)) {
       onRequireReinforce()
       false
@@ -82,6 +86,8 @@ private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = n
   private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit
 
   private[reflow] def performAbort(trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit
+
+  private[reflow] def endRunner(runner: Runner): Unit
 }
 
 private[reflow] class Cache {
@@ -162,7 +168,7 @@ private[reflow] object Tracker {
       performAbort(runner, forError = true, runner.trat, e)
     }
 
-    private def endRunner(runner: Runner): Unit = {
+    override private[reflow] def endRunner(runner: Runner): Unit = {
       log.w("endRunner")(runner.trat.name$)
       runnersParallel -= runner
       if (runnersParallel.isEmpty && state.get$ != ABORTED && state.get$ != FAILED) {
@@ -416,11 +422,11 @@ private[reflow] object Tracker {
     }
   }
 
-  class Runner(tracker: Tracker, override val trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
+  class Runner(env: Env, override val trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
     private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
 
     @volatile private var task: Task = _
-    @volatile private var _abort: Boolean = _
+    @volatile private var aborted: Boolean = false
     private var timeBegin: Long = _
 
     override def equals(any: scala.Any) = super.equals(any)
@@ -430,25 +436,23 @@ private[reflow] object Tracker {
     override def hashCode() = super.hashCode()
 
     // 这个场景没有使用synchronized, 跟Task.abort()场景不同。
-    def abort(): Unit = {
-      // 防止循环调用
-      if (_abort) return
-      _abort = true
+    def abort(): Unit = if (!aborted) {
+      aborted = true
       if (task.nonNull) task.abort()
     }
 
     override def run(): Unit = {
       var working = false
       try {
-        task = trat.newTask()
-        // 判断放在mTask的创建后面, 配合abort()中的顺序。
-        if (_abort) onAbort(completed = false)
+        task = trat.newTask(env)
+        // 判断放在task的创建后面, 配合abort()中的顺序。
+        if (aborted) onAbort(completed = false)
         else {
           onStart()
           val input = new Out(trat.requires$)
           log.i("input: %s", input)
-          input.fillWith(tracker.prevOutFlow)
-          val cached = tracker.cache(trat, create = false)
+          input.fillWith(env.tracker.prevOutFlow)
+          val cached = env.tracker.cache(trat, create = false)
           if (cached.nonNull) input.cache(cached)
           val out = new Out(trat.outs$)
           task.env(tracker, trat, input, out)
@@ -470,7 +474,7 @@ private[reflow] object Tracker {
           log.w("flow done: %s", flow)
           working = false
           onComplete(out, flow)
-          if (_abort) onAbort(completed = true)
+          if (aborted) onAbort(completed = true)
         }
       } catch {
         case e: Exception =>
@@ -490,7 +494,7 @@ private[reflow] object Tracker {
             innerError(e)
           }
       } finally {
-        endMe()
+        env.onRunnerDone(this)
       }
     }
 
@@ -522,7 +526,7 @@ private[reflow] object Tracker {
 
     private def abortAction(e: Exception): Runnable = new Runnable {
       override def run(): Unit = {
-        if (!_abort) _abort = true
+        if (!aborted) aborted = true
         tracker.performAbort(Runner.this, forError = true, trat, e)
       }
     }
@@ -531,10 +535,6 @@ private[reflow] object Tracker {
       log.e(e)
       tracker.innerError(this, e)
       throw new InnerError(e)
-    }
-
-    private def endMe() {
-      tracker.endRunner(this)
     }
   }
 

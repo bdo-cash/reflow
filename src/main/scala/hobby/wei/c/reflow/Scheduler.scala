@@ -18,7 +18,6 @@ package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.TypeBring.AsIs
-import hobby.wei.c.reflow
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
 
@@ -71,8 +70,7 @@ object Scheduler {
   class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
-    @volatile
-    private var delegatorRef: ref.WeakReference[Scheduler] = _
+    @volatile private var delegatorRef: ref.WeakReference[Scheduler] = _
 
     private[reflow] def start$(): Tracker.Impl = {
       var permit = false
@@ -88,17 +86,13 @@ object Scheduler {
         val tracker = new Tracker.Impl(basis, traitIn, inputTrans, state, Feedback.withPoster(feedback, poster))
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
-        Locker.sync {
-          delegatorRef = new ref.WeakReference[Scheduler](tracker)
-        }
+        delegatorRef = new ref.WeakReference[Scheduler](tracker)
         tracker.start()
         tracker
       } else null
     }
 
-    private def getDelegator: Option[Scheduler] = Locker.sync {
-      Assist.getRef(delegatorRef).get
-    }
+    private def getDelegator: Option[Scheduler] = Assist.getRef(delegatorRef)
 
     override def sync(): Out = {
       try {
@@ -140,9 +134,9 @@ object Scheduler {
   class State$ {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
-    private var state = State.IDLE
-    private var state$ = State.IDLE
-    private var overrided = false
+    @volatile private var state = State.IDLE
+    @volatile private var state$ = State.IDLE
+    @volatile private var overrided = false
 
     def forward(state: State.Tpe): Boolean = Locker.sync {
       if (this.state.canOverrideWith(state)) {
@@ -169,9 +163,9 @@ object Scheduler {
       }
     }.get
 
-    def get: Tpe = Locker.sync(state).get
+    def get: Tpe = state
 
-    def get$: Tpe = Locker.sync(state$).get
+    def get$: Tpe = state$
 
     private[Scheduler] def reset(): Unit = Locker.sync {
       state = State.IDLE
@@ -181,6 +175,6 @@ object Scheduler {
     /**
       * 可用于标识是否启动过。
       */
-    private[Scheduler] def isOverrided: Boolean = Locker.sync(overrided).get
+    private[Scheduler] def isOverrided: Boolean = overrided
   }
 }

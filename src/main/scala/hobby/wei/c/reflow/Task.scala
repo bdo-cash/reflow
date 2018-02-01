@@ -84,21 +84,26 @@ abstract class Task protected(env: Env) {
     * 应该在处理好了当前事宜、准备好中断的时候调用本方法以中断整个任务。
     */
   protected final def abortDone[T](): T = throw new AbortError()
+  protected final def workDone(): Unit = {
+    progress(1)
+    env.onWorkDone()
+  }
 
   @throws[CodeException]
   @throws[AbortException]
   @throws[FailedException]
-  final def exec(): Unit = {
+  final def exec(): Boolean = {
     Locker.syncr {
-      if (aborted) return
+      if (aborted) return true
       thread = Thread.currentThread()
       working = true
     }
     try {
       // 这里反馈进度有两个用途: 1. Feedback subProgress; 2. 并行任务进度统计。
       progress(0)
-      doWork()
-      progress(1)
+      val sync = doWork()
+      if (sync) progress(1)
+      sync
     } catch {
       case e: FailedError =>
         throw new FailedException(e.getCause)
@@ -124,7 +129,11 @@ abstract class Task protected(env: Env) {
 
   protected final def isAborted: Boolean = aborted
 
-  protected abstract def doWork(): Unit
+  /**
+    * 客户代码扩展位置。
+    * @return 是否执行完毕，即是同步任务还是异步任务。如果是异步任务，应该返回`false`，并在完成任务后，调用。
+    */
+  protected abstract def doWork(): Boolean
 
   protected def onAbort(): Unit = {}
 
