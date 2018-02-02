@@ -19,8 +19,9 @@ package hobby.wei.c.reflow
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
-import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.requireInputsEnough
+import hobby.wei.c.reflow.Reflow.{P_NORMAL, Period}
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
 import scala.collection.Map
@@ -184,11 +185,14 @@ object Reflow {
     * @param period   同{ @link Trait#period()}.
     * @param priority 同{ @link Trait#priority()}.
     * @param desc     同{ @link Trait#description()}.
+    * @param name     同{ @link Trait#name()}.
     */
-  def execute(runner: Runnable, period: Period.Tpe, priority: Int, desc: String): Unit = execute$(runner, period, priority, requireNonEmpty(desc))
+  def execute(runner: Runnable, period: Period.Tpe, priority: Int, desc: String, name: String = null): Unit = execute$(runner, period, priority, desc, name)
 
-  private def execute$(_runner: Runnable, _period: Period.Tpe, _priority: Int, _desc: String) {
+  private def execute$(_runner: Runnable, _period: Period.Tpe, _priority: Int, _desc: String, _name: String = null) {
     Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Empty() {
+      override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
+
       override protected def priority() = _priority
 
       override protected def period() = _period
@@ -206,7 +210,6 @@ object Reflow {
   //********************************** Reflow  Impl **********************************//
 
   class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
-
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null): Scheduler = {
       requireInputsEnough(inputs, inputRequired, inputs.trans)
       val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
@@ -214,6 +217,21 @@ object Reflow {
       // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
       new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$()
     }
+
+    override def toTrait(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null, poster: Poster = null) =
+      new ReflowTrait(this, feedback, poster) {
+        override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
+
+        override protected def requires() = inputRequired.values.toSet
+
+        override protected def outs() = basis.outs
+
+        override protected def priority() = _priority
+
+        override protected def period() = _period
+
+        override protected def desc() = if (_desc.isNull || _desc.isEmpty) name$ else _desc
+      }
   }
 }
 
@@ -228,6 +246,8 @@ trait Reflow {
     */
   def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler
 
-  // TODO: 待实现。如果给这一个流实现并联？？？
-  //def next(next: Starter)
+  @deprecated(message = "应该尽量使用{#toTrait(Period, int, String)}。", since = "0.0.1")
+  def toTrait = toTrait(Period.SHORT, P_NORMAL, null)
+
+  def toTrait(period: Period.Tpe, priority: Int, desc: String, name: String = null, feedback: Feedback = null, poster: Poster = null): ReflowTrait
 }

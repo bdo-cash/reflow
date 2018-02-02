@@ -26,13 +26,14 @@ import hobby.wei.c.tool.Locker.CodeZ
 import scala.collection._
 
 /**
+  * 这里用于编写客户任务代码（重写`doWork()`方法）。注意不可以写异步任务和线程挂起等操作。
+  *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
 abstract class Task protected(env: Env) {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
-  @volatile private var runner: Runner = _
   @volatile private var thread: Thread = _
   @volatile private var aborted: Boolean = _
   @volatile private var working: Boolean = _
@@ -87,31 +88,17 @@ abstract class Task protected(env: Env) {
     */
   protected final def abortDone[T](): T = throw new AbortError()
 
-  /**
-    * 如果本任务执行的是个异步任务（即`doWork()`返回`false`），则在完成任务之后，应该调用本方法通知进行下一步。
-    */
-  protected final def workDone(): Unit = {
-    progress(1)
-    runner.onWorkDone()
-  }
-
   @throws[CodeException]
   @throws[AbortException]
   @throws[FailedException]
-  final def exec(runner: Runner): Boolean = {
-    this.runner = runner
+  private[reflow] final def exec(runner: Runner): Boolean = {
     Locker.syncr {
       if (aborted) return true
       thread = Thread.currentThread()
       working = true
     }
     try {
-      // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
-      progress(0)
-      if (doWork()) {
-        progress(1)
-        true
-      } else false
+      exec$(runner)
     } catch {
       case e: FailedError =>
         throw new FailedException(e.getCause)
@@ -123,7 +110,15 @@ abstract class Task protected(env: Env) {
     }
   }
 
-  final def abort(): Unit = {
+  private[reflow] def exec$(runner: Runner): Boolean = {
+    // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
+    progress(0)
+    doWork()
+    progress(1)
+    true
+  }
+
+  private[reflow] final def abort(): Unit = {
     Locker.syncr {
       aborted = true
     }
@@ -142,7 +137,7 @@ abstract class Task protected(env: Env) {
     *
     * @return 是否执行完毕，即是同步任务还是异步任务。如果是异步任务，应该返回`false`，并在完成任务后，调用。
     */
-  protected abstract def doWork(): Boolean
+  protected def doWork(): Unit
 
   protected def onAbort(): Unit = {}
 

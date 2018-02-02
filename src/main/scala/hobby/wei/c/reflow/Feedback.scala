@@ -63,6 +63,8 @@ trait Feedback {
 
 object Feedback {
   def withPoster(feedback: Feedback, poster: Poster): Feedback = new Feedback {
+    require(feedback.nonNull)
+    require(poster.nonNull)
 
     override def onStart(): Unit = poster.post(feedback.onStart())
 

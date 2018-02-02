@@ -27,6 +27,7 @@ import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
 
 import scala.collection._
@@ -135,6 +136,8 @@ private[reflow] object Tracker {
     @volatile private[reflow] var prevOutFlow, reinforceInput: Out = _
 
     private[reflow] def start(): Boolean = {
+      // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
+      val reinforce = outer.fold(false)(_.isReinforcing)
       // TODO: 应该先处理这个
       traitIn
       inputTrans
@@ -416,7 +419,8 @@ private[reflow] object Tracker {
     private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
 
     private val workDone = new AtomicBoolean(false)
-    @volatile private var aborted, runnerDone: Boolean = false
+    private val runnerDone = new AtomicBoolean(false)
+    @volatile private var aborted = false
     @volatile private var task: Task = _
     private var timeBegin: Long = _
 
@@ -464,7 +468,7 @@ private[reflow] object Tracker {
             innerError(e)
           }
       } finally {
-        runnerDone = true
+        runnerDone.getAndSet(true) // 后面有竞争，但getAndSet一定能保证设置成功
         endMe()
       }
     }
@@ -491,15 +495,17 @@ private[reflow] object Tracker {
       if (aborted) onAbort()
     }
 
-    def onWorkDone() {
+    /** 仅在`成功`执行任务之后才可以调用本方法。 */
+    def onWorkDone(): Unit = onWorkEnd(afterWork(transOutput()))
+
+    /** 在执行任务`失败`后应该调用本方法。 */
+    def onWorkEnd(doSth: => Unit) {
       require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
-      afterWork(transOutput())
+      doSth
       endMe()
     }
 
-    def endMe(): Unit = if (workDone.get && runnerDone) {
-      if (workDone.getAndSet(false)) env.tracker.endRunner(this)
-    }
+    def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
 
     def onStart() {
       log.i("111111111111")
@@ -538,25 +544,54 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class SubReflowFeedback(env: Env, runner: Runner) extends Feedback {
+  private[reflow] class SubReflowTask(env: Env) extends Task(env: Env) {
+    @volatile private var scheduler: Scheduler = _
+
+    override private[reflow] def exec$(runner: Runner) = {
+      progress(0)
+      val trat = env.trat.as[ReflowTrait]
+      scheduler = trat.reflow.start(In.from(env.input), SubReflowFeedback.join(env, runner, progress(1),
+        if (trat.feedback.nonNull && trat.poster.nonNull) Feedback.withPoster(trat.feedback, trat.poster) else trat.feedback), null)
+      false // 异步。
+    }
+
+    override protected def doWork(): Unit = {}
+
+    override protected def onAbort(): Unit = {
+      if (scheduler.nonNull) scheduler.abort()
+      super.onAbort()
+    }
+  }
+
+  private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: () => Unit) extends Feedback {
     override def onStart(): Unit = runner.onStart()
 
     override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
       env.tracker.onTaskProgress(name, env.trat, (count + sub) / sum, out, desc)
 
-    override def onComplete(out: Out): Unit = if (out ne env.out) env.out.fillWith(out)
+    override def onComplete(out: Out): Unit = {
+      doSth()
+      if (out ne env.out) env.out.fillWith(out)
+      runner.onWorkDone()
+    }
 
-    override def onUpdate(out: Out): Unit = if (out ne env.out) env.out.fillWith(out)
+    override def onUpdate(out: Out): Unit = onComplete(out)
 
-    override def onAbort(): Unit = runner.onAbort()
+    override def onAbort(): Unit = {
+      runner.onAbort()
+      runner.onWorkEnd()
+    }
 
-    override def onFailed(name: String, e: Exception): Unit = runner.onFailed(e, name)
+    override def onFailed(name: String, e: Exception): Unit = {
+      runner.onFailed(e, name)
+      runner.onWorkEnd()
+    }
   }
 
   private[reflow] object SubReflowFeedback {
-    def join(env: Env, runner: Runner, fb: Feedback = null): Feedback = {
+    def join(env: Env, runner: Runner, doSth: => Unit, fb: Feedback = null): Feedback = {
       val feedback = new Feedback.Observable
-      feedback.addObservers(new SubReflowFeedback(env, runner))
+      feedback.addObservers(new SubReflowFeedback(env, runner, () => doSth))
       if (fb.nonNull) feedback.addObservers(fb)
       feedback
     }

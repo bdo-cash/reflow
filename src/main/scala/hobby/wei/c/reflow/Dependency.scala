@@ -173,7 +173,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
       override val dependencies = basis.dependencies.mapValues(_.toMap).toMap
       override val transformers = basis.transformers.mapValues(_.toSet).toMap
       override val transGlobal = basis.transGlobal.mapValues(_.toSet).toMap
-      override val outsFlowTrimmed = trimOutsFlow(basisx).toMap
+      override val outsFlowTrimmed = trimOutsFlow(basisx).mapValues(_.toSet).toMap
       override val outs = outputs.toSet
     }, inputReqx)
   }
@@ -197,8 +197,8 @@ object Dependency {
     /** 可把前面任意任务的输出作为输入的全局转换器。 */
     val transGlobal: Map[String, Set[Transformer[_, _]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? */
-    val outsFlowTrimmed: Map[String, Set[Key$[_]]]
-    val outs: Set[Key$[_]]
+    val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
+    val outs: immutable.Set[Key$[_]]
 
     def steps() = traits.size
 

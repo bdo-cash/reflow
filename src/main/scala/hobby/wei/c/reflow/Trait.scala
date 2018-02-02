@@ -21,6 +21,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{Period, _}
+import hobby.wei.c.reflow.Tracker.SubReflowTask
 
 import scala.collection._
 
@@ -92,8 +93,10 @@ trait Trait[T <: Task] extends Equals {
     name$, requires$, outs$, priority$, period$, desc$)
 }
 
-object Trait {
-  final class Parallel private[reflow](trats: Seq[Trait[_ <: Task]]) extends Trait[Task] {
+private[reflow] object Trait {
+  private final val sCount = new AtomicInteger(0)
+
+  private[reflow] final class Parallel private[reflow](trats: Seq[Trait[_ <: Task]]) extends Trait[Task] {
     // 提交调度器之后具有不变性
     private val _traits = new mutable.ListBuffer[Trait[_ <: Task]]
 
@@ -117,7 +120,7 @@ object Trait {
       classOf[Parallel].getName + "#" + _traits.head.name$
     }
 
-    override protected def newTask() = ???
+    override protected def newTask(env: Env) = ???
 
     override protected def requires() = Helper.Keys.empty()
 
@@ -130,9 +133,7 @@ object Trait {
     override protected def desc() = ???
   }
 
-  trait Empty extends Trait[Task] {
-    private val sCount = new AtomicInteger(0)
-
+  private[reflow] trait Empty extends Trait[Task] {
     override protected def name() = classOf[Empty].getName + "#" + sCount.getAndIncrement()
 
     override protected def requires() = Helper.Keys.empty()
@@ -144,21 +145,25 @@ object Trait {
     override protected def desc() = name$
   }
 
-  final class Input(in: In, requires: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
-    private val sCount = new AtomicInteger(0)
-
+  private[reflow] final class Input(in: In, requires: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
-    override protected def newTask() = new Task() {
+    override protected def newTask(env: Env) = new Task(env) {
       override protected def doWork(): Unit = {
         val input = new Out(requires)
         in.fillValues(input)
-        out.putWith(input._map, putAll(new concurrent.TrieMap[String, Key$[_]], outs$), ignoreDiffType = false, fullVerify = true)
+        env.out.putWith(input._map, putAll(new concurrent.TrieMap[String, Key$[_]], outs$), ignoreDiffType = false, fullVerify = true)
       }
     }
 
     override protected def outs() = in.keys
 
     override protected def period() = Period.TRANSIENT
+  }
+
+  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback, val poster: Poster = null) extends Trait[SubReflowTask] {
+    override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
+
+    override final def newTask(env: Env) = new SubReflowTask(env)
   }
 }

@@ -40,7 +40,7 @@ abstract class In protected(_keys: Set[Key$[_]]) {
 
   private[reflow] def fillValues(out: Out) {
     out.keysDef().intersect(keys).foreach(key =>
-      out.put(key.key, loadValue(key.key).get)
+      out.put(key.key, loadValue(key.key).orNull)
     )
   }
 
@@ -51,6 +51,8 @@ object In {
   def map(key: String, value: Any): In = map(Map((key, value)))
 
   def map(map: Map[String, Any]): In = new M(generate(map), map)
+
+  def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
   def add(key: String, value: Any): Builder = new Builder().add(key, value)
 
