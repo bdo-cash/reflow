@@ -24,7 +24,7 @@ import hobby.wei.c.reflow.Reflow.{logger => log}
   * @version 1.0, 31/01/2018
   */
 trait Env {
-  private[reflow] val trat: Trait[_]
+  private[reflow] val trat: Trait[_ <: Task]
   private[reflow] val tracker: Tracker
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
@@ -37,11 +37,14 @@ trait Env {
   private[reflow] final lazy val out: Out = new Out(trat.outs$)
 
   private final def superCache: Cache = tracker.getCache(trat.name$)
+
   /** 在reinforce阶段，从缓存中取回。 **/
   private[reflow] final def obtainCache: Option[Cache] = superCache.subs.get(trat.name$)
+
   final def myCache(create: Boolean = false): Out = if (create) {
     superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.Keys.empty()))
   } else superCache.caches.get(trat.name$).orNull
+
   final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
 
   /**
@@ -50,7 +53,17 @@ trait Env {
     * @return 之前的任务是否已经请求过, 同{isReinforceRequired()}
     */
   final def requireReinforce(): Boolean = tracker.requireReinforce()
+
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
+
   final def isReinforcing: Boolean = tracker.isReinforcing
+
   final def isSubReflow: Boolean = tracker.isSubReflow
+}
+
+private[reflow] object Env {
+  def apply(_trat: Trait[_ <: Task], _tracker: Tracker): Env = new Env {
+    override private[reflow] val trat = _trat
+    override private[reflow] val tracker = _tracker
+  }
 }

@@ -19,7 +19,7 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import java.util.concurrent.locks.{Condition, ReentrantLock}
-import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
+import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Assist._
@@ -29,7 +29,6 @@ import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
-
 import scala.collection._
 import scala.collection.mutable.ListBuffer
 
@@ -38,7 +37,7 @@ import scala.collection.mutable.ListBuffer
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018
   */
-private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = null, @volatile var inited: Boolean = false) {
+private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env], _cache: Cache = null, @volatile var inited: Boolean = false) {
   private lazy final val snatcher = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
@@ -95,6 +94,9 @@ private[reflow] abstract class Tracker(val outer: Option[Env], _cache: Cache = n
     */
   private[reflow] def performAbort(name: String, trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit
 
+  /** 先于{@link #endRunner(Runner)}执行。 */
+  private[reflow] def innerError(runner: Runner, e:Exception):Unit
+
   private[reflow] def endRunner(runner: Runner): Unit
 }
 
@@ -107,10 +109,10 @@ private[reflow] class Cache {
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(val basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
+  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
                                    state: Scheduler.State$, feedback: Feedback,
                                    outer: Option[Env], cache: Cache = null, inited: Boolean = false)
-    extends Tracker(outer: Option[Env], cache: Cache, inited: Boolean) with Scheduler {
+    extends Tracker(basis:Basis, outer: Option[Env], cache: Cache, inited: Boolean) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val buffer4Reports = new ListBuffer[() => Unit]
@@ -147,13 +149,10 @@ private[reflow] object Tracker {
       } else false
     }
 
-    /**
-      * 先于{@link #endRunner(Runner)}执行。
-      */
-    private def innerError(name: String, runner: Runner, e: Exception): Unit = {
+    override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
       log.e("innerError")(runner.trat.name$)
       // 正常情况下是不会走的，仅用于测试。
-      performAbort(name, runner, forError = true, runner.trat, e)
+      performAbort(runner.trat.name$, runner, forError = true, runner.trat, e)
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
@@ -196,14 +195,14 @@ private[reflow] object Tracker {
         val parallel = trat.asParallel
         val runners = new ListBuffer[Runner]
         parallel.traits().foreach { t =>
-          runners += new Runner(this, t)
+          runners += new Runner(Env(t, this))
           // 把并行的任务put进去，不然计算子进度会有问题。
           progress.put(t.name$, 0f)
         }
         runners.foreach(r => runnersParallel += ((r, 0)))
       } else {
         //progress.put(trat.name$, 0f)
-        runnersParallel += ((new Runner(this, trat), 0))
+        runnersParallel += ((new Runner(Env(trat, this)), 0))
       }
       sumParRunning.set(runnersParallel.size)
       resetOutFlow(new Out(basis.outsFlowTrimmed(trat.name$)))
@@ -211,11 +210,6 @@ private[reflow] object Tracker {
       val hasMore = sumParRunning.get() > 0
       runnersParallel.foreach { kv =>
         val runner = kv._1
-
-        fdsfdsfdsfsdfsaf
-        // TODO: 看 runner 是不是一个新的 Reflow。当然也可以不在这里处理，而是
-        // 重构 runner 不立即回调 endMe，等到 runner 所在的整个 Reflow 结束才 endMe。
-        // 但这种方式应该在前面 new Runner(this, t) 时使用不同的 Runner。
         import Period._
         runner.trat.period$ match {
           case INFINITE => Worker.sPreparedBuckets.sInfinite.offer(runner)
@@ -418,8 +412,8 @@ private[reflow] object Tracker {
 
     private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
 
-    private val workDone = new AtomicBoolean(false)
-    private val runnerDone = new AtomicBoolean(false)
+    private lazy val workDone = new AtomicBoolean(false)
+    private lazy val runnerDone = new AtomicBoolean(false)
     @volatile private var aborted = false
     @volatile private var task: Task = _
     private var timeBegin: Long = _
@@ -468,7 +462,7 @@ private[reflow] object Tracker {
             innerError(e)
           }
       } finally {
-        runnerDone.getAndSet(true) // 后面有竞争，但getAndSet一定能保证设置成功
+        runnerDone.set(true)
         endMe()
       }
     }
@@ -481,7 +475,7 @@ private[reflow] object Tracker {
       log.w("doTransform, prepared:")
       doTransform(env.tracker.basis.transformers(trat.name$), map, nulls, global = false)
       log.w("doTransform, done.")
-      val dps = tracker.basis.dependencies.get(trat.name$)
+      val dps = env.tracker.basis.dependencies.get(trat.name$)
       log.i("dps: %s", dps.get)
       val flow = new Out(dps.getOrElse(Map.empty[String, Key$[_]]))
       log.i("flow prepared: %s", flow)
@@ -500,6 +494,7 @@ private[reflow] object Tracker {
 
     /** 在执行任务`失败`后应该调用本方法。 */
     def onWorkEnd(doSth: => Unit) {
+      import hobby.chenai.nakam.basis.TAG.ThrowMsg
       require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
       doSth
       endMe()
@@ -539,7 +534,7 @@ private[reflow] object Tracker {
 
     def innerError(e: Exception) {
       log.e(e)
-      env.tracker.innerError(trat.name$, this, e)
+      env.tracker.innerError(this, e)
       throw new InnerError(e)
     }
   }
