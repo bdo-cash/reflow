@@ -29,6 +29,7 @@ import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
+
 import scala.collection._
 import scala.collection.mutable.ListBuffer
 
@@ -37,20 +38,23 @@ import scala.collection.mutable.ListBuffer
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018
   */
-private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env], _cache: Cache = null, @volatile var inited: Boolean = false) {
+private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env]) {
   private lazy final val snatcher = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
   // 因此有这样的设计。
-  private final lazy val cache = if (_cache.isNull) new Cache else _cache
+  @volatile var inited: Boolean = outer.fold(false)(_.isReinforcing)
+  private final lazy val cache = outer.fold(new Cache) { env =>
+    if (env.isReinforcing) env.obtainCache.getOrElse(new Cache) else new Cache
+  }
   private[reflow] final lazy val reinforceRequired = new AtomicBoolean(false)
 
-  final def getCache(trat: String, sub: Option[Cache] = None): Cache = {
+  private final def getOrInitWithSuperCache(trat: String = null, sub: Option[Cache] = None): Cache = {
     if (!inited) {
       snatcher.tryOn {
         if (!inited) {
           outer.foreach { env =>
-            env.tracker.getCache(env.trat.name$, Option(cache))
+            env.tracker.getOrInitWithSuperCache(env.trat.name$, Option(cache))
           }
           inited = true
         }
@@ -60,7 +64,9 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env],
     cache
   }
 
-  private[reflow] def prevOutFlow: Out
+  final def getCache = getOrInitWithSuperCache()
+
+  private[reflow] def prevOutFlow(): Out
 
   def getState: State.Tpe
 
@@ -68,16 +74,18 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env],
 
   final def isReinforceRequired: Boolean = outer.fold(reinforceRequired.get)(_.isReinforceRequired)
 
-  final def isReinforcing: Boolean = outer.fold(getState == REINFORCING)(_.isReinforcing)
+  final def isReinforcing: Boolean = outer.fold(getState.group == REINFORCING.group /*group代表了几个状态*/)(_.isReinforcing)
 
-  final def requireReinforce(): Boolean = outer.fold {
+  final def requireReinforce(trat: Trait[_ <: Task]): Boolean = outer.fold {
     if (!reinforceRequired.getAndSet(true)) {
+      getCache.reinforceBegin = trat.name$
+      getCache.reinforceInput = prevOutFlow()
       onRequireReinforce()
       false
     } else true
   }(_.requireReinforce())
 
-  protected def onRequireReinforce(): Unit
+  protected def onRequireReinforce(): Unit = {}
 
   private[reflow] def onTaskStart(trat: Trait[_]): Unit
 
@@ -95,51 +103,52 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env],
   private[reflow] def performAbort(name: String, trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit
 
   /** 先于{@link #endRunner(Runner)}执行。 */
-  private[reflow] def innerError(runner: Runner, e:Exception):Unit
+  private[reflow] def innerError(runner: Runner, e: Exception): Unit
 
   private[reflow] def endRunner(runner: Runner): Unit
 }
 
 private[reflow] class Cache {
   // 用`trat.name$`作为`key`, 同一个`Reflow`中，`name$`是不能重名的，因此该方法可靠。
-  /** 子`Trait`的`Task`缓存用到的`Out`。 **/
+  /** 子`Trait`的`Task`缓存用到的`Out`。 */
   lazy val caches = new concurrent.TrieMap[String, Out]
-  /** 子`Trait`的`Task`启动的`Reflow`对应的`Tracker`的`Cache`。 **/
+  /** 子`Trait`的`Task`启动的`Reflow`对应的`Tracker`的`Cache`。 */
   lazy val subs = new concurrent.TrieMap[String, Cache]
+  /** `reinforce`阶段开始时的`Trait.name$`。 */
+  @volatile var reinforceBegin: String = _
+  @volatile var reinforceInput: Out = _
+
+  override def toString = s"caches:$caches, subs:$subs, reinforceBegin:$reinforceBegin, reinforceInput:$reinforceInput."
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
-                                   state: Scheduler.State$, feedback: Feedback,
-                                   outer: Option[Env], cache: Cache = null, inited: Boolean = false)
-    extends Tracker(basis:Basis, outer: Option[Env], cache: Cache, inited: Boolean) with Scheduler {
+  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]], state: Scheduler.State$,
+                                   feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val buffer4Reports = new ListBuffer[() => Unit]
     private lazy val snatcher = new Snatcher()
 
     // 本数据结构是同步操作的, 不需要ConcurrentLinkedQueue。
-    private val remaining = {
-      val seq = new mutable.ListBuffer[Trait[_ <: Task]]
-      copy(basis.traits, seq)
-      seq
-    }
-
+    @volatile private var remaining = basis.traits
     private val sum = remaining.length
-    private lazy val reinforce = new mutable.ListBuffer[Trait[_ <: Task]]
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
-    private lazy val reinforceMode = new AtomicBoolean(false)
-    private lazy val reinforceCaches = new concurrent.TrieMap[String, Out]
     private lazy val progress = new concurrent.TrieMap[String, Float]
     private lazy val sumParRunning = new AtomicInteger
     private lazy val reporter = new Reporter(feedback, sum)
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed = new Out(Map.empty[String, Key$[_]])
-    @volatile private[reflow] var prevOutFlow, reinforceInput: Out = _
+    @volatile private[reflow] var prevOutFlow: Out = _
 
     private[reflow] def start(): Boolean = {
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
-      val reinforce = outer.fold(false)(_.isReinforcing)
+      if (isReinforcing) {
+        assert(state.get == COMPLETED || state.forward(COMPLETED))
+        是不是本子Reflow第一个请求reinforce
+        如果是
+        ， 那应该从这个开始
+        。 应该存入
+      }
       // TODO: 应该先处理这个
       traitIn
       inputTrans
@@ -166,6 +175,10 @@ private[reflow] object Tracker {
         } else Locker.sync {
           remaining.remove(0)
         }
+
+        如果是 isSubReflow
+        ， 则不要走reinforce
+        。
         if (!tryScheduleNext(false)) { // 全部运行完毕
           basis.outsFlowTrimmed
           basis.outs
@@ -181,6 +194,8 @@ private[reflow] object Tracker {
           if (reinforceRequired.get()) {
             copy(reinforce /*注意写的时候没有synchronized*/ , remaining)
             outFlowTrimmed = reinforceInput
+
+            state.forward(REINFORCING TODO 看是哪个状态 COMPLETED)
             reinforceMode.set(true)
             reinforce.clear()
           } else return false // 全部运行完毕
@@ -222,21 +237,6 @@ private[reflow] object Tracker {
       // scheduleBuckets()
       hasMore
     }.get
-
-    override protected def onRequireReinforce(): Unit = Locker.sync {
-      copy(remaining, reinforce)
-      reinforceInput = prevOutFlow
-    }
-
-    private[reflow] def cache(trat: Trait[_], create: Boolean): Out = {
-      Option(reinforceCaches.get(trat.name$)).getOrElse[Out] {
-        if (create) {
-          val cache = new Out(Helper.Keys.empty())
-          reinforceCaches.put(trat.name$, cache)
-          cache
-        } else null
-      }
-    }
 
     private def resetOutFlow(flow: Out): Unit = {
       Locker.sync {
@@ -500,6 +500,7 @@ private[reflow] object Tracker {
       endMe()
     }
 
+    // 这是可靠的，详见 VolatileTest。
     def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
 
     def onStart() {
@@ -545,8 +546,7 @@ private[reflow] object Tracker {
     override private[reflow] def exec$(runner: Runner) = {
       progress(0)
       val trat = env.trat.as[ReflowTrait]
-      scheduler = trat.reflow.start(In.from(env.input), SubReflowFeedback.join(env, runner, progress(1),
-        if (trat.feedback.nonNull && trat.poster.nonNull) Feedback.withPoster(trat.feedback, trat.poster) else trat.feedback), null)
+      scheduler = trat.reflow.start(In.from(env.input), trat.feedback.withPoster(trat.poster).join(env, runner, progress(1)), null, env)
       false // 异步。
     }
 
@@ -583,8 +583,8 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] object SubReflowFeedback {
-    def join(env: Env, runner: Runner, doSth: => Unit, fb: Feedback = null): Feedback = {
+  private[reflow] implicit class FeedbackJoin(fb: Feedback = null) {
+    def join(env: Env, runner: Runner, doSth: => Unit): Feedback = {
       val feedback = new Feedback.Observable
       feedback.addObservers(new SubReflowFeedback(env, runner, () => doSth))
       if (fb.nonNull) feedback.addObservers(fb)

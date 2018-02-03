@@ -188,7 +188,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
 
 object Dependency {
   trait Basis {
-    val traits: Seq[Trait[_]]
+    val traits: Seq[Trait[_ <: Task]]
     /** 表示每个任务结束的时候应该为后面的任务保留哪些Key$(transform后的)。
       * 注意：可能get出来为null, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]

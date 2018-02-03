@@ -27,16 +27,9 @@ import scala.ref.WeakReference
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 14/08/2016
   */
-abstract class In protected(_keys: Set[Key$[_]]) {
-  private[reflow] val keys: immutable.Set[Key$[_]] = requireKey$kDiff(requireElemNonNull(_keys)).to[immutable.Set]
-  private[reflow] var trans: immutable.Set[Transformer[_, _]] = _
-
-  def transition(trans: Transformer[_, _]): In = transition(Set(trans))
-
-  def transition(tranSet: Set[Transformer[_, _]]): In = {
-    trans = requireTransInTypeSame(requireElemNonNull(tranSet)).to[immutable.Set]
-    this
-  }
+abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[_, _]*) {
+  private[reflow] val keys: immutable.Set[Key$[_]] = requireKey$kDiff(requireElemNonNull(_keys.toSet))
+  private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTypeSame(requireElemNonNull(_trans.toSet))
 
   private[reflow] def fillValues(out: Out) {
     out.keysDef().intersect(keys).foreach(key =>
@@ -50,7 +43,7 @@ abstract class In protected(_keys: Set[Key$[_]]) {
 object In {
   def map(key: String, value: Any): In = map(Map((key, value)))
 
-  def map(map: Map[String, Any]): In = new M(generate(map), map)
+  def map(map: Map[String, Any], trans: Transformer[_, _]*): In = new M(generate(map), map, trans: _*)
 
   def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
@@ -66,12 +59,12 @@ object In {
     }
 
     def add(trans: Transformer[_, _]): Builder = {
-      if (tb == null) tb = Helper.Transformers.add(trans)
+      if (tb.isNull) tb = Helper.Transformers.add(trans)
       else tb.add(trans)
       this
     }
 
-    def ok(): In = In.map(map).transition(if (tb.isNull) null else tb.ok())
+    def ok(): In = if (tb.isNull) In.map(map) else In.map(map, tb.ok().toSeq: _*)
   }
 
   private def generate(map: Map[String, Any]): Set[Key$[_]] = {
@@ -88,7 +81,7 @@ object In {
     val in = new In(Helper.Keys.empty()) {
       override private[reflow] def fillValues(out: Out): Unit = {}
 
-      override protected def loadValue(key: String) = null
+      override protected def loadValue(key: String) = None
     }
     emptyRef = new WeakReference(in)
     in

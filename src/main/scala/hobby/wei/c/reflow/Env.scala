@@ -36,11 +36,15 @@ trait Env {
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)
 
-  private final def superCache: Cache = tracker.getCache(trat.name$)
+  private final def superCache: Cache = tracker.getCache
 
-  /** 在reinforce阶段，从缓存中取回。 **/
-  private[reflow] final def obtainCache: Option[Cache] = superCache.subs.get(trat.name$)
+  /** 在reinforce阶段，从缓存中取回。 */
+  private[reflow] final def obtainCache: Option[Cache] = {
+    assert(isReinforcing)
+    superCache.subs.get(trat.name$)
+  }
 
+  /** `TasK`的当前缓存。 */
   final def myCache(create: Boolean = false): Out = if (create) {
     superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.Keys.empty()))
   } else superCache.caches.get(trat.name$).orNull
@@ -52,7 +56,7 @@ trait Env {
     *
     * @return 之前的任务是否已经请求过, 同{isReinforceRequired()}
     */
-  final def requireReinforce(): Boolean = tracker.requireReinforce()
+  final def requireReinforce(t: Trait[_ <: Task] = trat): Boolean = tracker.requireReinforce(t)
 
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
 

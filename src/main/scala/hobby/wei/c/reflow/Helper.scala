@@ -62,7 +62,7 @@ object Helper {
 
       def retain[O](key: Key$[O]): Builder = add(Transformers.retain[O](key))
 
-      def ok(): immutable.Set[Transformer[_, _]] = trans.to[immutable.Set]
+      def ok(): immutable.Set[Transformer[_, _]] = trans.toSet
     }
   }
 }

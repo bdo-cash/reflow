@@ -17,7 +17,6 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
-import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
@@ -68,7 +67,8 @@ object Scheduler {
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]], feedback: Feedback, poster: Poster) extends Scheduler {
+  class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
+             feedback: Feedback, poster: Poster, outer: Env = null) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
     @volatile private var delegatorRef: ref.WeakReference[Scheduler] = _
@@ -84,7 +84,7 @@ object Scheduler {
         }
       }
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
-        val tracker = new Tracker.Impl(basis, traitIn, inputTrans, state, if (poster.isNull) feedback else Feedback.withPoster(feedback, poster), None)
+        val tracker = new Tracker.Impl(basis, traitIn, inputTrans, state, feedback.withPoster(poster), Option(outer))
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
         delegatorRef = new ref.WeakReference[Scheduler](tracker)

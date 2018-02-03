@@ -210,12 +210,12 @@ object Reflow {
   //********************************** Reflow  Impl **********************************//
 
   class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
-    override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null): Scheduler = {
+    override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
       requireInputsEnough(inputs, inputRequired, inputs.trans)
       val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
       // 第一个任务是不需要trim的，至少从第二个以后。
       // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
-      new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster).start$()
+      new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster, outer).start$()
     }
 
     override def toTrait(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null, poster: Poster = null) =
@@ -244,7 +244,8 @@ trait Reflow {
     * @param poster   转移<code>feedback</code>的调用线程, 可为null.
     * @return true 启动成功, false 正在运行。
     */
-  def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler
+  final def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = start(inputs, feedback, poster, null)
+  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
   @deprecated(message = "应该尽量使用{#toTrait(Period, int, String)}。", since = "0.0.1")
   def toTrait = toTrait(Period.SHORT, P_NORMAL, null)

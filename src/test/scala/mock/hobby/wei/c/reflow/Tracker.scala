@@ -1,6 +1,6 @@
 package mock.hobby.wei.c.reflow
 
-import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.wei.c.tool.Snatcher
 
 import scala.collection._
 
@@ -12,33 +12,43 @@ trait Env {
   val trat: Trait
   val tracker: Tracker
 
-  def superCache: Cache = tracker.getCache(trat.name$)
+  def superCache: Cache = tracker.getCache
   /** 在reinforce阶段，从缓存中取回。 **/
-  def obtainCache: Option[Cache] = superCache.subs.get(trat.name$)
+  def obtainCache: Option[Cache] = {
+    // assert(isReinforcing)
+    superCache.subs.get(trat.name$)
+  }
   def myCache: Out = superCache.caches.getOrElseUpdate(trat.name$, new Out)
   //  def cache[V](key: String, value: => V): Out = cache.put
 }
 
-abstract class Tracker(val outer: Option[Env] = None, _cache: Cache = null, var inited: Boolean = false) {
-
+abstract class Tracker(val outer: Option[Env] = None, @volatile var inited: Boolean = false) {
+  private lazy final val snatcher = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
   // 因此有这样的设计。
-  //  private var inited = _inited
-  lazy val cache = if (_cache.isNull) new Cache else _cache
+  final lazy val cache = outer.fold(new Cache) { env =>
+    //    if (isReinforcing)
+    env.obtainCache.getOrElse(new Cache)
+    //    else new Cache
+  }
 
-  def getCache(trat: String, sub: Option[Cache] = None): Cache = {
+  private final def getOrInitWithSuperCache(trat: String = null, sub: Option[Cache] = None): Cache = {
     if (!inited) {
-      if (!synchronized(inited)) {
-        outer.foreach { env =>
-          env.tracker.getCache(env.trat.name$, Option(cache))
+      snatcher.tryOn {
+        if (!inited) {
+          outer.foreach { env =>
+            env.tracker.getOrInitWithSuperCache(env.trat.name$, Option(cache))
+          }
+          inited = true
         }
-        synchronized(inited = true)
       }
     }
     sub.foreach(cache.subs.putIfAbsent(trat, _))
     cache
   }
+
+  final def getCache = getOrInitWithSuperCache()
 }
 
 class Cache {

@@ -62,23 +62,25 @@ trait Feedback {
 }
 
 object Feedback {
-  def withPoster(feedback: Feedback, poster: Poster): Feedback = new Feedback {
-    require(feedback.nonNull)
-    require(poster.nonNull)
+  implicit class WithPoster(feedback: Feedback) {
+    @inline def withPoster(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
+      require(feedback.nonNull)
+      require(poster.nonNull)
 
-    override def onStart(): Unit = poster.post(feedback.onStart())
+      override def onStart(): Unit = poster.post(feedback.onStart())
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit = poster.post(
-      feedback.onProgress(name, out, count, sum, sub, description)
-    )
+      override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit = poster.post(
+        feedback.onProgress(name, out, count, sum, sub, description)
+      )
 
-    override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
+      override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
 
-    override def onUpdate(out: Out): Unit = poster.post(feedback.onUpdate(out))
+      override def onUpdate(out: Out): Unit = poster.post(feedback.onUpdate(out))
 
-    override def onAbort(): Unit = poster.post(feedback.onAbort())
+      override def onAbort(): Unit = poster.post(feedback.onAbort())
 
-    override def onFailed(name: String, e: Exception): Unit = poster.post(feedback.onFailed(name, e))
+      override def onFailed(name: String, e: Exception): Unit = poster.post(feedback.onFailed(name, e))
+    }
   }
 
   class Adapter extends Feedback {

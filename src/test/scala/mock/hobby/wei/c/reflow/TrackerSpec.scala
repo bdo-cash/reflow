@@ -45,18 +45,22 @@ class TrackerSpec extends Spec {
     override val tracker = tracker1
   }
 
-  lazy val tracker2$ = new Tracker(Option(env2$), env2$.obtainCache.orNull, true) {}
+  lazy val tracker2$ = new Tracker(Option(env2$), true) {}
 
   lazy val env3$ = new Env {
     override val trat = env3.trat
     override val tracker = tracker2$
   }
 
-  lazy val tracker3$ = new Tracker(Option(env3$), env3$.obtainCache.orNull, true) {}
+  lazy val tracker3$ = new Tracker(Option(env3$), true) {
+    println("最后看看整个数据结构。tracker1.cache: " + tracker1.cache)
+  }
 
   lazy val env4$ = new Env {
     override val trat = env4.trat
     override val tracker = tracker3$
+
+    println("最后看看整个数据结构。tracker1.cache: " + tracker1.cache)
   }
 
   object `Tracker & Env` {
