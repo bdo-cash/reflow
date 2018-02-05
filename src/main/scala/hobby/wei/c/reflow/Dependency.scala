@@ -33,7 +33,7 @@ import scala.util.control.Breaks._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016
   */
-class Dependency private[reflow]() extends TAG.ClassName {
+class Dependency private[reflow]() {
   private val basis = new BasisMutable
   private val names = new mutable.HashSet[String]
   // Key$是transform后的
@@ -174,6 +174,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
       override val transformers = basis.transformers.mapValues(_.toSet).toMap
       override val transGlobal = basis.transGlobal.mapValues(_.toSet).toMap
       override val outsFlowTrimmed = trimOutsFlow(basisx).mapValues(_.toSet).toMap
+      override val inputs = inputReqx.values.toSet
       override val outs = outputs.toSet
     }, inputReqx)
   }
@@ -186,7 +187,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
   }
 }
 
-object Dependency {
+object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
     /** 表示每个任务结束的时候应该为后面的任务保留哪些Key$(transform后的)。
@@ -198,6 +199,7 @@ object Dependency {
     val transGlobal: Map[String, Set[Transformer[_, _]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
+    val inputs: immutable.Set[Key$[_]]
     val outs: immutable.Set[Key$[_]]
 
     def steps() = traits.size
@@ -240,6 +242,7 @@ object Dependency {
     override val transformers: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
     override val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
     override val outsFlowTrimmed = null
+    override val inputs = null
     override val outs = null
 
     def copyFrom(src: Basis): Unit = {
@@ -277,19 +280,13 @@ object Dependency {
   }
 
   /**
-    * @param trat 前面的一个串联的任务。意味着如果是并联的任务，则应该用parent.
-    * @return 串中唯一的名称。
-    */
-  private def nameGlobal(trat: Trait[_]): String = trat.name$ + trat.hashCode
-
-  /**
     * 处理最后一个{@link Trait}. 会做两件事：
-    * a. 生成向前的依赖；从最后一个{@link Trait}的前一个开始，根据{@link Trait#requires$() 必须输入}在<code>
-    * requires</code>或<code>useless</code>的输出（事件b）集合中，逐一匹配{@link Key$#key
-     * key}并检查{@link Key$#isAssignableFrom(Key$) 值类型}是否符合赋值关系，最后将符合条件的标记为<code>
-    * requires</code>, 若不符合条件，则直接抛出异常；
-    * b. 生成向后的输出。该输出会首先标记为<code>useless</code>, 只有当需要的时候（事件a）才会取出并标记为<code>
-    * requires</code>. 最终的<code>useless</code>将会被丢去。
+    * a. 生成向前的依赖；从最后一个{@link Trait}的前一个开始，根据{@link Trait#requires$() 必须输入}在`
+    * requires`或`useless`的输出（事件b）集合中，逐一匹配{@link Key$#key
+     * key}并检查{@link Key$#isAssignableFrom(Key$) 值类型}是否符合赋值关系，最后将符合条件的标记为`
+    * requires`, 若不符合条件，则直接抛出异常；
+    * b. 生成向后的输出。该输出会首先标记为`useless`, 只有当需要的时候（事件a）才会取出并标记为`
+    * requires`. 最终的`useless`将会被丢去。
     * <p>
     * 注意: 本方法会让并行的任务先执行{@link #transition(Set)}进行输出转换, 以免在事件b中检查出相同的输出。
     */
@@ -327,7 +324,7 @@ object Dependency {
         mapUseless.put(last.name$, outs)
       }
     }
-    logger.i("genIOPrev", "trait:%s, inputRequired:%s, mapUseless:%s", last.name$, inputRequired, mapUseless)
+    logger.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s", last.name$, inputRequired, mapUseless)
   }
 
   /**
@@ -340,7 +337,7 @@ object Dependency {
     breakable {
       for (trat <- basis.traits.reverse /*从倒数第{一}个开始*/ ) {
         if (requires.isEmpty) break
-        consumeRequiresOnTransGlobal(trat, requires, basis, true)
+        consumeRequiresOnTransGlobal(trat, requires, basis, check = true)
         consumeRequires(trat, null, requires, basis, mapUseless)
       }
     }
@@ -351,22 +348,25 @@ object Dependency {
     * @param check 是否进行类型检查(在最后trim的时候，不需要再检查一遍)。
     */
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
-    val tranSet = basis.transGlobal(nameGlobal(prev /*不能是并行的，而这里必然不是*/))
-    val copy = requires.to[mutable.AnyRefMap].as[mutable.AnyRefMap[String, Key$[_]]]
-    breakable {
-      for (t <- tranSet; k <- copy.values if k.key.equals(t.out.key)) {
-        // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
-        // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
-        if (check) requireTypeMatch4Consume(k, t.out)
-        requires.remove(k.key)
-        requires.put(t.in.key, t.in)
-        break
+    val copy = requires.values.toSet
+    basis.transGlobal.get(prev.name$ /*不能是并行的，而这里必然不是*/).foreach { tranSet =>
+      tranSet.foreach { t =>
+        breakable {
+          for (k <- copy if k.key == t.out.key) {
+            // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
+            // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
+            if (check) requireTypeMatch4Consume(k, t.out)
+            requires.remove(k.key)
+            requires.put(t.in.key, t.in)
+            break
+          }
+        }
       }
     }
   }
 
   /**
-    * 从<code>useless</code>里面消化掉新的<code>requires</code>, 并把{[对trans输出的消化]对应的输入}增加到<code>requires</code>.
+    * 从`useless`里面消化掉新的`requires`, 并把{[对trans输出的消化]对应的输入}增加到`requires`.
     * <p>
     * 背景上下文：前面已经执行过消化的trait不可能因为后面的任务而取消或减少消化，只会不变或增多，因此本逻辑合理且运算量小。
     */
@@ -380,13 +380,14 @@ object Dependency {
         }
       }
     } else {
-      val outs = basis.dependencies.get(prev.name$).fold {
-        if (prev.outs$.isEmpty) mutable.Map.empty[String, Key$[_]] else new mutable.AnyRefMap[String, Key$[_]]
-      }(m => m)
+      val outs = basis.dependencies.getOrElseUpdate(prev.name$,
+        if (prev.outs$.isEmpty) mutable.Map.empty[String, Key$[_]] // 如果没有输出，那就算执行转换必然也是空的。
+        else new mutable.AnyRefMap[String, Key$[_]])
       consumeRequires(prev, requires, outs, mapUseless((if (parent.isNull) prev else parent).name$))
     }
   }
 
+  /** 注意：由于是从`useless`里面去拿，而`useless`都是已经转换过的，这符合`dependencies`的定义。 */
   private def consumeRequires(prev: Trait[_], requires: mutable.Map[String, Key$[_]],
                               outs: mutable.Map[String, Key$[_]], useless: mutable.Map[String, Key$[_]]) {
     if (prev.outs$.isEmpty) return // 根本就没有输出，就不浪费时间了。
@@ -415,7 +416,7 @@ object Dependency {
     if (trat.outs$.isEmpty) mutable.Map.empty
     else {
       val map = new mutable.AnyRefMap[String, Key$[_]]
-      trat.outs$.as[Set[Key$[_]]].foreach(k => map.put(k.key, k))
+      trat.outs$.foreach(k => map.put(k.key, k))
       // 先加入转换
       transOuts(basis.transformers(trat.name$), map)
       // 再看看有没有相同的输出
@@ -428,21 +429,21 @@ object Dependency {
         }
         mapPal ++= map
       }
-      logger.i("genOuts", "trait:%s, mapPal:%s, map:%s", trat.name$, mapPal, map)
+      logger.i("[genOuts]trait:%s, mapPal:%s, map:%s", trat.name$, mapPal, map)
       map
     }
   }
 
   private def transOuts(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Key$[_]]) {
     if (tranSet.nonNull && tranSet.nonEmpty && map.nonEmpty) {
-      val trans = new mutable.HashSet[Transformer[_, _]]
-      val sameKey = new mutable.HashSet[Transformer[_, _]]
+      var trans: List[Transformer[_, _]] = Nil
+      var sameKey: List[Transformer[_, _]] = Nil
       tranSet.filter(t => map.contains(t.in.key)).foreach { t =>
         // 先不从map移除, 可能多个transformer使用同一个源。
         val from = map(t.in.key)
         if (!t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
-        if (t.in.key.equals(t.out.key)) sameKey.add(t)
-        else trans.add(t)
+        if (t.in.key.equals(t.out.key)) sameKey = t :: sameKey
+        else trans = t :: trans
       }
       trans.foreach { t =>
         map.remove(t.in.key)
@@ -501,15 +502,14 @@ object Dependency {
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行trim。
     */
   private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Key$[_]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Key$[_]]) {
+    outsFlow.put(trat.name$, trimmed.values.toSet) // 注意：存储的是globalTrans后的结果（放在consumeTransGlobal前边）。
     consumeRequiresOnTransGlobal(trat, trimmed, basis, check = false)
-    val flow = trimmed.values.toSet
-    outsFlow.put(trat.name$, flow)
     if (trat.isParallel) {
       val inputs = new mutable.AnyRefMap[String, Key$[_]]
       val outs = new mutable.AnyRefMap[String, Key$[_]]
       for (tt <- trat.asParallel.traits()) {
         // 根据Tracker实现的实际情况，弃用这行。
-        // outsFlow.put(tt.name$(), flow);
+        // outsFlow.put(tt.name$(), flow)
         basis.dependencies.get(tt.name$).fold() {
           outs ++= _
         }
@@ -519,7 +519,7 @@ object Dependency {
       trimmed ++= inputs
     } else {
       basis.dependencies.get(trat.name$).foreach { dps =>
-        removeAll(trimmed, dps);
+        removeAll(trimmed, dps)
       }
       putAll(trimmed, trat.requires$)
     }
@@ -530,15 +530,14 @@ object Dependency {
     * 用于运行时执行转换操作。
     *
     * @param tranSet   转换器集合。
-    * @param map       输出不为<code>null</code>的值集合。
-    * @param nullVKeys 输出为<code>null</code>的值的{ @link Key$}集合。
-    * @param global    对于一个全局的转换，在最终输出集合里不用删除所有转换的输入。
+    * @param map       输出不为`null`的值集合。
+    * @param nullVKeys 输出为`null`的值的{ @link Key$}集合。
     */
-  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]], global: Boolean): Unit = {
+  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]]): Unit = {
     if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
       val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
       val nulls = new mutable.AnyRefMap[String, Key$[_]]
-      val trans = new mutable.HashSet[Transformer[_, _]]
+      var trans: List[Transformer[_, _]] = Nil
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
       // val sameKey = new mutable.HashSet[Transformer[_]]
       tranSet.foreach { t =>
@@ -547,13 +546,13 @@ object Dependency {
           val o = t.transform(map)
           if (o.isNull) nulls.put(t.out.key, t.out)
           else out.put(t.out.key, o)
-          trans.add(t)
+          trans = t :: trans
         } else if (nullVKeys.contains(t.in.key)) {
           nulls.put(t.out.key, t.out)
-          trans.add(t)
+          trans = t :: trans
         }
       }
-      if (!global) trans.foreach { t =>
+      trans.foreach { t =>
         map.remove(t.in.key)
         nullVKeys.remove(t.in.key)
       }

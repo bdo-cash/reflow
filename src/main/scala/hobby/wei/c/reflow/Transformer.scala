@@ -42,7 +42,7 @@ abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OU
     lazy val tpe = Reflect.getSuperclassTypeParameter(getClass, true)
   }
 
-  def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(null.as[OUT]) { in => transform(in) }
+  def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(null.as[OUT])(transform)
 
   protected abstract def transform(in: IN): OUT
 
@@ -54,7 +54,7 @@ abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OU
 
   override def canEqual(that: Any) = that.isInstanceOf[Transformer]
 
-  override def hashCode() = in.hashCode() * 41 + out.hashCode()
+  override def hashCode = in.hashCode * 41 + out.hashCode
 
-  override def toString = String.format("%s -> %s", in, out)
+  override def toString = s"$in -> $out"
 }

@@ -29,17 +29,17 @@ trait Env {
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
     log.i("input: %s", input)
-    in.fillWith(tracker.prevOutFlow)
+    in.fillWith(tracker.prevOutFlow())
     val cached = myCache(create = false)
     if (cached.nonNull) in.cache(cached)
     in
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)
 
-  private final def superCache: Cache = tracker.getCache
+  private final def superCache: ReinforceCache = tracker.getCache
 
   /** 在reinforce阶段，从缓存中取回。 */
-  private[reflow] final def obtainCache: Option[Cache] = {
+  private[reflow] final def obtainCache: Option[ReinforceCache] = {
     assert(isReinforcing)
     superCache.subs.get(trat.name$)
   }

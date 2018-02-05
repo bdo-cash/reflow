@@ -16,6 +16,9 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.locks.{Condition, ReentrantLock}
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
@@ -26,9 +29,7 @@ import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
-import java.util.concurrent._
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
-import java.util.concurrent.locks.{Condition, ReentrantLock}
+
 import scala.collection._
 import scala.collection.mutable.ListBuffer
 
@@ -38,29 +39,29 @@ import scala.collection.mutable.ListBuffer
   *          1.1, 31/01/2018
   */
 private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env]) {
-  private lazy final val snatcher = new Snatcher
+  private lazy final val snatcher4Init = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
   // 因此有这样的设计。
-  @volatile var inited: Boolean = outer.fold(false)(_.isReinforcing)
-  private final lazy val cache = outer.fold(new Cache) { env =>
-    if (env.isReinforcing) env.obtainCache.getOrElse(new Cache) else new Cache
+  @volatile private var cacheInited: Boolean = outer.fold(false)(_.isReinforcing)
+  private final lazy val reinforceCache = outer.fold(new ReinforceCache) { env =>
+    if (env.isReinforcing) env.obtainCache.getOrElse(new ReinforceCache) else new ReinforceCache
   }
   private[reflow] final lazy val reinforceRequired = new AtomicBoolean(false)
 
-  private final def getOrInitFromOuterCache(trat: String = null, sub: Option[Cache] = None): Cache = {
-    if (!inited) {
-      snatcher.tryOn {
-        if (!inited) {
+  private final def getOrInitFromOuterCache(trat: String = null, sub: Option[ReinforceCache] = None): ReinforceCache = {
+    if (!cacheInited) {
+      snatcher4Init.tryOn {
+        if (!cacheInited) {
           outer.foreach { env =>
-            env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(cache))
+            env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(reinforceCache))
           }
-          inited = true
+          cacheInited = true
         }
       }
     }
-    sub.foreach(cache.subs.putIfAbsent(trat, _))
-    cache
+    sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
+    reinforceCache
   }
 
   final def getCache = getOrInitFromOuterCache()
@@ -77,13 +78,15 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
 
   final def requireReinforce(trat: Trait[_ <: Task]): Boolean =
     if (!outer.fold(reinforceRequired.getAndSet(true))(_.requireReinforce())) {
-      getCache.reinforceBegin = trat.name$
-      getCache.reinforceInput = prevOutFlow()
-      onRequireReinforce()
+      val cache = getCache
+      cache.begins = trat.name$ :: cache.begins
+      cache.inputs = prevOutFlow()
+      // 如果是并行任务的话，怎么办
+      onRequireReinforce(cache)
       false
     } else true
 
-  protected def onRequireReinforce(): Unit = {}
+  protected def onRequireReinforce(cache: ReinforceCache): Unit = {}
 
   private[reflow] def onTaskStart(trat: Trait[_]): Unit
 
@@ -106,21 +109,24 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
   private[reflow] def endRunner(runner: Runner): Unit
 }
 
-private[reflow] class Cache {
+private[reflow] class ReinforceCache {
   // 用`trat.name$`作为`key`, 同一个`Reflow`中，`name$`是不能重名的，因此该方法可靠。
   /** 子`Trait`的`Task`缓存用到的`Out`。 */
   lazy val caches = new concurrent.TrieMap[String, Out]
   /** 子`Trait`的`Task`启动的`Reflow`对应的`Tracker`的`Cache`。 */
-  lazy val subs = new concurrent.TrieMap[String, Cache]
+  lazy val subs = new concurrent.TrieMap[String, ReinforceCache]
   /** `reinforce`阶段开始时的`Trait.name$`。 */
-  @volatile var reinforceBegin: String = _
-  @volatile var reinforceInput: Out = _
+  @volatile var begins: List[String] = Nil
+  @volatile var inputs: Out = _
+  /** 对于一个并行任务的某些子任务的`reinforce`请求，我们不打算再次执行整个并行任务，因此
+    * 需要保留`浏览`运行模式的`输入`（即`reinforceInput`）和`结果`（本`reinforceOut`），以便在`reinforce`之后合并输出。 */
+  @volatile var outs: Out = _
 
-  override def toString = s"caches:$caches, subs:$subs, reinforceBegin:$reinforceBegin, reinforceInput:$reinforceInput."
+  override def toString = s"ReinforceCache:\n caches:$caches,\n subs:$subs,\n begins:$begins,\n inputs:$inputs,\n outs:$outs."
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]], state: Scheduler.State$,
+  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_, _]], state: Scheduler.State$,
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
@@ -142,23 +148,21 @@ private[reflow] object Tracker {
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
       if (isReinforcing) {
         assert(state.get == COMPLETED || state.forward(COMPLETED))
-        val reinforceBegin = getCache.reinforceBegin
-          assert(reinforceBegin.nonNull)
-          assert(getCache.reinforceInput.nonNull, s"$reinforceBegin 应该有参数输入。")
-          while (remaining.head.name$ != reinforceBegin) {
-            remaining = remaining.tail
-          }
-          assert(remaining.nonEmpty)
-          怎么开始
+        state.forward(REINFORCE_PENDING)
+        val reinforceBegin = getCache.begins
+        assert(reinforceBegin.nonNull)
+        assert(getCache.inputs.nonNull, s"$reinforceBegin 应该有参数输入。")
 
-        是不是本子Reflow第一个请求reinforce
-        如果是
-        ， 那应该从这个开始
-        。 应该存入
+        要考虑到是不是并行任务
+        while (remaining.head.name$ != reinforceBegin) {
+          remaining = remaining.tail
+        }
+        assert(remaining.nonEmpty)
+        怎么开始
       } else {
         // TODO: 应该先处理这个
         traitIn
-        inputTrans
+        transIn
         if (tryScheduleNext(true)) {
           Worker.scheduleBuckets()
           true
@@ -178,15 +182,60 @@ private[reflow] object Tracker {
       if (runnersParallel.isEmpty && state.get$ != ABORTED && state.get$ != FAILED) {
         assert(sumParRunning.get == 0)
         progress.clear()
-        if (basis.stepOf(runner.trat) < 0) {
-          doTransform(basis.transGlobal.get(runner.trat.name$),,, global = true)
-        } else Locker.sync {
-          remaining.remove(0)
-        }
+        if (runner.trat == traitIn) {
+          结构待重整
+          ， 应该让prevOutFlow与当前合并
+          val map = outFlowTrimmed._map.concurrent
+          val nulls = outFlowTrimmed._nullValueKeys.concurrent
+          doTransform(transIn, map, nulls)
 
-        如果是 isSubReflow
-        ， 则不要走reinforce
-        。
+          val flow = new Out(basis.inputs)
+          flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
+
+          resetOutFlow(flow)
+          ？ ？ ？
+        } else {
+          val step = basis.stepOf(runner.trat)
+          结构待重整
+          ， 应该让prevOutFlow与当前合并
+          val map = outFlowTrimmed._map.concurrent
+          val nulls = outFlowTrimmed._nullValueKeys.concurrent
+          doTransform(basis.transGlobal(remaining.head.name$), map, nulls)
+          val trimmed = new Out(basis.outsFlowTrimmed(remaining.head.name$))
+          trimmed.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
+          outFlowTrimmed = trimmed
+
+          if (isReinforcing) { // 如果当前任务`是`申请了`reinforce`的，则应该把输出进行合并。
+            // TODO: 但也许不应该在这里合并，而是放在onUpdate事件里面。
+            val trat = basis.traits(step)
+            val cache = getCache
+            if (trat.isParallel) {
+              if (trat.asParallel.traits().exists(t => cache.begins.contains(t.name$))) {
+                outFlowTrimmed 合并
+                  cache.outs
+              }
+            } else {
+              assert(cache.begins.length == 1)
+              if (cache.begins.head == trat.name$) {
+                outFlowTrimmed 合并
+                  cache.outs
+              }
+            }
+          } else if (isReinforceRequired) { // 如果当前任务申请了`reinforce`，则应该把输出也缓存起来。
+            val trat = basis.traits(step) // 拿到父级trait（注意：如果当前是并行的任务，则runner的trat是子级）。
+          val cache = getCache
+            if (trat.isParallel) {
+              if (trat.asParallel.traits().exists(t => cache.begins.contains(t.name$))) {
+                cache.outs = outFlowTrimmed
+              }
+            } else {
+              assert(cache.begins.length == 1)
+              if (cache.begins.head == trat.name$) {
+                cache.outs = outFlowTrimmed
+              }
+            }
+          }
+        }
         if (!tryScheduleNext(false)) { // 全部运行完毕
           basis.outsFlowTrimmed
           basis.outs
@@ -197,7 +246,10 @@ private[reflow] object Tracker {
     // 必须在进度反馈完毕之后再下一个, 否则可能由于线程优先级问题, 导致低优先级的进度没有反馈完,
     // 而新进入的高优先级任务又要争用同步锁, 造成死锁的问题。
     private def tryScheduleNext(veryBeginning: Boolean): Boolean = Locker.sync {
-      if (!veryBeginning) {
+      if (veryBeginning) {
+      } else {
+        // 子任务不自行执行`reinforce`阶段。`浏览`阶段完毕就结束了。
+        if (isSubReflow && !isReinforcing && state.get.group == COMPLETED.group) return false
         if (remaining.isEmpty) {
           if (reinforceRequired.get()) {
             copy(reinforce /*注意写的时候没有synchronized*/ , remaining)
@@ -211,6 +263,7 @@ private[reflow] object Tracker {
       }
       assert(state.get == PENDING /*start()的时候已经PENDING了*/
         || state.forward(PENDING)
+        || state.get == REINFORCE_PENDING /*start()的时候已经REINFORCE_PENDING了*/
         || state.forward(REINFORCE_PENDING))
 
       val trat = if (veryBeginning) traitIn else remaining.head // 不poll(), 以备requireReinforce()的copy().
@@ -253,6 +306,10 @@ private[reflow] object Tracker {
       }
       joinOutFlow(prevOutFlow)
     }
+
+    / 似乎对于并行的任务可以这么操作
+    ， 待整改
+    。
 
     private def joinOutFlow(flow: Out): Unit = Locker.sync(outFlowTrimmed).get
       .putWith(flow._map, flow._nullValueKeys, ignoreDiffType = true, fullVerify = false)
@@ -481,7 +538,7 @@ private[reflow] object Tracker {
       val map = env.out._map.concurrent
       val nulls = env.out._nullValueKeys.concurrent
       log.w("doTransform, prepared:")
-      doTransform(env.tracker.basis.transformers(trat.name$), map, nulls, global = false)
+      doTransform(env.tracker.basis.transformers(trat.name$), map, nulls)
       log.w("doTransform, done.")
       val dps = env.tracker.basis.dependencies.get(trat.name$)
       log.i("dps: %s", dps.get)

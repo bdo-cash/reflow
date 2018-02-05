@@ -34,4 +34,12 @@ class Config protected() {
 object Config {
   val CPU_COUNT = Runtime.getRuntime.availableProcessors
   val DEF = new Config
+
+  def apply(coreSize: Int, poolSize: Int, aliveTime: Int): Config = new Config() {
+    override def corePoolSize() = coreSize
+
+    override def maxPoolSize() = poolSize
+
+    override def keepAliveTime() = aliveTime
+  }
 }
