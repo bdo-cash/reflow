@@ -16,9 +16,6 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent._
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
-import java.util.concurrent.locks.{Condition, ReentrantLock}
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
@@ -29,7 +26,9 @@ import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
-
+import java.util.concurrent._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.locks.{Condition, ReentrantLock}
 import scala.collection._
 import scala.collection.mutable.ListBuffer
 
@@ -49,12 +48,12 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
   }
   private[reflow] final lazy val reinforceRequired = new AtomicBoolean(false)
 
-  private final def getOrInitWithSuperCache(trat: String = null, sub: Option[Cache] = None): Cache = {
+  private final def getOrInitFromOuterCache(trat: String = null, sub: Option[Cache] = None): Cache = {
     if (!inited) {
       snatcher.tryOn {
         if (!inited) {
           outer.foreach { env =>
-            env.tracker.getOrInitWithSuperCache(env.trat.name$, Option(cache))
+            env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(cache))
           }
           inited = true
         }
@@ -64,7 +63,7 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
     cache
   }
 
-  final def getCache = getOrInitWithSuperCache()
+  final def getCache = getOrInitFromOuterCache()
 
   private[reflow] def prevOutFlow(): Out
 
@@ -76,14 +75,13 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
 
   final def isReinforcing: Boolean = outer.fold(getState.group == REINFORCING.group /*group代表了几个状态*/)(_.isReinforcing)
 
-  final def requireReinforce(trat: Trait[_ <: Task]): Boolean = outer.fold {
-    if (!reinforceRequired.getAndSet(true)) {
+  final def requireReinforce(trat: Trait[_ <: Task]): Boolean =
+    if (!outer.fold(reinforceRequired.getAndSet(true))(_.requireReinforce())) {
       getCache.reinforceBegin = trat.name$
       getCache.reinforceInput = prevOutFlow()
       onRequireReinforce()
       false
     } else true
-  }(_.requireReinforce())
 
   protected def onRequireReinforce(): Unit = {}
 
@@ -144,18 +142,28 @@ private[reflow] object Tracker {
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
       if (isReinforcing) {
         assert(state.get == COMPLETED || state.forward(COMPLETED))
+        val reinforceBegin = getCache.reinforceBegin
+          assert(reinforceBegin.nonNull)
+          assert(getCache.reinforceInput.nonNull, s"$reinforceBegin 应该有参数输入。")
+          while (remaining.head.name$ != reinforceBegin) {
+            remaining = remaining.tail
+          }
+          assert(remaining.nonEmpty)
+          怎么开始
+
         是不是本子Reflow第一个请求reinforce
         如果是
         ， 那应该从这个开始
         。 应该存入
+      } else {
+        // TODO: 应该先处理这个
+        traitIn
+        inputTrans
+        if (tryScheduleNext(true)) {
+          Worker.scheduleBuckets()
+          true
+        } else false
       }
-      // TODO: 应该先处理这个
-      traitIn
-      inputTrans
-      if (tryScheduleNext(true)) {
-        Worker.scheduleBuckets()
-        true
-      } else false
     }
 
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
