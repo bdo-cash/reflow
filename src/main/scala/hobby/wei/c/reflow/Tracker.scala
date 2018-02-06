@@ -32,11 +32,12 @@ import hobby.wei.c.tool.{Locker, Snatcher}
 
 import scala.collection._
 import scala.collection.mutable.ListBuffer
+import scala.util.control.Breaks._
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016;
-  *          1.1, 31/01/2018
+  *          1.1, 31/01/2018.
   */
 private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env]) {
   private lazy final val snatcher4Init = new Snatcher
@@ -120,7 +121,7 @@ private[reflow] class ReinforceCache {
   @volatile var inputs: Out = _
   /** 对于一个并行任务的某些子任务的`reinforce`请求，我们不打算再次执行整个并行任务，因此
     * 需要保留`浏览`运行模式的`输入`（即`reinforceInput`）和`结果`（本`reinforceOut`），以便在`reinforce`之后合并输出。 */
-  @volatile var outs: Out = _
+  @volatile var outs: Set[Key$[_]] = _
 
   override def toString = s"ReinforceCache:\n caches:$caches,\n subs:$subs,\n begins:$begins,\n inputs:$inputs,\n outs:$outs."
 }
@@ -133,41 +134,49 @@ private[reflow] object Tracker {
     private lazy val buffer4Reports = new ListBuffer[() => Unit]
     private lazy val snatcher = new Snatcher()
 
-    // 本数据结构是同步操作的, 不需要ConcurrentLinkedQueue。
-    @volatile private var remaining = basis.traits
-    private val sum = remaining.length
+    private val sum = basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Float]
     private lazy val sumParRunning = new AtomicInteger
     private lazy val reporter = new Reporter(feedback, sum)
+    @volatile private var remaining: Seq[Trait[_ <: Task]] = _
     @volatile private var normalDone, reinforceDone: Boolean = _
-    @volatile private var outFlowTrimmed = new Out(Map.empty[String, Key$[_]])
-    @volatile private[reflow] var prevOutFlow: Out = _
+    @volatile private var outFlowTrimmed, prevOutFlow: Out = _
 
     private[reflow] def start(): Boolean = {
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
       if (isReinforcing) {
         assert(state.get == COMPLETED || state.forward(COMPLETED))
         state.forward(REINFORCE_PENDING)
-        val reinforceBegin = getCache.begins
-        assert(reinforceBegin.nonNull)
-        assert(getCache.inputs.nonNull, s"$reinforceBegin 应该有参数输入。")
-
-        要考虑到是不是并行任务
-        while (remaining.head.name$ != reinforceBegin) {
-          remaining = remaining.tail
+        val cache = getCache
+        assert(cache.begins.nonNull)
+        assert(cache.inputs.nonNull, s"${cache.inputs} 应该缓存有输入参数。")
+        remaining = basis.traits
+        // 切换到reinforce的开始位置
+        breakable {
+          while (true) {
+            if (remaining.head.isParallel) {
+              if (remaining.head.asParallel.traits().forall(t => !cache.begins.contains(t.name$))) {
+                remaining = remaining.tail
+              } else break
+            } else {
+              if (remaining.head.name$ != cache.begins.head /*只有一个元素*/ ) {
+                remaining = remaining.tail
+              } else break
+            }
+          }
         }
         assert(remaining.nonEmpty)
-        怎么开始
-      } else {
-        // TODO: 应该先处理这个
-        traitIn
-        transIn
-        if (tryScheduleNext(true)) {
-          Worker.scheduleBuckets()
-          true
-        } else false
+        prevOutFlow = cache.inputs
+        outFlowTrimmed = new Out(cache.outs)
+      } else { // 非 reinforce，一开始 remaining == null
+        prevOutFlow = new Out(Set.empty[Key$[_]]
+        outFlowTrimmed = new Out(basis.inputs)
       }
+      if (tryScheduleNext()) {
+        Worker.scheduleBuckets()
+        true
+      } else false
     }
 
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
@@ -192,7 +201,7 @@ private[reflow] object Tracker {
           val flow = new Out(basis.inputs)
           flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
 
-          resetOutFlow(flow)
+          outFlowNextStage(flow)
           ？ ？ ？
         } else {
           val step = basis.stepOf(runner.trat)
@@ -226,17 +235,20 @@ private[reflow] object Tracker {
           val cache = getCache
             if (trat.isParallel) {
               if (trat.asParallel.traits().exists(t => cache.begins.contains(t.name$))) {
-                cache.outs = outFlowTrimmed
+                cache.outs = outFlowTrimmed.keysDef()
               }
             } else {
               assert(cache.begins.length == 1)
               if (cache.begins.head == trat.name$) {
-                cache.outs = outFlowTrimmed
+                cache.outs = outFlowTrimmed.keysDef()
               }
             }
           }
         }
-        if (!tryScheduleNext(false)) { // 全部运行完毕
+        if (remaining.isNull) remaining = basis.traits
+        else if (remaining.isEmpty) {
+        } else remaining = remaining.tail
+        if (!tryScheduleNext()) { // 全部运行完毕
           basis.outsFlowTrimmed
           basis.outs
         }
@@ -245,8 +257,9 @@ private[reflow] object Tracker {
 
     // 必须在进度反馈完毕之后再下一个, 否则可能由于线程优先级问题, 导致低优先级的进度没有反馈完,
     // 而新进入的高优先级任务又要争用同步锁, 造成死锁的问题。
-    private def tryScheduleNext(veryBeginning: Boolean): Boolean = Locker.sync {
-      if (veryBeginning) {
+    private def tryScheduleNext(): Boolean = Locker.sync {
+      if (remaining.isNull) { // very beginning...
+
       } else {
         // 子任务不自行执行`reinforce`阶段。`浏览`阶段完毕就结束了。
         if (isSubReflow && !isReinforcing && state.get.group == COMPLETED.group) return false
@@ -281,7 +294,7 @@ private[reflow] object Tracker {
         runnersParallel += ((new Runner(Env(trat, this)), 0))
       }
       sumParRunning.set(runnersParallel.size)
-      resetOutFlow(new Out(basis.outsFlowTrimmed(trat.name$)))
+      outFlowNextStage(trat)
       // 在调度之前获得结果比较保险
       val hasMore = sumParRunning.get() > 0
       runnersParallel.foreach { kv =>
@@ -299,17 +312,13 @@ private[reflow] object Tracker {
       hasMore
     }.get
 
-    private def resetOutFlow(flow: Out): Unit = {
+    private def outFlowNextStage(trat: Trait[_]): Unit = {
       Locker.sync {
         prevOutFlow = outFlowTrimmed
-        outFlowTrimmed = flow
+        outFlowTrimmed = new Out(basis.outsFlowTrimmed(trat.name$))
       }
       joinOutFlow(prevOutFlow)
     }
-
-    / 似乎对于并行的任务可以这么操作
-    ， 待整改
-    。
 
     private def joinOutFlow(flow: Out): Unit = Locker.sync(outFlowTrimmed).get
       .putWith(flow._map, flow._nullValueKeys, ignoreDiffType = true, fullVerify = false)
@@ -435,7 +444,7 @@ private[reflow] object Tracker {
 
     override private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit = {
       val step = basis.stepOf(trat)
-      if (step < 0) resetOutFlow(flow)
+      if (step < 0) outFlowNextStage(flow)
       else joinOutFlow(flow)
       // 由于不是在这里移除(runnersParallel.remove(runner)), 所以不能用这个判断条件：
       //(runnersParallel.size == 1 && runnersParallel.contains(runner))
