@@ -258,18 +258,14 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  implicit class ToMap[K, V](map: Map[K, V]) {
-    def mutable = {
-      val mutMap = new mutable.AnyRefMap[K, V]
-      map.foreach(mutMap += _)
-      mutMap
-    }
+  implicit class MapTo[K, V](map: Map[K, V]) {
+    def mutable = new mutable.AnyRefMap[K, V] ++= map
 
-    def concurrent = {
-      val concurMap = new concurrent.TrieMap[K, V]
-      map.foreach(concurMap += _)
-      concurMap
-    }
+    def concurrent = new concurrent.TrieMap[K, V] ++= map
+  }
+
+  implicit class SetTo[T](set: Set[T]) {
+    def mutable = new mutable.HashSet[T] ++= set
   }
 
   implicit class IsPar(trat: Trait[_]) {
@@ -530,16 +526,22 @@ object Dependency extends TAG.ClassName {
     *
     * @param tranSet   转换器集合。本方法执行完成后，仅包含被应用的`Transformer`集合（因为有些可能用不上）。
     * @param map       输出不为`null`的值集合。
-    * @param nullVKeys 输出为`null`的值的{ @link Key$}集合。
+    * @param nullVKeys 输出为`null`的值的`Key$`集合。
+    * @param prefer    输出所关心的`Key$`s。可不传参，表示应用所有转换。注意：如果传`empty`集合，将导致[不会]应用任何转换。
+    *                  <p>
+    *                  本参数的存在源于两种的不同的需求：
+    *                  1. 输入是精简后的，即：已有的输入都应当尽可能的去作转换（依赖构建的时候已检测通过）。这种情况不需要传本参数；
+    *                  2. 已知输出是精简后的，但输入有可能冗余。这种情况应尽量传本参数，以便减少运算。
     */
-  def doTransform(tranSet: mutable.Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]]): Unit = {
+  def doTransform(tranSet: mutable.Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]],
+                  prefer: Map[String, Key$[_]] = null): Unit = {
     if (tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
       val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
       val nulls = new mutable.AnyRefMap[String, Key$[_]]
       var trans: List[Transformer[_, _]] = Nil
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
       // val sameKey = new mutable.HashSet[Transformer[_]]
-      tranSet.foreach { t =>
+      tranSet.filter(t => if (prefer.isNull) true else prefer.contains(t.out.key)).foreach { t =>
         if (map.contains(t.in.key)) {
           // 先不从map移除, 可能多个transformer使用同一个源。
           val o = t.transform(map)
