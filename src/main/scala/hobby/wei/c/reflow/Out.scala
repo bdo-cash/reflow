@@ -27,6 +27,8 @@ import scala.collection.concurrent.TrieMap
   * @version 1.0, 26/06/2016
   */
 class Out private[reflow](map: Map[String, Key$[_]]) {
+  private[reflow] def this() = this(Map.empty[String, Key$[_]])
+
   private[reflow] def this(keys: Set[Key$[_]]) = this(
     (new mutable.AnyRefMap[String, Key$[_]] /: keys) {
       (m, k) =>
