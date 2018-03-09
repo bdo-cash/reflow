@@ -61,7 +61,7 @@ object Assist extends TAG.ClassName {
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKey$kDiff[C <: Set[Key$[_]]](keys: C): C = {
+  def requireKkDiff[C <: Set[Key$[_]]](keys: C): C = {
     if (keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -73,9 +73,9 @@ object Assist extends TAG.ClassName {
   }
 
   /**
-    * 要求相同的输入key的type也相同，但不要求不能有相同的输出key，因为输出key由需求决定，而需求已经限制了不同。
+    * 要求相同的输入key的type也相同，且不能有相同的输出k.key。
     */
-  def requireTransInTypeSame[C <: Set[Transformer[_, _]]](tranSet: C): C = {
+  def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[_, _]]](tranSet: C): C = {
     if (tranSet.nonEmpty) {
       val map = new mutable.AnyRefMap[String, Transformer[_, _]]()
       for (t <- tranSet) {
@@ -86,6 +86,7 @@ object Assist extends TAG.ClassName {
           map.put(t.in.key, t)
         }
       }
+      requireKkDiff(tranSet.map(_.out))
     }
     tranSet
   }

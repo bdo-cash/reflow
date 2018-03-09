@@ -28,8 +28,8 @@ import scala.ref.WeakReference
   * @version 1.0, 14/08/2016
   */
 abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[_, _]*) {
-  private[reflow] val keys: immutable.Set[Key$[_]] = requireKey$kDiff(requireElemNonNull(_keys.toSet))
-  private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTypeSame(requireElemNonNull(_trans.toSet))
+  private[reflow] val keys: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(_keys.toSet))
+  private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
 
   private[reflow] def fillValues(out: Out) {
     out.keysDef().intersect(keys).foreach(key =>

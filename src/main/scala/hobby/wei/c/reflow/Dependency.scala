@@ -127,7 +127,7 @@ class Dependency private[reflow]() {
 
   private def transition$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
-      basis.transformers.put(basis.last(true).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
+      basis.transformers.put(basis.last(true).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     }
     this
   }
@@ -150,7 +150,7 @@ class Dependency private[reflow]() {
 
   private def next$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTypeSame(requireElemNonNull(tranSet)))
+      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
   }
 
@@ -161,7 +161,7 @@ class Dependency private[reflow]() {
     * @return { @link Scheduler.Starter}接口。
     */
   def submit(outputs: Set[Key$[_]]): Reflow = {
-    requireKey$kDiff(outputs)
+    requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
     val uselesx = useless.mapValues(_.mutable.as[mutable.Map[String, Key$[_]]]).mutable
     val inputReqx = inputRequired.mutable
@@ -190,11 +190,11 @@ class Dependency private[reflow]() {
 object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些Key$(transform后的)。注意：可能get出来为null, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。注意：可能`get`出来为`null`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
-    /** 任务的输出经过转换, 生成最终输出传给下一个任务。 */
+    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。注意：仅转换当前任务的输出，区别于`transGlobal`。 */
     val transformers: Map[String, Set[Transformer[_, _]]]
-    /** 可把前面任意任务的输出作为输入的全局转换器。 */
+    /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。 */
     val transGlobal: Map[String, Set[Transformer[_, _]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? 注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
@@ -348,17 +348,15 @@ object Dependency extends TAG.ClassName {
     */
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
     val copy = requires.values.toSet
-    basis.transGlobal.get(prev.name$ /*不能是并行的，而这里必然不是*/).foreach { tranSet =>
-      tranSet.foreach { t =>
-        breakable {
-          for (k <- copy if k.key == t.out.key) {
-            // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
-            // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
-            if (check) requireTypeMatch4Consume(k, t.out)
-            requires.remove(k.key)
-            requires.put(t.in.key, t.in)
-            break
-          }
+    basis.transGlobal(prev.name$ /*不能是并行的，而这里必然不是*/).foreach { t =>
+      breakable {
+        for (k <- copy if k.key == t.out.key) {
+          // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
+          // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
+          if (check) requireTypeMatch4Consume(k, t.out)
+          requires.remove(k.key)
+          requires.put(t.in.key, t.in)
+          break
         }
       }
     }
@@ -524,11 +522,11 @@ object Dependency extends TAG.ClassName {
       }
       putAll(trimmed, trat.requires$)
     }
-    if (debugMode) requireKey$kDiff(trimmed.values)
+    if (debugMode) requireKkDiff(trimmed.values)
   }
 
   /**
-    * 用于运行时执行转换操作。
+    * 用于运行时执行转换操作。注意：本方法已经忽略了用不上的`Transformer`。
     *
     * @param tranSet   转换器集合。
     * @param map       输出不为`null`的值集合。

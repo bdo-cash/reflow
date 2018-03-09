@@ -73,9 +73,9 @@ trait Trait[T <: Task] extends Equals {
 
   private[reflow] lazy val name$: String = requireNonEmpty(name())
 
-  private[reflow] lazy val requires$: immutable.Set[Key$[_]] = requireKey$kDiff(requireElemNonNull(requires()))
+  private[reflow] lazy val requires$: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(requires()))
 
-  private[reflow] lazy val outs$: immutable.Set[Key$[_]] = requireKey$kDiff(requireElemNonNull(outs()))
+  private[reflow] lazy val outs$: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(outs()))
 
   private[reflow] lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
 
