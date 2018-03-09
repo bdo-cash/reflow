@@ -528,12 +528,12 @@ object Dependency extends TAG.ClassName {
   /**
     * 用于运行时执行转换操作。注意：本方法已经忽略了用不上的`Transformer`。
     *
-    * @param tranSet   转换器集合。
+    * @param tranSet   转换器集合。本方法执行完成后，仅包含被应用的`Transformer`集合（因为有些可能用不上）。
     * @param map       输出不为`null`的值集合。
     * @param nullVKeys 输出为`null`的值的{ @link Key$}集合。
     */
-  def doTransform(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]]): Unit = {
-    if (tranSet.nonNull && tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
+  def doTransform(tranSet: mutable.Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]]): Unit = {
+    if (tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
       val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
       val nulls = new mutable.AnyRefMap[String, Key$[_]]
       var trans: List[Transformer[_, _]] = Nil
@@ -557,7 +557,9 @@ object Dependency extends TAG.ClassName {
       }
       if (out.nonEmpty) map ++= out
       if (nulls.nonEmpty) nullVKeys ++= nulls
-    }
+      tranSet.clear()
+      tranSet ++= trans
+    } else tranSet.clear()
   }
 
   def copy[C <: mutable.SetLike[Trait[_], C]](src: C, dest: C): C = {

@@ -20,7 +20,6 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 
 import scala.collection._
-import scala.collection.concurrent.TrieMap
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -46,7 +45,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify = true)
   }
 
-  private[reflow] def verify(): Unit = putWith(TrieMap.empty, TrieMap.empty, ignoreDiffType = true, fullVerify = true)
+  private[reflow] def verify(): Unit = putWith(immutable.Map.empty, immutable.Map.empty, ignoreDiffType = true, fullVerify = true)
 
   /**
     * 若调用本方法, 则必须一次填满, 否则报异常。
@@ -58,7 +57,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     *                       而有时候不可以（如：当前任务给既定的输出赋值）。
     * @param fullVerify     检查{#keys}是否全部输出。
     */
-  private[reflow] def putWith(map: concurrent.Map[String, Any], nulls: concurrent.Map[String, Key$[_]],
+  private[reflow] def putWith(map: Map[String, Any], nulls: Map[String, Key$[_]],
                               ignoreDiffType: Boolean, fullVerify: Boolean): Unit = {
     _keys.values.foreach { k =>
       if (map.contains(k.key)) {
