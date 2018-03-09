@@ -54,7 +54,7 @@ trait Env {
   /**
     * 请求强化运行。
     *
-    * @return 之前的任务是否已经请求过, 同{isReinforceRequired()}
+    * @return （在本任务或者本次调用）之前是否已经请求过, 同{isReinforceRequired()}。
     */
   final def requireReinforce(t: Trait[_ <: Task] = trat): Boolean = tracker.requireReinforce(t)
 

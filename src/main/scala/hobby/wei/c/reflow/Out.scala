@@ -52,13 +52,15 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     * @param map
     * @param nulls          因为value为null导致无法插入到map的key的集合。
     * @param ignoreDiffType 是否忽略不同值类型({Key$})。
+    *                       有时候类型可以被覆盖（如：后面的任务的输出可以覆盖前面任务相同key的输出），
+    *                       而有时候不可以（如：当前任务给既定的输出赋值）。
     * @param fullVerify     检查{#keys}是否全部输出。
     */
   private[reflow] def putWith(map: concurrent.Map[String, Any], nulls: concurrent.Map[String, Key$[_]],
                               ignoreDiffType: Boolean, fullVerify: Boolean): Unit = {
     _keys.values.foreach { k =>
       if (map.contains(k.key)) {
-        if (k.putValue(_map, map.get(k.key), ignoreDiffType)) {
+        if (k.putValue(_map, map(k.key), ignoreDiffType)) {
           _nullValueKeys.remove(k.key)
         }
       } else if (!_map.contains(k.key)) {
@@ -114,7 +116,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     * @tparam T
     * @return
     */
-  def get[T](key: String): Option[T] = get(_keys.get(key).as[Key$[T]])
+  def get[T](key: String): Option[T] = get(_keys(key).as[Key$[T]])
 
   /**
     * 取得key对应的value。

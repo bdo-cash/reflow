@@ -58,8 +58,7 @@ object Worker {
     if (thread.isDaemon) thread.setDaemon(false)
   }
 
-  private var sThreadPoolExecutor: ThreadPoolExecutor = _
-  private final val sPoolWorkQueue: BlockingQueue[Runnable] = new LinkedTransferQueue[Runnable]() {
+  private final lazy val sPoolWorkQueue: BlockingQueue[Runnable] = new LinkedTransferQueue[Runnable]() {
     override def offer(r: Runnable) = {
       /* 如果不放入队列并返回false，会迫使增加线程。但是这样又会导致总是增加线程，而空闲线程得不到重用。
       因此在有空闲线程的情况下就直接放入队列。若大量长任务致使线程数增加到上限，
@@ -71,27 +70,20 @@ object Worker {
     }
   }
 
-  private def getExecutor: ThreadPoolExecutor = {
-    if (sThreadPoolExecutor.isNull) {
-      Locker.syncr {
-        if (sThreadPoolExecutor.isNull) {
-          val config = Reflow.config
-          sThreadPoolExecutor = new ThreadPoolExecutor(config.corePoolSize(), config.maxPoolSize(),
-            config.keepAliveTime(), TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
-              override def rejectedExecution(r: Runnable, executor: ThreadPoolExecutor): Unit = {
-                Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
-                try {
-                  sPoolWorkQueue.offer(r, 0, TimeUnit.MILLISECONDS)
-                } catch {
-                  case ignore: InterruptedException /*不可能出现*/ =>
-                    throw ignore
-                }
-              }
-            })
+  lazy val sThreadPoolExecutor: ThreadPoolExecutor = {
+    val config = Reflow.config
+    new ThreadPoolExecutor(config.corePoolSize(), config.maxPoolSize(),
+      config.keepAliveTime(), TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
+        override def rejectedExecution(r: Runnable, executor: ThreadPoolExecutor): Unit = {
+          Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
+          try {
+            sPoolWorkQueue.offer(r, 0, TimeUnit.MILLISECONDS)
+          } catch {
+            case ignore: InterruptedException /*不可能出现*/ =>
+              throw ignore
+          }
         }
-      }
-    }
-    sThreadPoolExecutor
+      })
   }
 
   private[reflow] def setThreadResetor(resetor: ThreadResetor) = Locker.syncr {
@@ -138,7 +130,7 @@ object Worker {
 
   def scheduleBuckets() {
     if (!sSnatcher.snatch()) return
-    val executor = getExecutor
+    val executor = sThreadPoolExecutor
     breakable {
       while (true) {
         val allowRunLevel = {
