@@ -190,14 +190,13 @@ class Dependency private[reflow]() {
 object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些Key$(transform后的)。
-      * 注意：可能get出来为null, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些Key$(transform后的)。注意：可能get出来为null, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
     /** 任务的输出经过转换, 生成最终输出传给下一个任务。 */
     val transformers: Map[String, Set[Transformer[_, _]]]
     /** 可把前面任意任务的输出作为输入的全局转换器。 */
     val transGlobal: Map[String, Set[Transformer[_, _]]]
-    /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? */
+    /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? 注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
     val inputs: immutable.Set[Key$[_]]
     val outs: immutable.Set[Key$[_]]
@@ -502,8 +501,10 @@ object Dependency extends TAG.ClassName {
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行trim。
     */
   private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Key$[_]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Key$[_]]) {
-    outsFlow.put(trat.name$, trimmed.values.toSet) // 注意：存储的是globalTrans后的结果（放在consumeTransGlobal前边）。
     consumeRequiresOnTransGlobal(trat, trimmed, basis, check = false)
+    // 注意：放在这里，存储的是globalTrans`前`的结果。
+    // 如果要存储globalTrans`后`的结果，则应该放在consumeTransGlobal前边（即第1行）。
+    outsFlow.put(trat.name$, trimmed.values.toSet)
     if (trat.isParallel) {
       val inputs = new mutable.AnyRefMap[String, Key$[_]]
       val outs = new mutable.AnyRefMap[String, Key$[_]]
