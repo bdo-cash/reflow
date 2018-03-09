@@ -19,11 +19,10 @@ package hobby.wei.c.reflow
 import java.util.concurrent.atomic.AtomicInteger
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
-import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{Period, _}
 import hobby.wei.c.reflow.Tracker.SubReflowTask
 
-import scala.collection._
+import scala.collection.{mutable, _}
 
 /**
   * 用于发布{@link Task}的I/O接口及调度策略信息。
@@ -82,6 +81,8 @@ trait Trait[T <: Task] extends Equals {
   private[reflow] lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
 
   private[reflow] lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
+
+  private[reflow] val isInput = false
 
   override def equals(any: scala.Any) = super.equals(any)
 
@@ -145,15 +146,13 @@ private[reflow] object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(in: In, requires: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
+  private[reflow] final class Input(in: In, override val priority: Int) extends Empty {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
+    override private[reflow] val isInput = true
+
     override protected def newTask(env: Env) = new Task(env) {
-      override protected def doWork(): Unit = {
-        val input = new Out(requires)
-        in.fillValues(input)
-        env.out.putWith(input._map, putAll(new concurrent.TrieMap[String, Key$[_]], outs$), ignoreDiffType = false, fullVerify = true)
-      }
+      override protected def doWork(): Unit = in.fillValues(env.out)
     }
 
     override protected def outs() = in.keys

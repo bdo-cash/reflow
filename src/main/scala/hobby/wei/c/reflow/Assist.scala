@@ -22,6 +22,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.anno.proguard.Burden
+import hobby.wei.c.reflow.Reflow._
 
 import scala.collection._
 import scala.ref.WeakReference
@@ -40,7 +41,7 @@ object Assist extends TAG.ClassName {
 
   def assertf(b: Boolean, msg: => String = null): Unit = assertf(b, msg, force = true)
 
-  private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || Reflow.debugMode) && !b) Throws.assertError(msg)
+  private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || debugMode) && !b) Throws.assertError(msg)
 
   def requireNonEmpty(s: String): String = {
     assertf(s.nonNull && s.nonEmpty)
@@ -48,11 +49,11 @@ object Assist extends TAG.ClassName {
   }
 
   def requireElemNonNull[C <: Set[_ <: AnyRef]](col: C): C = {
-    col.seq.foreach(t => assertf(t.nonNull, "元素不能为null."))
+    if (debugMode) col.seq.foreach(t => assertf(t.nonNull, "元素不能为null."))
     col
   }
 
-  def requireTaskNameDifferent(trat: Trait[_], names: mutable.Set[String]) {
+  def requireTaskNameDiff(trat: Trait[_], names: mutable.Set[String]): Unit = if (debugMode) {
     val name = trat.name$
     if (names.contains(name)) Throws.sameName(name)
     names.add(name)
@@ -62,7 +63,7 @@ object Assist extends TAG.ClassName {
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
   def requireKkDiff[C <: Set[Key$[_]]](keys: C): C = {
-    if (keys.nonEmpty) {
+    if (debugMode && keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
         if (ks.contains(k.key)) Throws.sameKey$k(k)
@@ -76,7 +77,7 @@ object Assist extends TAG.ClassName {
     * 要求相同的输入key的type也相同，且不能有相同的输出k.key。
     */
   def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[_, _]]](tranSet: C): C = {
-    if (tranSet.nonEmpty) {
+    if (debugMode && tranSet.nonEmpty) {
       val map = new mutable.AnyRefMap[String, Transformer[_, _]]()
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {

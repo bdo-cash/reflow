@@ -18,6 +18,8 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
+import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Reflow._
 
 import scala.collection._
 
@@ -68,7 +70,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
         if (nulls.contains(k.key)) {
           _nullValueKeys.put(k.key, k)
         } else if (fullVerify) {
-          Assist.Throws.lackIOKey(k, in$out = false)
+          if (debugMode) Throws.lackIOKey(k, in$out = false)
         }
       }
     }
@@ -104,7 +106,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     */
   private[reflow] def cache[T](key: String, value: T): Unit = {
     if (_keys.contains(key)) {
-      Assist.Throws.sameCacheKey(_keys(key))
+      if (debugMode) Throws.sameCacheKey(_keys(key))
     } else if (value.nonNull) {
       _map.put(key, value)
     }

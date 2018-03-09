@@ -48,7 +48,7 @@ class Dependency private[reflow]() {
     */
   def and(trat: Trait[_ <: Task]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
-    requireTaskNameDifferent(trat, names)
+    requireTaskNameDiff(trat, names)
     if (basis.traits.isEmpty) {
       basis.traits += trat
     } else {
@@ -73,7 +73,7 @@ class Dependency private[reflow]() {
     */
   def next(trat: Trait[_]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
-    requireTaskNameDifferent(trat, names)
+    requireTaskNameDiff(trat, names)
     basis.last(false).foreach { last =>
       genIOPrev(last, null, basis, inputRequired, useless)
     }
@@ -190,11 +190,11 @@ class Dependency private[reflow]() {
 object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。注意：可能`get`出来为`null`, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
-    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。注意：仅转换当前任务的输出，区别于`transGlobal`。 */
+    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
     val transformers: Map[String, Set[Transformer[_, _]]]
-    /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。 */
+    /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。可能`get`出来为`null`。 */
     val transGlobal: Map[String, Set[Transformer[_, _]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? 注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
@@ -344,7 +344,7 @@ object Dependency extends TAG.ClassName {
     */
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
     val copy = requires.values.toSet
-    basis.transGlobal(prev.name$ /*不能是并行的，而这里必然不是*/).foreach { t =>
+    basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty).foreach { t =>
       breakable {
         for (k <- copy if k.key == t.out.key) {
           // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
@@ -403,7 +403,7 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  private def requireTypeMatch4Consume(require: Key$[_], out: Key$[_]): Unit = if (!require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
+  private def requireTypeMatch4Consume(require: Key$[_], out: Key$[_]): Unit = if (debugMode && !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
   private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Key$[_]], basis: Basis): mutable.Map[String, Key$[_]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
@@ -411,13 +411,15 @@ object Dependency extends TAG.ClassName {
       val map = new mutable.AnyRefMap[String, Key$[_]]
       trat.outs$.foreach(k => map.put(k.key, k))
       // 先加入转换
-      transOuts(basis.transformers(trat.name$), map)
+      transOuts(basis.transformers.getOrElse(trat.name$, null), map)
       // 再看看有没有相同的输出
       if (mapPal.nonNull) {
-        if (mapPal.nonEmpty) map.values.foreach { k =>
-          if (mapPal.contains(k.key)) {
-            // 并行的任务不应该有相同的输出
-            Throws.sameOutKeyParallel(k, trat)
+        if (debugMode) {
+          if (mapPal.nonEmpty) map.values.foreach { k =>
+            if (mapPal.contains(k.key)) {
+              // 并行的任务不应该有相同的输出
+              Throws.sameOutKeyParallel(k, trat)
+            }
           }
         }
         mapPal ++= map
@@ -434,7 +436,7 @@ object Dependency extends TAG.ClassName {
       tranSet.filter(t => map.contains(t.in.key)).foreach { t =>
         // 先不从map移除, 可能多个transformer使用同一个源。
         val from = map(t.in.key)
-        if (!t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
+        if (debugMode && !t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
         if (t.in.key.equals(t.out.key)) sameKey = t :: sameKey
         else trans = t :: trans
       }
@@ -455,11 +457,13 @@ object Dependency extends TAG.ClassName {
     if (requires.nonEmpty) {
       requires.values.toSet.filter(k => inputRequired.contains(k.key)).foreach { k =>
         val in = inputRequired(k.key)
-        if (!k.isAssignableFrom(in)) {
-          // input不是require的子类, 但是require是input的子类, 那么把require存进去。
-          if (in.isAssignableFrom(k)) inputRequired.put(k.key, k)
-          else Throws.typeNotMatch4Required(in, k)
-        }
+        if (debugMode) {
+          if (!k.isAssignableFrom(in)) {
+            // input不是require的子类, 但是require是input的子类, 那么把require存进去。
+            if (in.isAssignableFrom(k)) inputRequired.put(k.key, k)
+            else Throws.typeNotMatch4Required(in, k)
+          }
+        } else inputRequired.put(k.key, k)
         requires.remove(k.key)
       }
       // 初始输入里(前面任务放入的)也没有, 那么也放进去。
@@ -469,13 +473,13 @@ object Dependency extends TAG.ClassName {
 
   private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_, _]]): Map[String, Key$[_]] = {
     val inputs = new mutable.AnyRefMap[String, Key$[_]]
-    in.keys.foreach(k => inputs.put(k.key, k))
+    putAll(inputs, in.keys)
     transOuts(trans4Input, inputs)
     requireRealInEnough(inputRequired.values.toSet, inputs)
     inputs
   }
 
-  private def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]): Unit = requires.foreach { k =>
+  private def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]): Unit = if (debugMode) requires.foreach { k =>
     realIn.get(k.key).fold(Throws.lackIOKey(k, in$out = true)) { kIn =>
       if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
     }
