@@ -19,12 +19,12 @@ package hobby.wei.c.reflow
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
-import hobby.wei.c.reflow.Dependency.requireInputsEnough
+import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{P_NORMAL, Period}
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
-import scala.collection.Map
+import scala.collection.{mutable, _}
 
 /**
   * 任务[串并联]组合调度框架。
@@ -209,10 +209,14 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  class Impl private[reflow](basis: Dependency.Basis, inputRequired: Map[String, Key$[_]]) extends Reflow {
+  class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Key$[_]]) extends Reflow {
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
-      requireInputsEnough(inputs, inputRequired, inputs.trans)
-      val traitIn = new Trait.Input(inputs, inputRequired.values.toSet[Key$[_]], basis.first(true).get.priority$)
+      // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
+      val required = inputRequired.mutable
+      consumeTranSet(inputs.trans, required, check = true)
+      val reqSet = required.values.toSet
+      requireRealInEnough(reqSet, putAll(new mutable.AnyRefMap[String, Key$[_]], inputs.keys))
+      val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)
       // 第一个任务是不需要trim的，至少从第二个以后。
       // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
       new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster, outer).start$()

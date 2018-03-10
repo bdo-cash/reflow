@@ -176,7 +176,7 @@ class Dependency private[reflow]() {
       override val outsFlowTrimmed = trimOutsFlow(basisx).mapValues(_.toSet).toMap
       override val inputs = inputReqx.values.toSet
       override val outs = outputs.toSet
-    }, inputReqx)
+    }, inputReqx.toMap)
   }
 
   def fork(): Dependency = Reflow.create(this)
@@ -342,18 +342,24 @@ object Dependency extends TAG.ClassName {
   /**
     * @param check 是否进行类型检查(在最后trim的时候，不需要再检查一遍)。
     */
-  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean) {
+  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean = false): Unit =
+    consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty), requires, check)
+
+  private[reflow] def consumeTranSet(tranSet: Set[Transformer[_, _]], requires: mutable.Map[String, Key$[_]], check: Boolean = false): Unit = {
     val copy = requires.values.toSet
-    basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty).foreach { t =>
-      breakable {
-        for (k <- copy if k.key == t.out.key) {
-          // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
-          // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
-          if (check) requireTypeMatch4Consume(k, t.out)
-          requires.remove(k.key)
-          requires.put(t.in.key, t.in)
-          break
-        }
+    tranSet.foreach(consumeTrans(_, requires, check)(copy))
+  }
+
+  private[reflow] def consumeTrans(t: Transformer[_, _], requires: mutable.Map[String, Key$[_]], check: Boolean = false)(
+    copy: Set[Key$[_]] = requires.values.toSet): Unit = {
+    breakable {
+      for (k <- copy if k.key == t.out.key) {
+        // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
+        // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
+        if (debugMode && check) requireTypeMatch4Consume(k, t.out)
+        requires.remove(k.key)
+        requires.put(t.in.key, t.in)
+        break
       }
     }
   }
@@ -471,15 +477,22 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]], trans4Input: Set[Transformer[_, _]]): Map[String, Key$[_]] = {
+  /**
+    * 检测输入参数是否足够。
+    *
+    * @param in            启动任务流的时候构造的输入参数。
+    * @param inputRequired 任务流提交时生成的必须输入参数。
+    * @return 输入对象`in`运行后的真实输出结果类型。
+    */
+  private[reflow] def requireInputsEnough(in: In, inputRequired: Map[String, Key$[_]]): Map[String, Key$[_]] = {
     val inputs = new mutable.AnyRefMap[String, Key$[_]]
     putAll(inputs, in.keys)
-    transOuts(trans4Input, inputs)
+    transOuts(in.trans, inputs)
     requireRealInEnough(inputRequired.values.toSet, inputs)
     inputs
   }
 
-  private def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]): Unit = if (debugMode) requires.foreach { k =>
+  private[reflow] def requireRealInEnough(requires: Set[Key$[_]], realIn: Map[String, Key$[_]]): Unit = if (debugMode) requires.foreach { k =>
     realIn.get(k.key).fold(Throws.lackIOKey(k, in$out = true)) { kIn =>
       if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
     }

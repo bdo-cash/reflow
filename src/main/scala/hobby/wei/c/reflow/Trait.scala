@@ -146,7 +146,7 @@ private[reflow] object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(in: In, override val priority: Int) extends Empty {
+  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
     override private[reflow] val isInput = true
@@ -155,7 +155,7 @@ private[reflow] object Trait {
       override protected def doWork(): Unit = in.fillValues(env.out)
     }
 
-    override protected def outs() = in.keys
+    override protected def outs() = outsTrimmed
 
     override protected def period() = Period.TRANSIENT
   }
