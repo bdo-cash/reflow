@@ -197,11 +197,11 @@ private[reflow] object Tracker {
         val (trat, veryBeginning) = if (runner.trat == traitIn) (traitIn, true) else (remaining.head, false)
         val transGlobal = if (veryBeginning) Option(transIn) else basis.transGlobal.get(trat.name$)
         outFlowNextStage(trat, transGlobal, (before, after) => {
-          // 这个比较特殊，
+          // 这个比较特殊，与其他任务的输出的不同点在于：本任务(Input)已知trans后的需求，而其他是已知globalTrans之前的需求。
           if (veryBeginning) {
             // 整个任务流在构造的时候，检测生成的必须输入；在这里其实是输入任务traitIn的输出。
             val flow = new Out(basis.inputs)
-            flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
+            flow.putWith(after._map, after._nullValueKeys, ignoreDiffType = false, fullVerify = true)
           }
           after
         })
@@ -252,7 +252,6 @@ private[reflow] object Tracker {
     private def tryScheduleNext(): Boolean = Locker.sync {
       if (veryBeginning) { // very beginning...
         outFlowTrimmed = new Out(traitIn.outs$)
-
       } else {
         // 子任务不自行执行`reinforce`阶段。`浏览`阶段完毕就结束了。
         if (isSubReflow && !isReinforcing && state.get.group == COMPLETED.group) return false
@@ -310,17 +309,22 @@ private[reflow] object Tracker {
 
     private def outFlowNextStage(trat: Trait[_], transGlobal: Option[Set[Transformer[_, _]]], onTransGlobal: (Out, Out) => Out): Unit = {
       verifyOutFlow()
-      // outFlowTrimmed在此之前会有一次变换：
+      // outFlowTrimmed这里需要作一次变换：
       // 由于outsFlowTrimmed存储的是globalTrans`前`的输出需求，
       // 而prevOutFlow需要存储globalTrans`后`的结果。
-      val transOut = transGlobal.fold(outFlowTrimmed) { ts =>
+      val transOut = transGlobal.fold {
+        // 对于Input任务，如果没用trans，则其输出与basis.inputs完全一致。
+        // 而对于其它任务，本来在转换之前的就是trimmed了的，没用trans，那就保留原样。
+        if (debugMode && trat.isInput) assert(outFlowTrimmed._keys.values.toSet == basis.inputs)
+        outFlowTrimmed
+      } { ts =>
         val tranSet = ts.mutable
         val map = outFlowTrimmed._map.mutable
         val nulls = outFlowTrimmed._nullValueKeys.mutable
         doTransform(tranSet, map, nulls)
-        val transOut = new Out(outFlowTrimmed._keys.values.toSet -- tranSet.map(_.in) ++ tranSet.map(_.out))
-        transOut.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
-        transOut
+        val flow = new Out(if (trat.isInput) basis.inputs else outFlowTrimmed._keys.values.toSet -- tranSet.map(_.in) ++ tranSet.map(_.out))
+        flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
+        flow
       }
       prevOutFlow = onTransGlobal(outFlowTrimmed, transOut)
       outFlowTrimmed = new Out(basis.outsFlowTrimmed(trat.name$))

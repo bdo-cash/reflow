@@ -346,7 +346,7 @@ object Dependency extends TAG.ClassName {
     consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty), requires, check)
 
   private[reflow] def consumeTranSet(tranSet: Set[Transformer[_, _]], requires: mutable.Map[String, Key$[_]], check: Boolean = false): Unit = {
-    val copy = requires.values.toSet
+    lazy val copy = requires.values.toSet
     tranSet.foreach(consumeTrans(_, requires, check)(copy))
   }
 
