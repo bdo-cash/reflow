@@ -82,8 +82,6 @@ trait Trait[T <: Task] extends Equals {
 
   private[reflow] lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
 
-  private[reflow] val isInput = false
-
   override def equals(any: scala.Any) = super.equals(any)
 
   override def canEqual(that: Any) = super.equals(that)
@@ -148,8 +146,6 @@ private[reflow] object Trait {
 
   private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
-
-    override private[reflow] val isInput = true
 
     override protected def newTask(env: Env) = new Task(env) {
       override protected def doWork(): Unit = in.fillValues(env.out)

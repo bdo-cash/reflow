@@ -133,9 +133,8 @@ abstract class Task protected(env: Env) {
   protected final def isAborted: Boolean = aborted
 
   /**
-    * 客户代码扩展位置。
-    *
-    * @return 是否执行完毕，即是同步任务还是异步任务。如果是异步任务，应该返回`false`，并在完成任务后，调用。
+    * 客户代码扩展位置。<br>
+    * 注意：必须仅有同步代码，不可以执行异步操作（如果有异步需求，应该运用本`Reflow`框架去并行化）。
     */
   protected def doWork(): Unit
 
