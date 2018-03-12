@@ -110,6 +110,8 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     _nullValueKeys -= key
   }
 
+  def apply[T >: Null](key: String): T = get[T](key).orNull
+
   /**
     * 取得key对应的value。
     *

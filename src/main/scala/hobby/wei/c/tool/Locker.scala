@@ -47,15 +47,15 @@ object Locker {
     * @throws InterruptedException 锁中断, codes并未开始执行。
     */
   @throws[InterruptedException]
-  def sync$[T](lockScope: AnyRef)(codes: => T): Option[T] = sync(new CodeZ[T] {
+  def sync$[T](lockScope: AnyRef)(codes: => T): Option[T] = sync$(new CodeZ[T] {
     override def exec() = codes
   }, asLock(lockScope))
 
   @throws[InterruptedException]
-  def sync[T](codes: Codes[T], lockScope: AnyRef): Option[T] = sync(codes, asLock(lockScope))
+  def sync[T](codes: Codes[T], lockScope: AnyRef): Option[T] = sync$(codes, asLock(lockScope))
 
   @throws[InterruptedException]
-  def sync[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = sync(new CodeZ[T] {
+  def sync[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = sync$(new CodeZ[T] {
     override def exec() = codes
   }, lock)
 
@@ -64,7 +64,7 @@ object Locker {
     else if (r) getLockr(lockScope) else getLock(lockScope)
 
   @throws[InterruptedException]
-  def sync[T](codes: Codes[T], lock: ReentrantLock): Option[T] = {
+  def sync$[T](codes: Codes[T], lock: ReentrantLock): Option[T] = {
     // 如果中断了, 则并没有获取到锁, 不需要unlock(), 同时抛出异常中止本sync方法。
     lock.lockInterruptibly()
     try {
@@ -76,7 +76,7 @@ object Locker {
 
   @throws[InterruptedException]
   private def call[T](codes: Codes[T], lock: ReentrantLock): Option[T] = {
-    if (codes.isInstanceOf[CodeC]) {
+    if (codes.isInstanceOf[CodeC[_]]) {
       Option(codes.as[CodeC[T]].exec$(lock))
     } else callr(codes.as[CodeZ[T]], lock)
   }
@@ -84,20 +84,20 @@ object Locker {
   /**
     * {@link #sync(Codes, AnyRef)}的无{@link InterruptedException 中断}版。
     */
-  def sync$r[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr(new CodeZ[T] {
+  def sync$r[T](lockScope: AnyRef)(codes: => T): Option[T] = syncr$(new CodeZ[T] {
     override def exec() = codes
   }, asLock(lockScope, r = true))
 
-  def syncr[T](codes: CodeZ[T], lockScope: AnyRef): Option[T] = syncr(codes, asLock(lockScope, r = true))
+  def syncr[T](codes: CodeZ[T], lockScope: AnyRef): Option[T] = syncr$(codes, asLock(lockScope, r = true))
 
   /**
     * {@link #sync(Codes, ReentrantLock)}的无{@link InterruptedException 中断}版。
     */
-  def syncr[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = syncr(new CodeZ[T] {
+  def syncr[T](codes: => T)(implicit lock: ReentrantLock): Option[T] = syncr$(new CodeZ[T] {
     override def exec() = codes
   }, lock)
 
-  def syncr[T](codes: CodeZ[T], lock: ReentrantLock): Option[T] = {
+  def syncr$[T](codes: CodeZ[T], lock: ReentrantLock): Option[T] = {
     lock.lock()
     try {
       callr(codes, lock)
@@ -129,7 +129,7 @@ object Locker {
 
   @throws[InterruptedException]
   def lazyGet[T](get: Codes[T], create: Codes[T], lock: ReentrantLock): Option[T] = call(get, lock).orElse {
-    sync(new CodeZ[T] {
+    sync$(new CodeZ[T] {
       override def exec() = call(get, lock).orElse {
         call(create, lock)
       }.get
@@ -156,7 +156,7 @@ object Locker {
 
   def lazyGetr[T](get: CodeZ[T], create: CodeZ[T], lock: ReentrantLock): Option[T] = {
     callr(get, lock).orElse {
-      syncr(new CodeZ[T]() {
+      syncr$(new CodeZ[T]() {
         override def exec() = callr(get, lock).orElse {
           callr(create, lock)
         }.get
@@ -174,7 +174,7 @@ object Locker {
     lock
   }(sLock).get
 
-  private trait Codes[T]
+  protected trait Codes[T]
 
   /**
     * 仅返回结果而不支持中断的{@link Codes}.

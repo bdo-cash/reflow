@@ -17,6 +17,7 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.lang.TypeBring.AsIs
 
 import scala.collection._
 
@@ -30,7 +31,7 @@ object Helper {
 
     def add(key: Key$[_]): Builder = new Builder().add(key)
 
-    class Builder private() {
+    class Builder private[reflow]() {
       private val keys = new mutable.HashSet[Key$[_]]
 
       def add(key: Key$[_]): Builder = {
@@ -50,19 +51,19 @@ object Helper {
       override protected def transform(in: O) = in
     }
 
-    def add(trans: Transformer[_, _]): Builder = new Builder().add(trans)
+    def add(trans: Transformer[Any, Any]): Builder = new Builder().add(trans)
 
-    class Builder private() {
-      private val trans = new mutable.HashSet[Transformer[_, _]]
+    class Builder private[reflow]() {
+      private val trans = new mutable.HashSet[Transformer[Any, Any]]
 
-      def add(t: Transformer[_, _]): Builder = {
-        trans.add(t.ensuring(_.nonNull))
+      def add[IN, OUT](t: Transformer[IN, OUT]): Builder = {
+        trans.add(t.ensuring(_.nonNull).as[Transformer[Any, Any]])
         this
       }
 
       def retain[O](key: Key$[O]): Builder = add(Transformers.retain[O](key))
 
-      def ok(): immutable.Set[Transformer[_, _]] = trans.toSet
+      def ok(): immutable.Set[Transformer[Any, Any]] = trans.toSet[Transformer[Any, Any]]
     }
   }
 }

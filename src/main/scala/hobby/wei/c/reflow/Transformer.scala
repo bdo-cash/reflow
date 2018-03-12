@@ -36,15 +36,14 @@ abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OU
     * @param key
     */
   protected def this(key: String) = {
-    this(new Key$[IN](key, tpe(0)) {
-    }, new Key$[OUT](key, tpe(1)) {
+    this(new Key$[IN](key, Reflect.getSuperclassTypeParameter(getClass, true)(0)) {
+    }, new Key$[OUT](key, Reflect.getSuperclassTypeParameter(getClass, true)(1)) {
     })
-    lazy val tpe = Reflect.getSuperclassTypeParameter(getClass, true)
   }
 
-  def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(null.as[OUT])(transform)
+  def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(0.as[OUT])(transform)
 
-  protected abstract def transform(in: IN): OUT
+  protected def transform(in: IN): OUT
 
   override def equals(any: Any): Boolean = any match {
     case that: Transformer[_, _] if that.canEqual(this) =>
@@ -52,7 +51,7 @@ abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OU
     case _ => false
   }
 
-  override def canEqual(that: Any) = that.isInstanceOf[Transformer]
+  override def canEqual(that: Any) = that.isInstanceOf[Transformer[_, _]]
 
   override def hashCode = in.hashCode * 41 + out.hashCode
 

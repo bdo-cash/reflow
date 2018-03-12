@@ -45,7 +45,7 @@ abstract class Task protected(env: Env) {
     * @tparam T
     * @return
     */
-  protected final def input[T](key: String): T = env.input(key)
+  protected final def input[T >: Null](key: String): T = env.input(key)
 
   protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 

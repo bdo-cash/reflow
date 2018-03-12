@@ -162,7 +162,7 @@ object Reflow {
     * @param trat 打头的{Trait}。
     * @return 新的任务流。
     */
-  def create(trat: Trait[_]): Dependency = builder.next(trat)
+  def create(trat: Trait[_ <: Task]): Dependency = builder.next(trat)
 
   /**
     * 复制参数到新的任务流。
@@ -199,7 +199,7 @@ object Reflow {
 
       override protected def desc() = if (_desc.isNull) name$ else _desc
 
-      override protected def newTask(env: Env) = null
+      override def newTask(env: Env) = null
     }, _runner))
     Worker.scheduleBuckets()
   }
@@ -252,7 +252,7 @@ trait Reflow {
   private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
   @deprecated(message = "应该尽量使用{#toTrait(Period, int, String)}。", since = "0.0.1")
-  def toTrait = toTrait(Period.SHORT, P_NORMAL, null)
+  def toTrait: ReflowTrait = toTrait(Period.SHORT, P_NORMAL, null)
 
   def toTrait(period: Period.Tpe, priority: Int, desc: String, name: String = null, feedback: Feedback = null, poster: Poster = null): ReflowTrait
 }

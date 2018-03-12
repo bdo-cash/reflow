@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow.{logger => log}
 
@@ -23,7 +24,7 @@ import hobby.wei.c.reflow.Reflow.{logger => log}
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/01/2018
   */
-trait Env {
+trait Env extends TAG.ClassName {
   private[reflow] val trat: Trait[_ <: Task]
   private[reflow] val tracker: Tracker
   private[reflow] final lazy val input: Out = {

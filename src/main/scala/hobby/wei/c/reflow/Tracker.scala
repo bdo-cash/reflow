@@ -139,7 +139,7 @@ private[reflow] class ReinforceCache {
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_, _]], state: Scheduler.State$,
+  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[Any, Any]], state: Scheduler.State$,
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
@@ -323,7 +323,7 @@ private[reflow] object Tracker {
     }
 
     private def outFlowNextStage(trat: Trait[_ <: Task], next: Trait[_ <: Task] /*`null`表示当前已是最后*/ ,
-                                 transGlobal: Option[Set[Transformer[_, _]]], onTransGlobal: (Out, Out) => Unit): Unit = {
+                                 transGlobal: Option[Set[Transformer[Any, Any]]], onTransGlobal: (Out, Out) => Unit): Unit = {
       verifyOutFlow()
       // outFlowTrimmed这里需要作一次变换：
       // 由于outsFlowTrimmed存储的是globalTrans`前`的输出需求，
@@ -387,7 +387,7 @@ private[reflow] object Tracker {
     @throws[InterruptedException]
     override def sync(reinforce: Boolean, milliseconds: Long): Out = {
       val start = System.currentTimeMillis
-      Locker.sync(new Locker.CodeC[Out](1) {
+      Locker.sync$(new Locker.CodeC[Out](1) {
         @throws[InterruptedException]
         override protected def exec(cons: Array[Condition]) = {
           // 不去判断`state`是因为任务流可能会失败
@@ -410,7 +410,7 @@ private[reflow] object Tracker {
       normalDone = true
       if (reinforce) reinforceDone = true
       try {
-        Locker.sync(new Locker.CodeC[Unit](1) {
+        Locker.sync$(new Locker.CodeC[Unit](1) {
           @throws[InterruptedException]
           override protected def exec(cons: Array[Condition]): Unit = {
             cons(0).signalAll()

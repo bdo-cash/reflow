@@ -32,14 +32,19 @@ import scala.ref.WeakReference
   * @version 1.0, 02/07/2016
   */
 object Assist extends TAG.ClassName {
-  def getRef[T](ref: WeakReference[T]): Option[T] = if (ref.isNull) None else ref.get
+  def getRef[T <: AnyRef](ref: WeakReference[T]): Option[T] = if (ref.isNull) None else ref.get
 
   def between(min: Float, value: Float, max: Float) = min max value min max
 
   @Burden
-  def assertx(b: Boolean, msg: => String = null): Unit = assertf(b, msg, force = false)
+  def assertx(b: Boolean): Unit = assertf(b, "", force = false)
 
-  def assertf(b: Boolean, msg: => String = null): Unit = assertf(b, msg, force = true)
+  @Burden
+  def assertx(b: Boolean, msg: => String): Unit = assertf(b, msg, force = false)
+
+  def assertf(b: Boolean): Unit = assertf(b, "", force = true)
+
+  def assertf(b: Boolean, msg: => String): Unit = assertf(b, msg, force = true)
 
   private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || debugMode) && !b) Throws.assertError(msg)
 
@@ -62,7 +67,7 @@ object Assist extends TAG.ClassName {
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKkDiff[C <: Set[Key$[_]]](keys: C): C = {
+  def requireKkDiff[C <: Iterable[Key$[_]]](keys: C): C = {
     if (debugMode && keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -76,9 +81,9 @@ object Assist extends TAG.ClassName {
   /**
     * 要求相同的输入key的type也相同，且不能有相同的输出k.key。
     */
-  def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[_, _]]](tranSet: C): C = {
+  def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[Any, Any]]](tranSet: C): C = {
     if (debugMode && tranSet.nonEmpty) {
-      val map = new mutable.AnyRefMap[String, Transformer[_, _]]()
+      val map = new mutable.AnyRefMap[String, Transformer[Any, Any]]()
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {
           val trans = map(t.in.key)
@@ -92,13 +97,11 @@ object Assist extends TAG.ClassName {
     tranSet
   }
 
-  def eatExceptions(work: => Unit)(onError: => Unit = ()) {
+  def eatExceptions(work: => Unit) {
     try {
       work
     } catch {
-      case e: Exception =>
-        log.w("eatExceptions.", e)
-        onError
+      case e: Exception => log.w("eatExceptions.", e)
     }
   }
 

@@ -27,9 +27,9 @@ import scala.ref.WeakReference
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 14/08/2016
   */
-abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[_, _]*) {
+abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[Any, Any]*) {
   private[reflow] val keys: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(_keys.toSet))
-  private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
+  private[reflow] val trans: immutable.Set[Transformer[Any, Any]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
 
   private[reflow] def fillValues(out: Out): Unit = (out.keysDef & keys).foreach { key => out.put(key.key, loadValue(key.key).orNull) }
 
@@ -39,13 +39,13 @@ abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[_, _]*) {
 object In {
   def map(key: String, value: Any): In = map(Map((key, value)))
 
-  def map(map: Map[String, Any], trans: Transformer[_, _]*): In = new M(generate(map), map, trans: _*)
+  def map(map: Map[String, Any], trans: Transformer[Any, Any]*): In = new M(generate(map), map, trans: _*)
 
   def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
   def add(key: String, value: Any): Builder = new Builder().add(key, value)
 
-  class Builder private() {
+  class Builder private[reflow]() {
     private val map = new mutable.AnyRefMap[String, Any]
     private var tb: Helper.Transformers.Builder = _
 
@@ -54,7 +54,7 @@ object In {
       this
     }
 
-    def add(trans: Transformer[_, _]): Builder = {
+    def add(trans: Transformer[Any, Any]): Builder = {
       if (tb.isNull) tb = Helper.Transformers.add(trans)
       else tb.add(trans)
       this
@@ -69,7 +69,7 @@ object In {
     set
   }
 
-  private class M private(keys: Set[Key$[_]], map: Map[String, Any]) extends In(keys: Set[Key$[_]]) {
+  private class M private[reflow](keys: Set[Key$[_]], map: Map[String, Any], trans: Transformer[Any, Any]*) extends In(keys: Set[Key$[_]], trans:_*) {
     override protected def loadValue(key: String) = map.get(key)
   }
 

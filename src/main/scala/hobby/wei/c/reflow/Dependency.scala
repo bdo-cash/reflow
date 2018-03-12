@@ -20,7 +20,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Assist._
-import hobby.wei.c.reflow.Dependency._
+import hobby.wei.c.reflow.Dependency.{BasisMutable, IsPar, MapTo}
 import hobby.wei.c.reflow.Reflow._
 
 import scala.collection.{Set, _}
@@ -54,7 +54,7 @@ class Dependency private[reflow]() {
     } else {
       (basis.last(false).get match {
         case tt: Trait.Parallel => tt.traits()
-        case last =>
+        case last: Trait[_] =>
           val parallel = new Trait.Parallel(last)
           // 注意：必须用 remove 和 +=，只有这俩是 ListBuffer 的方法，其他 Seq 方法会出现意想不到的状况。
           basis.traits.remove(basis.traits.length - 1)
@@ -71,11 +71,11 @@ class Dependency private[reflow]() {
     * @param trat 新增的任务具有的特性。
     * @return 当前依赖组装器。
     */
-  def next(trat: Trait[_]): Dependency = {
+  def next(trat: Trait[_ <: Task]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
     requireTaskNameDiff(trat, names)
     basis.last(false).foreach { last =>
-      genIOPrev(last, null, basis, inputRequired, useless)
+      Dependency.genIOPrev(last, null, basis, inputRequired, useless)
     }
     basis.traits += trat
     this
@@ -111,7 +111,7 @@ class Dependency private[reflow]() {
   /**
     * @see #transition(Set)
     */
-  def transition(trans: Transformer[_, _]): Dependency = transition(Set(trans))
+  def transition(trans: Transformer[Any, Any]): Dependency = transition(Set(trans))
 
   /**
     * 为前面最后添加的任务增加输出转换器，以便能够匹配后面任务的输入或结果的参数类型。
@@ -123,9 +123,9 @@ class Dependency private[reflow]() {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def transition(tranSet: Set[Transformer[_, _]]): Dependency = transition$(tranSet, check = true)
+  def transition(tranSet: Set[Transformer[Any, Any]]): Dependency = transition$(tranSet, check = true)
 
-  private def transition$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
+  private def transition$(tranSet: Set[Transformer[Any, Any]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
       basis.transformers.put(basis.last(true).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     }
@@ -135,7 +135,7 @@ class Dependency private[reflow]() {
   /**
     * @see #then(Set)
     */
-  def next(trans: Transformer[_, _]): Dependency = next(Set(trans))
+  def next(trans: Transformer[Any, Any]): Dependency = next(Set(trans))
 
   /**
     * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
@@ -146,9 +146,9 @@ class Dependency private[reflow]() {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def next(tranSet: Set[Transformer[_, _]]): Dependency = next$(tranSet, check = true)
+  def next(tranSet: Set[Transformer[Any, Any]]): Dependency = next$(tranSet, check = true)
 
-  private def next$(tranSet: Set[Transformer[_, _]], check: Boolean): Dependency = {
+  private def next$(tranSet: Set[Transformer[Any, Any]], check: Boolean): Dependency = {
     if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
       basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
@@ -166,14 +166,14 @@ class Dependency private[reflow]() {
     val uselesx = useless.mapValues(_.mutable.as[mutable.Map[String, Key$[_]]]).mutable
     val inputReqx = inputRequired.mutable
     val basisx = new BasisMutable(basis)
-    genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
-    genIOuts(outputs, basisx, inputReqx, uselesx)
-    new Reflow.Impl(new Basis {
+    Dependency.genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
+    Dependency.genIOuts(outputs, basisx, inputReqx, uselesx)
+    new Reflow.Impl(new Dependency.Basis {
       override val traits = basis.traits.to[immutable.Seq]
       override val dependencies = basis.dependencies.mapValues(_.toMap).toMap
       override val transformers = basis.transformers.mapValues(_.toSet).toMap
       override val transGlobal = basis.transGlobal.mapValues(_.toSet).toMap
-      override val outsFlowTrimmed = trimOutsFlow(basisx).mapValues(_.toSet).toMap
+      override val outsFlowTrimmed = Dependency.trimOutsFlow(basisx).mapValues(_.toSet).toMap
       override val inputs = inputReqx.values.toSet
       override val outs = outputs.toSet
     }, inputReqx.toMap)
@@ -193,9 +193,9 @@ object Dependency extends TAG.ClassName {
     /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`child trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
     /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`child trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
-    val transformers: Map[String, Set[Transformer[_, _]]]
+    val transformers: Map[String, Set[Transformer[Any, Any]]]
     /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。`key`为`top level trat.name$`。可能`get`出来为`null`。 */
-    val transGlobal: Map[String, Set[Transformer[_, _]]]
+    val transGlobal: Map[String, Set[Transformer[Any, Any]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? `key`为`top level trat.name$`。注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
     val inputs: immutable.Set[Key$[_]]
@@ -230,7 +230,7 @@ object Dependency extends TAG.ClassName {
       result.ensuring(_.nonNull)
     }
 
-    def topOf(name: String) = topOf(traitOf(name))
+    def topOf(name: String): Trait[_ <: Task] = topOf(traitOf(name))
 
     def topOf(trat: Trait[_ <: Task]): Trait[_ <: Task] = if (trat.isParallel) trat else {
       var result: Trait[_ <: Task] = null
@@ -251,7 +251,7 @@ object Dependency extends TAG.ClassName {
 
     def last(child: Boolean): Option[Trait[_]] = first$last(first$last = false, child)
 
-    private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_]] = {
+    private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_ <: Task]] = {
       Option(if (traits.isEmpty) null
       else {
         val trat = traits.splitAt(if (first$last) 0 else traits.size - 1)._2.head
@@ -267,10 +267,10 @@ object Dependency extends TAG.ClassName {
 
     if (basis.nonNull) copyFrom(basis)
 
-    override val traits: mutable.ListBuffer[Trait[_]] = new mutable.ListBuffer[Trait[_]]
+    override val traits: mutable.ListBuffer[Trait[_ <: Task]] = new mutable.ListBuffer[Trait[_ <: Task]]
     override val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Key$[_]]] = new mutable.AnyRefMap[String, mutable.Map[String, Key$[_]]]
-    override val transformers: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
-    override val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
+    override val transformers: mutable.AnyRefMap[String, Set[Transformer[Any, Any]]] = new mutable.AnyRefMap[String, Set[Transformer[Any, Any]]]
+    override val transGlobal: mutable.AnyRefMap[String, Set[Transformer[Any, Any]]] = new mutable.AnyRefMap[String, Set[Transformer[Any, Any]]]
     override val outsFlowTrimmed = null
     override val inputs = null
     override val outs = null
@@ -280,23 +280,23 @@ object Dependency extends TAG.ClassName {
       src.dependencies.foreach { kv: (String, Map[String, Key$[_]]) =>
         dependencies.put(kv._1, kv._2.mutable)
       }
-      src.transformers.foreach { kv: (String, Set[Transformer[_, _]]) =>
+      src.transformers.foreach { kv: (String, Set[Transformer[Any, Any]]) =>
         transformers.put(kv._1, kv._2.toSet)
       }
-      src.transGlobal.foreach { kv: (String, Set[Transformer[_, _]]) =>
+      src.transGlobal.foreach { kv: (String, Set[Transformer[Any, Any]]) =>
         transGlobal.put(kv._1, kv._2.toSet)
       }
     }
   }
 
-  implicit class MapTo[K, V](map: Map[K, V]) {
-    def mutable = new mutable.AnyRefMap[K, V] ++= map
+  implicit class MapTo[K <: AnyRef, V](map: Map[K, V]) {
+    def mutable = new scala.collection.mutable.AnyRefMap[K, V] ++= map
 
-    def concurrent = new concurrent.TrieMap[K, V] ++= map
+    def concurrent = new scala.collection.concurrent.TrieMap[K, V] ++= map
   }
 
   implicit class SetTo[T](set: Set[T]) {
-    def mutable = new mutable.HashSet[T] ++= set
+    def mutable = new scala.collection.mutable.HashSet[T] ++= set
   }
 
   implicit class IsPar(trat: Trait[_]) {
@@ -376,7 +376,7 @@ object Dependency extends TAG.ClassName {
   private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Key$[_]], basis: Basis, check: Boolean = false): Unit =
     consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty), requires, check)
 
-  private[reflow] def consumeTranSet(tranSet: Set[Transformer[_, _]], requires: mutable.Map[String, Key$[_]], check: Boolean = false): Unit = {
+  private[reflow] def consumeTranSet(tranSet: Set[Transformer[Any, Any]], requires: mutable.Map[String, Key$[_]], check: Boolean = false): Unit = {
     lazy val copy = requires.values.toSet
     tranSet.foreach(consumeTrans(_, requires, check)(copy))
   }
@@ -466,7 +466,7 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  private def transOuts(tranSet: Set[Transformer[_, _]], map: mutable.Map[String, Key$[_]]) {
+  private def transOuts(tranSet: Set[Transformer[Any, Any]], map: mutable.Map[String, Key$[_]]) {
     if (tranSet.nonNull && tranSet.nonEmpty && map.nonEmpty) {
       var trans: List[Transformer[_, _]] = Nil
       var sameKey: List[Transformer[_, _]] = Nil
@@ -581,12 +581,12 @@ object Dependency extends TAG.ClassName {
     *                  1. 输入是精简后的，即：已有的输入都应当尽可能的去作转换（依赖构建的时候已检测通过）。这种情况不需要传本参数；
     *                  2. 已知输出是精简后的，但输入有可能冗余。这种情况应尽量传本参数，以便减少运算。
     */
-  def doTransform(tranSet: mutable.Set[Transformer[_, _]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]],
+  def doTransform(tranSet: mutable.Set[Transformer[Any, Any]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, Key$[_]],
                   prefer: Map[String, Key$[_]] = null): Unit = {
     if (tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
       val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
       val nulls = new mutable.AnyRefMap[String, Key$[_]]
-      var trans: List[Transformer[_, _]] = Nil
+      var trans: List[Transformer[Any, Any]] = Nil
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
       // val sameKey = new mutable.HashSet[Transformer[_]]
       tranSet.filter(t => if (prefer.isNull) true else prefer.contains(t.out.key)).foreach { t =>
@@ -610,13 +610,6 @@ object Dependency extends TAG.ClassName {
       tranSet.clear()
       tranSet ++= trans
     } else tranSet.clear()
-  }
-
-  def copy[C <: mutable.SetLike[Trait[_], C]](src: C, dest: C): C = {
-    src.foreach { trat =>
-      dest += (if (trat.isParallel) new Trait.Parallel(trat.asParallel.traits()) else trat)
-    }
-    dest
   }
 
   private[reflow] def putAll[M <: mutable.Map[String, Key$[_]]](map: M, keys: Set[Key$[_]]): M = (map /: keys) {

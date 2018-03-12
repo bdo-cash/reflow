@@ -41,7 +41,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
   /**
     * 第一级泛型参数的Class表示。
     */
-  private val rawType: Class[_ >: T] = Reflect.getRawType(tpe)
+  private val rawType: Class[_ >: T] = Reflect.getRawType(tpe).as[Class[_ >: T]]
   /**
     * 第一级泛型参数的子泛型参数, 可能不存在。作用或结构与tpe类似。
     */
@@ -82,7 +82,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
   def takeValue(map: Map[String, Any]): T = {
     // 强制类型转换比较宽松, 只会检查对象类型, 而不会检查泛型。
     // 但是由于value值对象无法获得泛型类型, 因此这里不再作泛型检查。也避免了性能问题。
-    map.get(key).as[T]
+    map.get(key).orNull.as[T]
   }
 
   private def requireSameType(value: Any, ignoreDiffType: Boolean): Any = {

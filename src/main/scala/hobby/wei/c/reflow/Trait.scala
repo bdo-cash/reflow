@@ -88,7 +88,7 @@ trait Trait[T <: Task] extends Equals {
 
   override def hashCode() = super.hashCode()
 
-  override def toString = String.format("name:%s, requires:%s, out:%s, priority:%s, period:%s, description: %s",
+  override def toString = "name:%s, requires:%s, out:%s, priority:%s, period:%s, description: %s" format(
     name$, requires$, outs$, priority$, period$, desc$)
 }
 
@@ -101,7 +101,7 @@ private[reflow] object Trait {
 
     _traits ++= trats
 
-    private[reflow] def this(t: Trait[_]) = this(Seq(t))
+    private[reflow] def this(t: Trait[_ <: Task]) = this(Seq(t))
 
     private[reflow] def traits() = _traits
 
@@ -110,16 +110,16 @@ private[reflow] object Trait {
       _traits += t
     }
 
-    private[reflow] def first(): Trait[_] = _traits.head
+    private[reflow] def first(): Trait[_ <: Task] = _traits.head
 
-    private[reflow] def last(): Trait[_] = _traits.last
+    private[reflow] def last(): Trait[_ <: Task] = _traits.last
 
     override protected def name() = {
       // 由于不允许同一个队列里面有相同的名字，所以取第一个的名字即可区分。
       classOf[Parallel].getName + "#" + _traits.head.name$
     }
 
-    override protected def newTask(env: Env) = ???
+    override def newTask(env: Env) = ???
 
     override protected def requires() = Helper.Keys.empty()
 
@@ -147,7 +147,7 @@ private[reflow] object Trait {
   private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
-    override protected def newTask(env: Env) = new Task(env) {
+    override def newTask(env: Env) = new Task(env) {
       override protected def doWork(): Unit = in.fillValues(env.out)
     }
 
