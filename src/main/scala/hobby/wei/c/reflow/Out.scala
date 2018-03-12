@@ -30,12 +30,7 @@ import scala.collection._
 class Out private[reflow](map: Map[String, Key$[_]]) {
   private[reflow] def this() = this(Map.empty[String, Key$[_]])
 
-  private[reflow] def this(keys: Set[Key$[_]]) = this(
-    (new mutable.AnyRefMap[String, Key$[_]] /: keys) {
-      (m, k) =>
-        m += (k.key, k)
-        m
-    })
+  private[reflow] def this(keys: Set[Key$[_]]) = this((new mutable.AnyRefMap[String, Key$[_]] /: keys) { (m, k) => m += (k.key, k) })
 
   // 仅读取
   private[reflow] val _keys = map.toMap[String, Key$[_]]
@@ -112,6 +107,11 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     }
   }
 
+  private[reflow] def remove(key: String): Unit = {
+    _map -= key
+    _nullValueKeys -= key
+  }
+
   /**
     * 取得key对应的value。
     *
@@ -142,17 +142,7 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
     *
     * @return
     */
-  def keys(): immutable.Set[Key$[_]] = {
-    val result = new mutable.HashSet[Key$[_]]
-    _keys.values.foreach { k =>
-      if (_map.contains(k.key)) {
-        result.add(k)
-      } else if (_nullValueKeys.contains(k.key)) {
-        result.add(k)
-      }
-    }
-    result.toSet
-  }
+  def keys(): immutable.Set[Key$[_]] = _keys.values.filter { k => _map.contains(k.key) || _nullValueKeys.contains(k.key) }.toSet
 
   override def toString = "keys:" + keys + ", values:" + _map + (if (_nullValueKeys.isEmpty) "" else ", null:" + _nullValueKeys.values)
 }

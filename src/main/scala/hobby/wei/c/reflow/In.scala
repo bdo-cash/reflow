@@ -31,11 +31,7 @@ abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[_, _]*) {
   private[reflow] val keys: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(_keys.toSet))
   private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
 
-  private[reflow] def fillValues(out: Out) {
-    out.keysDef().intersect(keys).foreach(key =>
-      out.put(key.key, loadValue(key.key).orNull)
-    )
-  }
+  private[reflow] def fillValues(out: Out): Unit = (out.keysDef & keys).foreach { key => out.put(key.key, loadValue(key.key).orNull) }
 
   protected def loadValue(key: String): Option[Any]
 }

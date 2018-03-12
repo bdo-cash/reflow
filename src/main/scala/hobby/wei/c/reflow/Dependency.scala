@@ -207,13 +207,44 @@ object Dependency extends TAG.ClassName {
       var step = traits.indexOf(trat)
       if (step < 0) breakable {
         for (tt <- traits)
-          if (tt.isParallel && tt.asParallel.traits().indexOf(trat) >= 0) {
+          if (tt.isParallel && tt.asParallel.traits().contains(trat)) {
             step = traits.indexOf(tt)
-            assert(step >= 0)
             break
           }
       }
-      step
+      step.ensuring(_ >= 0)
+    }
+
+    def traitOf(name: String): Trait[_ <: Task] = {
+      var result: Trait[_ <: Task] = null
+      breakable {
+        for (tt <- traits)
+          if (tt.name$ == name) {
+            result = tt
+            break
+          } else if (tt.isParallel) for (trat <- tt.asParallel.traits() if trat.name$ == name) {
+            result = trat
+            break
+          }
+      }
+      result.ensuring(_.nonNull)
+    }
+
+    def topOf(name: String) = topOf(traitOf(name))
+
+    def topOf(trat: Trait[_ <: Task]): Trait[_ <: Task] = if (trat.isParallel) trat else {
+      var result: Trait[_ <: Task] = null
+      breakable {
+        for (tt <- traits)
+          if (tt == trat) {
+            result = tt
+            break
+          } else if (tt.isParallel && tt.asParallel.traits().contains(trat)) {
+            result = tt
+            break
+          }
+      }
+      result.ensuring(_.nonNull)
     }
 
     def first(child: Boolean): Option[Trait[_]] = first$last(first$last = true, child)
