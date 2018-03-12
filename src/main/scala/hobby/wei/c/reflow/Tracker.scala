@@ -196,16 +196,8 @@ private[reflow] object Tracker {
         progress.clear()
         val (trat, veryBeginning) = if (runner.trat == traitIn) (traitIn, true) else (remaining.head, false)
         val transGlobal = if (veryBeginning) Option(transIn) else basis.transGlobal.get(trat.name$)
-        outFlowNextStage(trat, transGlobal, (before, after) => {
-          // 这个比较特殊，与其他任务的输出的不同点在于：本任务(Input)已知trans后的需求，而其他是已知globalTrans之前的需求。
-          if (veryBeginning) {
-            // 整个任务流在构造的时候，检测生成的必须输入；在这里其实是输入任务traitIn的输出。
-            val flow = new Out(basis.inputs)
-            flow.putWith(after._map, after._nullValueKeys, ignoreDiffType = false, fullVerify = true)
-          }
-          after
-        })
-        if (runner.trat == traitIn) {
+        outFlowNextStage(trat, transGlobal, (before, after) => {})
+        if (veryBeginning) {
         } else {
           // 如果当前任务`是`申请了`reinforce`的，则应该把输出进行合并，缓存起来。
           if (isReinforcing) {
@@ -239,10 +231,15 @@ private[reflow] object Tracker {
             }
           }
         }
-        if (remaining.nonEmpty) remaining = remaining.tail
-        if (!tryScheduleNext()) { // 全部运行完毕
-          basis.outsFlowTrimmed
-          basis.outs
+        if (remaining.nonEmpty) {
+          remaining = remaining.tail
+          if (!tryScheduleNext()) { // 全部运行完毕
+            basis.outsFlowTrimmed
+            basis.outs
+          }
+        } else if(!isSubReflow) {
+          remaining = basis.traits
+          start()
         }
       }
     }
@@ -307,13 +304,13 @@ private[reflow] object Tracker {
       hasMore
     }.get
 
-    private def outFlowNextStage(trat: Trait[_], transGlobal: Option[Set[Transformer[_, _]]], onTransGlobal: (Out, Out) => Out): Unit = {
+    private def outFlowNextStage(trat: Trait[_], transGlobal: Option[Set[Transformer[_, _]]], onTransGlobal: (Out, Out) => Unit): Unit = {
       verifyOutFlow()
       // outFlowTrimmed这里需要作一次变换：
       // 由于outsFlowTrimmed存储的是globalTrans`前`的输出需求，
       // 而prevOutFlow需要存储globalTrans`后`的结果。
       val transOut = transGlobal.fold {
-        // 对于Input任务，如果没用trans，则其输出与basis.inputs完全一致。
+        // 对于Input任务，如果没用trans，则其输出与basis.inputs完全一致；
         // 而对于其它任务，本来在转换之前的就是trimmed了的，没用trans，那就保留原样。
         if (debugMode && trat.isInput) assert(outFlowTrimmed._keys.values.toSet == basis.inputs)
         outFlowTrimmed
@@ -326,7 +323,8 @@ private[reflow] object Tracker {
         flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
         flow
       }
-      prevOutFlow = onTransGlobal(outFlowTrimmed, transOut)
+      onTransGlobal(outFlowTrimmed, transOut)
+      prevOutFlow = transOut
       outFlowTrimmed = new Out(basis.outsFlowTrimmed(trat.name$))
       joinOutFlow(prevOutFlow)
     }
