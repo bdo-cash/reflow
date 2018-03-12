@@ -38,24 +38,22 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
   private[reflow] val _map = new concurrent.TrieMap[String, Any]
   private[reflow] val _nullValueKeys = new concurrent.TrieMap[String, Key$[_]]
 
-  private[reflow] def fillWith(out: Out) {
-    putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify = true)
-  }
+  private[reflow] def fillWith(out: Out, fullVerify: Boolean = true): Unit = putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify)
 
-  private[reflow] def verify(): Unit = putWith(immutable.Map.empty, immutable.Map.empty, ignoreDiffType = true, fullVerify = true)
+  private[reflow] def verify(): Unit = putWith(immutable.Map.empty, immutable.Map.empty, ignoreDiffType = false, fullVerify = true)
 
   /**
     * 若调用本方法, 则必须一次填满, 否则报异常。
     *
     * @param map
     * @param nulls          因为value为null导致无法插入到map的key的集合。
-    * @param ignoreDiffType 是否忽略不同值类型({Key$})。
-    *                       有时候类型可以被覆盖（如：后面的任务的输出可以覆盖前面任务相同key的输出），
-    *                       而有时候不可以（如：当前任务给既定的输出赋值）。
-    * @param fullVerify     检查{#keys}是否全部输出。
+    * @param ignoreDiffType 是否忽略不同值类型(`Key$`)。仅有一个场景用到：使用上一个任务的输出填充当前输出（在当前对象创建的时候。
+    *                       通常情况下，前面任务的输出可能继续向后流动），有时候后面可能会出现相同的`k.key`但类型不同，这是允许的（即：相同的key可以被覆盖）。
+    *                       但在使用上一个任务的输出填充当前对象的时候，如果`k.key`相同但类型不匹配，会抛出异常。为了简化起见，设置了本参数。
+    * @param fullVerify     检查`_keys`是否全部输出。
     */
   private[reflow] def putWith(map: Map[String, Any], nulls: Map[String, Key$[_]],
-                              ignoreDiffType: Boolean, fullVerify: Boolean): Unit = {
+                              ignoreDiffType: Boolean = false, fullVerify: Boolean = false): Unit = {
     _keys.values.foreach { k =>
       if (map.contains(k.key)) {
         if (k.putValue(_map, map(k.key), ignoreDiffType)) {
@@ -64,8 +62,8 @@ class Out private[reflow](map: Map[String, Key$[_]]) {
       } else if (!_map.contains(k.key)) {
         if (nulls.contains(k.key)) {
           _nullValueKeys.put(k.key, k)
-        } else if (fullVerify) {
-          if (debugMode) Throws.lackIOKey(k, in$out = false)
+        } else if (debugMode && fullVerify) {
+          if (!_nullValueKeys.contains(k.key)) Throws.lackIOKey(k, in$out = false)
         }
       }
     }

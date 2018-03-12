@@ -19,7 +19,6 @@ package hobby.wei.c.reflow
 import java.lang.reflect.Type
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
-import hobby.wei.c.reflow.Reflow._
 import hobby.wei.c.tool.Reflect
 
 import scala.collection._
@@ -87,8 +86,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
   }
 
   private def requireSameType(value: Any, ignoreDiffType: Boolean): Any = {
-    if (!debugMode) value
-    else if (value.nonNull) {
+    if (value.nonNull) {
       val clazz = value.getClass
       if (!rawType.isAssignableFrom(clazz)) {
         if (ignoreDiffType) null
