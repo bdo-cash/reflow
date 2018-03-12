@@ -22,7 +22,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.anno.proguard.Burden
-import hobby.wei.c.reflow.Reflow._
+import hobby.wei.c.reflow.Reflow.{logger => log, _}
 
 import scala.collection._
 import scala.ref.WeakReference
@@ -97,7 +97,7 @@ object Assist extends TAG.ClassName {
       work
     } catch {
       case e: Exception =>
-        Reflow.logger.w("eatExceptions.", e)
+        log.w("eatExceptions.", e)
         onError
     }
   }
@@ -139,31 +139,32 @@ object Assist extends TAG.ClassName {
       val duration = end - begin
       val avg = period.average(duration)
       if (avg == 0 || duration <= avg) {
-        Reflow.logger.i("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.i("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
       } else {
-        Reflow.logger.w("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.w("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
       }
     }
 
-    def abortion(triggerFrom: String, name: String, forError: Boolean) = Reflow.logger.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
+    def abortion(triggerFrom: String, name: String, forError: Boolean): Unit = log.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
 
     @Burden
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {
       if (!success) {
-        Reflow.logger.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
+        log.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
         assertx(success)
       }
     }
 
-    def complete(step: Int, out: Out, flow: Out, trimmed: Out) = Reflow.logger.i("step:%d, out:%s, flow:%s, trimmed:%s", step, out, flow, trimmed)(tag("complete"))
+    @Burden
+    def complete(step: => Int, out: Out, flow: Out, trimmed: Out): Unit = log.i("step:%d, out:%s, flow:%s, trimmed:%s", step, out, flow, trimmed)(tag("complete"))
 
-    def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean) = Reflow.logger.i(
+    def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean): Unit = log.i(
       "{ThreadPool}%s, active/core:(%d/%d/%d), taskCount:%d, largestPool:%d",
       if (reject) "reject runner" else if (addThread) "add thread" else "offer queue",
       pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize,
       pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
 
-    def threadPoolError(t: Throwable) = Reflow.logger.e(t)(tag("threadPoolError"))
+    def threadPoolError(t: Throwable): Unit = log.e(t)(tag("threadPoolError"))
   }
 
   class FailedException(t: Throwable) extends Exception(t: Throwable)

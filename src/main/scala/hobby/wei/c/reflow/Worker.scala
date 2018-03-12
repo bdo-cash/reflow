@@ -190,7 +190,6 @@ object Worker {
   }
 
   class Runner(val trat: Trait[_ <: Task], runnable: Runnable) extends Runnable with Comparable[Runner] {
-
     override def compareTo(o: Runner) = Integer.compare(trat.priority$, o.trat.priority$)
 
     override def run(): Unit = runnable.run()

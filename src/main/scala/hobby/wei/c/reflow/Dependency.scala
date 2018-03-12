@@ -190,13 +190,13 @@ class Dependency private[reflow]() {
 object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`child trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Key$[_]]]
-    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
+    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`child trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
     val transformers: Map[String, Set[Transformer[_, _]]]
-    /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。可能`get`出来为`null`。 */
+    /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。`key`为`top level trat.name$`。可能`get`出来为`null`。 */
     val transGlobal: Map[String, Set[Transformer[_, _]]]
-    /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? 注意：存储的是`globalTrans`[前]的结果。 */
+    /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? `key`为`top level trat.name$`。注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Key$[_]]]
     val inputs: immutable.Set[Key$[_]]
     val outs: immutable.Set[Key$[_]]

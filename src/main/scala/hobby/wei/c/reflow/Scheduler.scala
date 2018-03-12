@@ -38,13 +38,13 @@ trait Scheduler {
     * 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}, 则会重新{@link Starter#start(In,
      * Feedback, Poster)} 启动}.
     *
-    * @param reinforce    是否等待reinforce阶段。
+    * @param reinforce    是否等待`reinforce`阶段结束。
     * @param milliseconds 延迟的deadline, 单位：毫秒。
-    * @return 任务的最终结果，不会为null。
+    * @return 任务的最终结果，不会为`null`。
     * @throws InterruptedException 到达deadline了或者被中断。
     * @deprecated 好用但应慎用。会block住当前线程，几乎是不需要的。
     */
-  @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。")
+  @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
   @throws[InterruptedException]
   def sync(reinforce: Boolean, milliseconds: Long): Out
 
@@ -126,8 +126,8 @@ object Scheduler {
 
     override def isDone: Boolean = {
       val state = this.state.get
-      state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) { d =>
-        !d.as[Tracker].reinforceRequired.get
+      state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) {
+        !_.as[Tracker].isReinforceRequired
       } || state == FAILED || state == ABORTED || state == UPDATED
     }
   }
