@@ -27,9 +27,9 @@ import scala.ref.WeakReference
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 14/08/2016
   */
-abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[Any, Any]*) {
-  private[reflow] val keys: immutable.Set[Key$[_]] = requireKkDiff(requireElemNonNull(_keys.toSet))
-  private[reflow] val trans: immutable.Set[Transformer[Any, Any]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
+abstract class In protected(_keys: Set[Kce[_]], _trans: Transformer[_, _]*) {
+  private[reflow] val keys: immutable.Set[Kce[_]] = requireKkDiff(requireElemNonNull(_keys.toSet))
+  private[reflow] val trans: immutable.Set[Transformer[_, _]] = requireTransInTpeSame$OutKDiff(requireElemNonNull(_trans.toSet))
 
   private[reflow] def fillValues(out: Out): Unit = (out.keysDef & keys).foreach { key => out.put(key.key, loadValue(key.key).orNull) }
 
@@ -39,7 +39,7 @@ abstract class In protected(_keys: Set[Key$[_]], _trans: Transformer[Any, Any]*)
 object In {
   def map(key: String, value: Any): In = map(Map((key, value)))
 
-  def map(map: Map[String, Any], trans: Transformer[Any, Any]*): In = new M(generate(map), map, trans: _*)
+  def map(map: Map[String, Any], trans: Transformer[_, _]*): In = new M(generate(map), map, trans: _*)
 
   def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
@@ -63,13 +63,13 @@ object In {
     def ok(): In = if (tb.isNull) In.map(map) else In.map(map, tb.ok().toSeq: _*)
   }
 
-  private def generate(map: Map[String, Any]): Set[Key$[_]] = {
-    val set = new mutable.HashSet[Key$[_]]
-    map.foreach { kv: (String, Any) => set.add(new Key$(kv._1, kv._2.getClass) {}) }
+  private def generate(map: Map[String, Any]): Set[Kce[_]] = {
+    val set = new mutable.HashSet[Kce[_]]
+    map.foreach { kv: (String, Any) => set.add(new Kce(kv._1, kv._2.getClass) {}) }
     set
   }
 
-  private class M private[reflow](keys: Set[Key$[_]], map: Map[String, Any], trans: Transformer[Any, Any]*) extends In(keys: Set[Key$[_]], trans:_*) {
+  private class M private[reflow](keys: Set[Kce[_]], map: Map[String, Any], trans: Transformer[_, _]*) extends In(keys: Set[Kce[_]], trans: _*) {
     override protected def loadValue(key: String) = map.get(key)
   }
 

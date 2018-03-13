@@ -139,7 +139,7 @@ private[reflow] class ReinforceCache {
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[Any, Any]], state: Scheduler.State$,
+  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_, _]], state: Scheduler.State$,
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
@@ -217,7 +217,7 @@ private[reflow] object Tracker {
             } else if (isReinforceRequired /*必须放在`else`分支，即必须在`!isReinforcing`的前提下。*/ ) {
               if (isOnReinforceBegins(tratGlobal, cache))
                 if (tratGlobal.isParallel) {
-                  val map = (new mutable.AnyRefMap[String, Key$[_]] /: cache.begins.keySet) (_ ++= basis.dependencies(_))
+                  val map = (new mutable.AnyRefMap[String, Kce[_]] /: cache.begins.keySet) (_ ++= basis.dependencies(_))
                   // val keys = outFlowTrimmed._keys.keySet &~ map.keySet
                   // val out = new Out(outFlowTrimmed._keys.filterKeys(keys.contains))
                   val out = new Out(outFlowTrimmed._keys.filterNot(map contains _._1))
@@ -323,7 +323,7 @@ private[reflow] object Tracker {
     }
 
     private def outFlowNextStage(trat: Trait[_ <: Task], next: Trait[_ <: Task] /*`null`表示当前已是最后*/ ,
-                                 transGlobal: Option[Set[Transformer[Any, Any]]], onTransGlobal: (Out, Out) => Unit): Unit = {
+                                 transGlobal: Option[Set[Transformer[_, _]]], onTransGlobal: (Out, Out) => Unit): Unit = {
       verifyOutFlow()
       // outFlowTrimmed这里需要作一次变换：
       // 由于outsFlowTrimmed存储的是globalTrans`前`的输出需求，

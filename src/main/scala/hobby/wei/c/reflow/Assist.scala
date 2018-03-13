@@ -67,7 +67,7 @@ object Assist extends TAG.ClassName {
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKkDiff[C <: Iterable[Key$[_]]](keys: C): C = {
+  def requireKkDiff[C <: Iterable[Kce[_]]](keys: C): C = {
     if (debugMode && keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -81,9 +81,9 @@ object Assist extends TAG.ClassName {
   /**
     * 要求相同的输入key的type也相同，且不能有相同的输出k.key。
     */
-  def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[Any, Any]]](tranSet: C): C = {
+  def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[_, _]]](tranSet: C): C = {
     if (debugMode && tranSet.nonEmpty) {
-      val map = new mutable.AnyRefMap[String, Transformer[Any, Any]]()
+      val map = new mutable.AnyRefMap[String, Transformer[_, _]]()
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {
           val trans = map(t.in.key)
@@ -108,29 +108,29 @@ object Assist extends TAG.ClassName {
   private[reflow] object Throws {
     def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`${name}`的Task已存在, 请确认或尝试重写其name()方法。")
 
-    def sameOutKeyParallel(key: Key$[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
+    def sameOutKeyParallel(key: Kce[_], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
 
-    def sameCacheKey(key: Key$[_]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
+    def sameCacheKey(key: Kce[_]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
 
-    def sameKey$k(key: Key$[_]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
+    def sameKey$k(key: Kce[_]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
 
-    def lackIOKey(key: Key$[_], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
+    def lackIOKey(key: Kce[_], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
 
     def lackOutKeys() = throw new IllegalStateException("所有任务的输出都没有提供最终输出, 请检查。")
 
-    def typeNotMatch(key: Key$[_], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
+    def typeNotMatch(key: Kce[_], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
 
-    def typeNotMatch4Trans(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "转换。")
+    def typeNotMatch4Trans(from: Kce[_], to: Kce[_]) = typeNotMatch(to, from, "转换。")
 
-    def typeNotMatch4Consume(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "消化需求。")
+    def typeNotMatch4Consume(from: Kce[_], to: Kce[_]) = typeNotMatch(to, from, "消化需求。")
 
-    def typeNotMatch4Required(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "新增初始输入。")
+    def typeNotMatch4Required(from: Kce[_], to: Kce[_]) = typeNotMatch(to, from, "新增初始输入。")
 
-    def typeNotMatch4RealIn(from: Key$[_], to: Key$[_]) = typeNotMatch(to, from, "实际输入。")
+    def typeNotMatch4RealIn(from: Kce[_], to: Kce[_]) = typeNotMatch(to, from, "实际输入。")
 
-    private def typeNotMatch(from: Key$[_], to: Key$[_], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
+    private def typeNotMatch(from: Kce[_], to: Kce[_], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
 
-    def tranSameKeyButDiffType(one: Key$[_], another: Key$[_]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
+    def tranSameKeyButDiffType(one: Kce[_], another: Kce[_]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
 
     def assertError(msg: String) = throw new AssertionError(msg)
   }

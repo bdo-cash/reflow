@@ -30,7 +30,7 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals {
+abstract class Kce[T] private[reflow](_key: String, _tpe: Type) extends Equals {
   protected def this(key: String) = this(key, Reflect.getSuperclassTypeParameter(getClass, true)(0))
 
   final val key: String = _key.ensuring(_.nonEmpty)
@@ -103,7 +103,7 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
     * @param key
     * @return
     */
-  def isAssignableFrom(key: Key$[_]): Boolean = {
+  def isAssignableFrom(key: Kce[_]): Boolean = {
     if (!rawType.isAssignableFrom(key.rawType)) {
       false
     } else if (subTypes.length != key.subTypes.length) {
@@ -112,11 +112,11 @@ abstract class Key$[T] private[reflow](_key: String, _tpe: Type) extends Equals 
   }
 
   override def equals(any: scala.Any) = any match {
-    case that: Key$[_] if that.canEqual(this) => that.key == this.key && that.tpe == this.tpe
+    case that: Kce[_] if that.canEqual(this) => that.key == this.key && that.tpe == this.tpe
     case _ => false
   }
 
-  override def canEqual(that: Any) = that.isInstanceOf[Key$[T]]
+  override def canEqual(that: Any) = that.isInstanceOf[Kce[T]]
 
   override def hashCode = key.hashCode * 41 + tpe.hashCode
 

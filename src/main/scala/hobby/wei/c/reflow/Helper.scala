@@ -17,7 +17,6 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.chenai.nakam.lang.TypeBring.AsIs
 
 import scala.collection._
 
@@ -27,19 +26,18 @@ import scala.collection._
   */
 object Helper {
   object Keys {
-    def empty(): immutable.Set[Key$[_]] = immutable.Set.empty
+    def empty(): immutable.Set[Kce[_]] = immutable.Set.empty
 
-    def add(key: Key$[_]): Builder = new Builder().add(key)
-
+    def add(key: Kce[_]): Builder = new Builder().add(key)
     class Builder private[reflow]() {
-      private val keys = new mutable.HashSet[Key$[_]]
+      private val keys = new mutable.HashSet[Kce[_]]
 
-      def add(key: Key$[_]): Builder = {
+      def add(key: Kce[_]): Builder = {
         keys.add(key.ensuring(_.nonNull))
         this
       }
 
-      def ok(): immutable.Set[Key$[_]] = keys.to[immutable.Set]
+      def ok(): immutable.Set[Kce[_]] = keys.toSet
     }
   }
 
@@ -47,23 +45,23 @@ object Helper {
     /**
       * 将任务的某个输出在转换之后仍然保留。通过增加一个输出即输入转换。
       */
-    def retain[O](key: Key$[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
+    def retain[O](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
       override protected def transform(in: O) = in
     }
 
-    def add(trans: Transformer[Any, Any]): Builder = new Builder().add(trans)
+    def add(trans: Transformer[_, _]): Builder = new Builder().add(trans)
 
     class Builder private[reflow]() {
-      private val trans = new mutable.HashSet[Transformer[Any, Any]]
+      private val trans = new mutable.HashSet[Transformer[_, _]]
 
-      def add[IN, OUT](t: Transformer[IN, OUT]): Builder = {
-        trans.add(t.ensuring(_.nonNull).as[Transformer[Any, Any]])
+      def add(t: Transformer[_, _]): Builder = {
+        trans.add(t.ensuring(_.nonNull))
         this
       }
 
-      def retain[O](key: Key$[O]): Builder = add(Transformers.retain[O](key))
+      def retain[O](key: Kce[O]): Builder = add(Transformers.retain[O](key))
 
-      def ok(): immutable.Set[Transformer[Any, Any]] = trans.toSet[Transformer[Any, Any]]
+      def ok(): immutable.Set[Transformer[_, _]] = trans.toSet
     }
   }
 }

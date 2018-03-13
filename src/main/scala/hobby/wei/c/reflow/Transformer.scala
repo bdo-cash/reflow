@@ -28,15 +28,15 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/07/2016
   */
-abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OUT]) extends Equals {
+abstract class Transformer[IN, OUT] protected(val in: Kce[IN], val out: Kce[OUT]) extends Equals {
   /**
     * 对于只转换某Key的值类型的, 应使用本构造方法。
     *
     * @param key
     */
   protected def this(key: String) = this(
-    new Key$[IN](key) {
-    }, new Key$[OUT](key) {
+    new Kce[IN](key) {
+    }, new Kce[OUT](key) {
     })
 
   def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(0.as[OUT])(transform)

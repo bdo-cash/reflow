@@ -67,7 +67,7 @@ object Scheduler {
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[Any, Any]],
+  class Impl(basis: Dependency.Basis, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_, _]],
              feedback: Feedback, poster: Poster, outer: Env = null) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
