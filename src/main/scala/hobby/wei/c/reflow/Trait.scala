@@ -48,12 +48,12 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。
     */
-  protected def requires(): immutable.Set[Kce[_]]
+  protected def requires(): immutable.Set[Kce[_ <: AnyRef]]
 
   /**
     * 该任务输出的所有key-value类型。
     */
-  protected def outs(): immutable.Set[Kce[_]]
+  protected def outs(): immutable.Set[Kce[_ <: AnyRef]]
 
   /**
     * 优先级。范围 [ {@link Reflow#P_HIGH P_HIGH} ~ {@link Reflow#P_LOW P_LOW} ]。
@@ -72,9 +72,9 @@ trait Trait[T <: Task] extends Equals {
 
   private[reflow] lazy val name$: String = requireNonEmpty(name())
 
-  private[reflow] lazy val requires$: immutable.Set[Kce[_]] = requireKkDiff(requireElemNonNull(requires()))
+  private[reflow] lazy val requires$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
 
-  private[reflow] lazy val outs$: immutable.Set[Kce[_]] = requireKkDiff(requireElemNonNull(outs()))
+  private[reflow] lazy val outs$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
 
   private[reflow] lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
 
@@ -144,7 +144,7 @@ private[reflow] object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Kce[_]], override val priority: Int) extends Adapter {
+  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Kce[_ <: AnyRef]], override val priority: Int) extends Adapter {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
     override def newTask() = new Task {

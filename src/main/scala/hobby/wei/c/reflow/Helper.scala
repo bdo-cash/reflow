@@ -26,18 +26,18 @@ import scala.collection._
   */
 object Helper {
   object Keys {
-    def empty(): immutable.Set[Kce[_]] = immutable.Set.empty
+    def empty(): immutable.Set[Kce[_ <: AnyRef]] = immutable.Set.empty
 
-    def add(key: Kce[_]): Builder = new Builder().add(key)
+    def add(key: Kce[_ <: AnyRef]): Builder = new Builder().add(key)
     class Builder private[reflow]() {
-      private val keys = new mutable.HashSet[Kce[_]]
+      private val keys = new mutable.HashSet[Kce[_ <: AnyRef]]
 
-      def add(key: Kce[_]): Builder = {
+      def add(key: Kce[_ <: AnyRef]): Builder = {
         keys.add(key.ensuring(_.nonNull))
         this
       }
 
-      def ok(): immutable.Set[Kce[_]] = keys.toSet
+      def ok(): immutable.Set[Kce[_ <: AnyRef]] = keys.toSet
     }
   }
 
@@ -45,23 +45,23 @@ object Helper {
     /**
       * 将任务的某个输出在转换之后仍然保留。通过增加一个输出即输入转换。
       */
-    def retain[O](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
+    def retain[O <: AnyRef](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
       override protected def transform(in: O) = in
     }
 
-    def add(trans: Transformer[_, _]): Builder = new Builder().add(trans)
+    def add(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = new Builder().add(trans)
 
     class Builder private[reflow]() {
-      private val trans = new mutable.HashSet[Transformer[_, _]]
+      private val trans = new mutable.HashSet[Transformer[_ <: AnyRef, _ <: AnyRef]]
 
-      def add(t: Transformer[_, _]): Builder = {
+      def add(t: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = {
         trans.add(t.ensuring(_.nonNull))
         this
       }
 
-      def retain[O](key: Kce[O]): Builder = add(Transformers.retain[O](key))
+      def retain[O <: AnyRef](key: Kce[O]): Builder = add(Transformers.retain[O](key))
 
-      def ok(): immutable.Set[Transformer[_, _]] = trans.toSet
+      def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }
   }
 }

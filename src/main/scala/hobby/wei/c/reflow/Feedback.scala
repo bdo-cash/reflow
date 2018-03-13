@@ -16,7 +16,9 @@
 
 package hobby.wei.c.reflow
 
+import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.tool.pool.S._2S
 
 import scala.collection._
 
@@ -34,7 +36,7 @@ trait Feedback {
     * @param count 任务计数。
     * @param sum   任务流总数。用于计算主进度(%): `count * 1f / sum`, 和总进度(%): `(count + sub) / sum`。
     * @param sub   任务内部进度值。
-    * @param desc  任务描述`Trait#description()`。
+    * @param desc  任务描述`Trait#desc()`。
     */
   def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit
 
@@ -69,8 +71,8 @@ object Feedback {
 
       override def onStart(): Unit = poster.post(feedback.onStart())
 
-      override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit = poster.post(
-        feedback.onProgress(name, out, count, sum, sub, description)
+      override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit = poster.post(
+        feedback.onProgress(name, out, count, sum, sub, desc)
       )
 
       override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
@@ -86,7 +88,7 @@ object Feedback {
   class Adapter extends Feedback {
     override def onStart(): Unit = {}
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit = {}
+    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit = {}
 
     override def onComplete(out: Out): Unit = {}
 
@@ -107,8 +109,8 @@ object Feedback {
 
     override def onStart(): Unit = obs.foreach(_.onStart())
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, description: String): Unit =
-      obs.foreach(_.onProgress(name, out, count, sum, sub, description))
+    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
+      obs.foreach(_.onProgress(name, out, count, sum, sub, desc))
 
     override def onComplete(out: Out): Unit = obs.foreach(_.onComplete(out))
 
@@ -117,5 +119,22 @@ object Feedback {
     override def onAbort(): Unit = obs.foreach(_.onAbort())
 
     override def onFailed(name: String, e: Exception): Unit = obs.foreach(_.onFailed(name, e))
+  }
+
+  object Log extends Feedback with TAG.ClassName {
+    import Reflow.{logger => log}
+
+    override def onStart(): Unit = log.i("[onStart]")
+
+    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
+      log.i("[onProgress]name:%s, out:%s, count:%s, sum:%s, sub:%s, desc:%s.", name.s, out, count, sum, sub, desc.s)
+
+    override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
+
+    override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
+
+    override def onAbort(): Unit = log.w("[onAbort]")
+
+    override def onFailed(name: String, e: Exception): Unit = log.e(e, "[onFailed]name:%s.", name.s)
   }
 }

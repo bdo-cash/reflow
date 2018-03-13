@@ -30,7 +30,7 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Kce[T] private[reflow](_key: String, _clazz: Class[_]) extends Equals {
+abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_]) extends Equals {
   protected def this(_key: String) = this(_key, null)
 
   final val key: String = _key.ensuring(_.nonEmpty)
@@ -103,7 +103,7 @@ abstract class Kce[T] private[reflow](_key: String, _clazz: Class[_]) extends Eq
     * @param key
     * @return
     */
-  def isAssignableFrom(key: Kce[_]): Boolean = {
+  def isAssignableFrom(key: Kce[_ <: AnyRef]): Boolean = {
     if (!rawType.isAssignableFrom(key.rawType)) false
     else if (subTypes.length != key.subTypes.length) false
     else subTypes.indices.forall(i => subTypes(i) == key.subTypes(i))
