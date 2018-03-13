@@ -73,7 +73,7 @@ object In {
     override protected def loadValue(key: String) = map.get(key)
   }
 
-  def empty(): In = Locker.lazyGetr(getRef(emptyRef).get) {
+  def empty(): In = Locker.lazyGetr(getRef(emptyRef).orNull) {
     val in = new In(Helper.Keys.empty()) {
       override private[reflow] def fillValues(out: Out): Unit = {}
 

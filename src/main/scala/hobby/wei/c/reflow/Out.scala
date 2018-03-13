@@ -110,7 +110,7 @@ class Out private[reflow](map: Map[String, Kce[_]]) {
     _nullValueKeys -= key
   }
 
-  def apply[T >: Null](key: String): T = get[T](key).orNull
+  def apply[T >: Null](key: String): Option[T] = get[T](key)
 
   /**
     * 取得key对应的value。
@@ -119,7 +119,8 @@ class Out private[reflow](map: Map[String, Kce[_]]) {
     * @tparam T
     * @return
     */
-  def get[T](key: String): Option[T] = get(_keys(key).as[Kce[T]])
+  def get[T](key: String): Option[T] = _map.get(key).as[Option[T]] // 由于`cache`的也是放在一起，其`key`在`_keys`范围之外。所以只能用这种方式读取。
+  //_keys.get(key).fold[Option[T]](None) { k => get(k.as[Kce[T]]) }
 
   /**
     * 取得key对应的value。

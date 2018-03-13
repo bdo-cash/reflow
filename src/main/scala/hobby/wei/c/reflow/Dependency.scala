@@ -19,9 +19,10 @@ package hobby.wei.c.reflow
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
+import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{BasisMutable, IsPar, MapTo}
-import hobby.wei.c.reflow.Reflow._
+import hobby.wei.c.reflow.Reflow.{logger => log, _}
 
 import scala.collection.{Set, _}
 import scala.util.control.Breaks._
@@ -173,7 +174,7 @@ class Dependency private[reflow]() {
       override val dependencies = basis.dependencies.mapValues(_.toMap).toMap
       override val transformers = basis.transformers.mapValues(_.toSet).toMap
       override val transGlobal = basis.transGlobal.mapValues(_.toSet).toMap
-      override val outsFlowTrimmed = Dependency.trimOutsFlow(basisx).mapValues(_.toSet).toMap
+      override val outsFlowTrimmed = Dependency.trimOutsFlow(basisx, outputs).mapValues(_.toSet).toMap
       override val inputs = inputReqx.values.toSet
       override val outs = outputs.toSet
     }, inputReqx.toMap)
@@ -267,25 +268,19 @@ object Dependency extends TAG.ClassName {
 
     if (basis.nonNull) copyFrom(basis)
 
-    override val traits: mutable.ListBuffer[Trait[_ <: Task]] = new mutable.ListBuffer[Trait[_ <: Task]]
-    override val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Kce[_]]] = new mutable.AnyRefMap[String, mutable.Map[String, Kce[_]]]
-    override val transformers: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
-    override val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
+    override lazy val traits: mutable.ListBuffer[Trait[_ <: Task]] = new mutable.ListBuffer[Trait[_ <: Task]]
+    override lazy val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Kce[_]]] = new mutable.AnyRefMap[String, mutable.Map[String, Kce[_]]]
+    override lazy val transformers: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
+    override lazy val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_, _]]] = new mutable.AnyRefMap[String, Set[Transformer[_, _]]]
     override val outsFlowTrimmed = null
     override val inputs = null
     override val outs = null
 
     def copyFrom(src: Basis): Unit = {
       src.traits.foreach(traits += _)
-      src.dependencies.foreach { kv: (String, Map[String, Kce[_]]) =>
-        dependencies.put(kv._1, kv._2.mutable)
-      }
-      src.transformers.foreach { kv: (String, Set[Transformer[_, _]]) =>
-        transformers.put(kv._1, kv._2.toSet)
-      }
-      src.transGlobal.foreach { kv: (String, Set[Transformer[_, _]]) =>
-        transGlobal.put(kv._1, kv._2.toSet)
-      }
+      src.dependencies.foreach { kv: (String, Map[String, Kce[_]]) => dependencies.put(kv._1, kv._2.mutable) }
+      src.transformers.foreach { kv: (String, Set[Transformer[_, _]]) => transformers.put(kv._1, kv._2.toSet) }
+      src.transGlobal.foreach { kv: (String, Set[Transformer[_, _]]) => transGlobal.put(kv._1, kv._2.toSet) }
     }
   }
 
@@ -350,7 +345,7 @@ object Dependency extends TAG.ClassName {
         mapUseless.put(last.name$, outs)
       }
     }
-    logger.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s", last.name$, inputRequired, mapUseless)
+    log.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s", last.name$.s, inputRequired, mapUseless)
   }
 
   /**
@@ -461,7 +456,7 @@ object Dependency extends TAG.ClassName {
         }
         mapPal ++= map
       }
-      logger.i("[genOuts]trait:%s, mapPal:%s, map:%s", trat.name$, mapPal, map)
+      log.i("[genOuts]trait:%s, mapPal:%s, map:%s", trat.name$.s, mapPal, map)
       map
     }
   }
@@ -529,10 +524,10 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  private def trimOutsFlow(basis: Basis): Map[String, Set[Kce[_]]] = {
+  private def trimOutsFlow(basis: Basis, outputs: Set[Kce[_]]): Map[String, Set[Kce[_]]] = {
     val outsFlow = new mutable.AnyRefMap[String, Set[Kce[_]]]
     val trimmed = new mutable.AnyRefMap[String, Kce[_]]
-    putAll(trimmed, basis.outs)
+    putAll(trimmed, outputs)
     basis.traits.reverse.foreach { trat =>
       trimOutsFlow(outsFlow, trat, basis, trimmed)
     }
@@ -613,9 +608,7 @@ object Dependency extends TAG.ClassName {
   }
 
   private[reflow] def putAll[M <: mutable.Map[String, Kce[_]]](map: M, keys: Set[Kce[_]]): M = (map /: keys) {
-    (m, k) =>
-      m += ((k.key, k))
-      m
+    (m, k) => m += ((k.key, k))
   } /*keys.foreach(k => map.put(k.key, k)); map*/
 
   private[reflow] def removeAll[K](map: mutable.Map[K, _], set: Set[K]): Unit = set.foreach(map.remove)

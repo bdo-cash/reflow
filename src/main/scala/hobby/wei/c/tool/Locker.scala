@@ -138,7 +138,7 @@ object Locker {
 
   @throws[InterruptedException]
   def getLock(lockScope: AnyRef): ReentrantLock = lazyGet(
-    Assist.getRef(sLocks(lockScope)).get) {
+    Assist.getRef(sLocks.getOrElse(lockScope, null)).get) {
     val lock = new ReentrantLock(true) // 公平锁
     sLocks.put(lockScope, new WeakReference(lock))
     lock
@@ -168,7 +168,7 @@ object Locker {
     * {@link #getLock(AnyRef)}的无{@link InterruptedException 中断}版。
     */
   def getLockr(lockScope: AnyRef): ReentrantLock = lazyGetr(
-    Assist.getRef(sLocks(lockScope)).get) {
+    Assist.getRef(sLocks.getOrElse(lockScope, null)).orNull) {
     val lock = new ReentrantLock(true) // 公平锁
     sLocks.put(lockScope, new WeakReference(lock))
     lock
@@ -196,7 +196,7 @@ object Locker {
 
     @throws[InterruptedException]
     private[Locker] def exec$(lock: ReentrantLock): T = exec(
-      lazyGet(if (num == 0) EMPTY else sLockCons(lock)) {
+      lazyGet(if (num == 0) EMPTY else sLockCons.getOrElse(lock, null)) {
         val cons = new Array[Condition](num)
         for (i <- cons.indices) cons(i) = lock.newCondition()
         sLockCons.put(lock, cons)

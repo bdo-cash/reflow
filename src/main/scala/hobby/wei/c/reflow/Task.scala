@@ -48,13 +48,11 @@ abstract class Task protected() {
     * @tparam T
     * @return
     */
-  protected final def input[T >: Null](key: String): T = env.input(key)
+  protected final def input[T >: Null](key: String): Option[T] = env.input(key)
 
   protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
-  protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) =>
-    output(m._1, m._2)
-  }
+  protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
 
   /**
     * 如果 {@link #isReinforceRequired()}为true, 则缓存一些参数用于再次执行时使用。

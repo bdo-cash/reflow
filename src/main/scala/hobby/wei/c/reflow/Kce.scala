@@ -30,14 +30,14 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Kce[T] private[reflow](_key: String, _tpe: Type) extends Equals {
-  protected def this(key: String) = this(key, Reflect.getSuperclassTypeParameter(getClass, true)(0))
+abstract class Kce[T] private[reflow](_key: String, _clazz: Class[_]) extends Equals {
+  protected def this(_key: String) = this(_key, null)
 
   final val key: String = _key.ensuring(_.nonEmpty)
   /**
     * 泛型参数的类型, 类似于这种结构: java.util.List<java.util.List<int[]>>。
     */
-  final val tpe: Type = _tpe.ensuring(_.nonNull)
+  final val tpe: Type = Reflect.getSuperclassTypeParameter(if (_clazz.isNull) this.getClass else _clazz, true)(0).ensuring(_.nonNull)
   /**
     * 第一级泛型参数的Class表示。
     */
@@ -104,11 +104,9 @@ abstract class Kce[T] private[reflow](_key: String, _tpe: Type) extends Equals {
     * @return
     */
   def isAssignableFrom(key: Kce[_]): Boolean = {
-    if (!rawType.isAssignableFrom(key.rawType)) {
-      false
-    } else if (subTypes.length != key.subTypes.length) {
-      false
-    } else subTypes.indices.forall(i => subTypes(i) == key.subTypes(i))
+    if (!rawType.isAssignableFrom(key.rawType)) false
+    else if (subTypes.length != key.subTypes.length) false
+    else subTypes.indices.forall(i => subTypes(i) == key.subTypes(i))
   }
 
   override def equals(any: scala.Any) = any match {
