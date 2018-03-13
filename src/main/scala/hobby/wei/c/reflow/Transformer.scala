@@ -28,16 +28,16 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/07/2016
   */
-abstract class Transformer[IN, OUT] protected(val in: Kce[IN], val out: Kce[OUT]) extends Equals {
+abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] protected(keyIn: String, keyOut: String) extends Equals {
   /**
     * 对于只转换某Key的值类型的, 应使用本构造方法。
     *
     * @param key
     */
-  protected def this(key: String) = this(
-    new Kce[IN](key) {
-    }, new Kce[OUT](key) {
-    })
+  protected def this(key: String) = this(key, key)
+
+  lazy val in: Kce[IN] = new Kce[IN](keyIn, this.getClass, 0) {}
+  lazy val out: Kce[OUT] = new Kce[OUT](keyOut, this.getClass, 1) {}
 
   def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(0.as[OUT])(transform)
 
@@ -49,9 +49,9 @@ abstract class Transformer[IN, OUT] protected(val in: Kce[IN], val out: Kce[OUT]
     case _ => false
   }
 
-  override def canEqual(that: Any) = that.isInstanceOf[Transformer[_, _]]
+  override def canEqual(that: Any) = that.isInstanceOf[Transformer[_ <: AnyRef, _ <: AnyRef]]
 
   override def hashCode = in.hashCode * 41 + out.hashCode
 
-  override def toString = s"$in -> $out"
+  override def toString = s"${classOf[Transformer[_, _]].getSimpleName}[$in -> $out]"
 }

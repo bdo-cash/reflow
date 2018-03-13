@@ -30,14 +30,14 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_]) extends Equals {
+abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], _index: Int = 0) extends Equals {
   protected def this(_key: String) = this(_key, null)
 
   final val key: String = _key.ensuring(_.nonEmpty)
   /**
     * 泛型参数的类型, 类似于这种结构: java.util.List<java.util.List<int[]>>。
     */
-  final val tpe: Type = Reflect.getSuperclassTypeParameter(if (_clazz.isNull) this.getClass else _clazz, true)(0).ensuring(_.nonNull)
+  final val tpe: Type = Reflect.getSuperclassTypeParameter(if (_clazz.isNull) this.getClass else _clazz, true)(_index).ensuring(_.nonNull)
   /**
     * 第一级泛型参数的Class表示。
     */
@@ -118,5 +118,5 @@ abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_]) 
 
   override def hashCode = key.hashCode * 41 + tpe.hashCode
 
-  override def toString = String.format("[%s -> %s]", key, tpe)
+  override def toString = s"${classOf[Kce[_]].getSimpleName}[$key -> $tpe]"
 }

@@ -45,7 +45,7 @@ object Helper {
     /**
       * 将任务的某个输出在转换之后仍然保留。通过增加一个输出即输入转换。
       */
-    def retain[O <: AnyRef](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
+    def retain[O <: AnyRef](key: String): Transformer[O, O] = new Transformer[O, O](key) {
       override protected def transform(in: O) = in
     }
 
@@ -59,7 +59,7 @@ object Helper {
         this
       }
 
-      def retain[O <: AnyRef](key: Kce[O]): Builder = add(Transformers.retain[O](key))
+      def retain[O <: AnyRef](key: String): Builder = add(Transformers.retain[O](key))
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }
