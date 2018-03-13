@@ -17,7 +17,6 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.TypeBring.AsIs
-import hobby.wei.c.tool.Reflect
 
 import scala.collection._
 
@@ -35,11 +34,10 @@ abstract class Transformer[IN, OUT] protected(val in: Key$[IN], val out: Key$[OU
     *
     * @param key
     */
-  protected def this(key: String) = {
-    this(new Key$[IN](key, Reflect.getSuperclassTypeParameter(getClass, true)(0)) {
-    }, new Key$[OUT](key, Reflect.getSuperclassTypeParameter(getClass, true)(1)) {
+  protected def this(key: String) = this(
+    new Key$[IN](key) {
+    }, new Key$[OUT](key) {
     })
-  }
 
   def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(0.as[OUT])(transform)
 

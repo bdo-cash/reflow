@@ -523,13 +523,13 @@ private[reflow] object Tracker {
       log.i("run----->>>>>")
       var working = false
       try {
-        task = trat.newTask(env)
+        task = trat.newTask()
         // 判断放在task的创建后面, 配合abort()中的顺序。
         if (aborted) onAbort()
         else {
           onStart()
           working = true
-          if (task.exec(this)) {
+          if (task.exec(env, this)) {
             working = false
             onWorkDone()
           }
@@ -634,10 +634,10 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class SubReflowTask(env: Env) extends Task(env: Env) {
+  private[reflow] class SubReflowTask() extends Task {
     @volatile private var scheduler: Scheduler = _
 
-    override private[reflow] def exec$(runner: Runner) = {
+    override private[reflow] def exec$(env: Env, runner: Runner) = {
       progress(0)
       val trat = env.trat.as[ReflowTrait]
       scheduler = trat.reflow.start(In.from(env.input), trat.feedback.withPoster(trat.poster).join(env, runner, progress(1)), null, env)

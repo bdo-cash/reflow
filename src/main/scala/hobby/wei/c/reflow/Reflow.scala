@@ -190,7 +190,7 @@ object Reflow {
   def execute(runner: Runnable, period: Period.Tpe, priority: Int, desc: String, name: String = null): Unit = execute$(runner, period, priority, desc, name)
 
   private def execute$(_runner: Runnable, _period: Period.Tpe, _priority: Int, _desc: String, _name: String = null) {
-    Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Empty() {
+    Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
       override protected def priority() = _priority
@@ -199,7 +199,7 @@ object Reflow {
 
       override protected def desc() = if (_desc.isNull) name$ else _desc
 
-      override def newTask(env: Env) = null
+      override def newTask() = null
     }, _runner))
     Worker.scheduleBuckets()
   }

@@ -31,12 +31,15 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-abstract class Task protected(env: Env) {
+abstract class Task protected() {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
+  @volatile private var env: Env = _
   @volatile private var thread: Thread = _
   @volatile private var aborted: Boolean = _
   @volatile private var working: Boolean = _
+
+  protected final def getEnv: Env = env
 
   /**
     * 取得输入的value.
@@ -91,14 +94,15 @@ abstract class Task protected(env: Env) {
   @throws[CodeException]
   @throws[AbortException]
   @throws[FailedException]
-  private[reflow] final def exec(runner: Runner): Boolean = {
+  private[reflow] final def exec(_env: Env, _runner: Runner): Boolean = {
+    env = _env
     Locker.syncr {
       if (aborted) return true
       thread = Thread.currentThread()
       working = true
     }
     try {
-      exec$(runner)
+      exec$(_env, _runner)
     } catch {
       case e: FailedError =>
         throw new FailedException(e.getCause)
@@ -110,7 +114,7 @@ abstract class Task protected(env: Env) {
     }
   }
 
-  private[reflow] def exec$(runner: Runner): Boolean = {
+  private[reflow] def exec$(_env: Env, _runner: Runner): Boolean = {
     // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
     progress(0)
     doWork()

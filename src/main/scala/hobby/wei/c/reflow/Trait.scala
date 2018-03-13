@@ -43,7 +43,7 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 创建任务。
     */
-  /*protected*/ def newTask(env: Env): T
+  /*protected*/ def newTask(): T
 
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。
@@ -119,7 +119,7 @@ private[reflow] object Trait {
       classOf[Parallel].getName + "#" + _traits.head.name$
     }
 
-    override def newTask(env: Env) = ???
+    override def newTask() = ???
 
     override protected def requires() = Helper.Keys.empty()
 
@@ -132,8 +132,8 @@ private[reflow] object Trait {
     override protected def desc() = ???
   }
 
-  private[reflow] trait Empty extends Trait[Task] {
-    override protected def name() = classOf[Empty].getName + "#" + sCount.getAndIncrement()
+  trait Adapter extends Trait[Task] {
+    override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
 
     override protected def requires() = Helper.Keys.empty()
 
@@ -144,11 +144,11 @@ private[reflow] object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Key$[_]], override val priority: Int) extends Empty {
+  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Key$[_]], override val priority: Int) extends Adapter {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
-    override def newTask(env: Env) = new Task(env) {
-      override protected def doWork(): Unit = in.fillValues(env.out)
+    override def newTask() = new Task {
+      override protected def doWork(): Unit = in.fillValues(getEnv.out)
     }
 
     override protected def outs() = outsTrimmed
@@ -159,6 +159,6 @@ private[reflow] object Trait {
   private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback, val poster: Poster = null) extends Trait[SubReflowTask] {
     override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
 
-    override final def newTask(env: Env) = new SubReflowTask(env)
+    override final def newTask() = new SubReflowTask()
   }
 }
