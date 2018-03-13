@@ -19,8 +19,9 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.wei.c.reflow.Reflow._
+import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.tool.{Locker, Snatcher}
 
 import scala.util.control.Breaks._
@@ -31,7 +32,7 @@ import scala.util.control.Breaks._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 11/02/2017
   */
-object Worker {
+object Worker extends TAG.ClassName {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
   private final val sThreadFactory = new ThreadFactory() {
@@ -129,6 +130,7 @@ object Worker {
   private val sSnatcher = new Snatcher
 
   def scheduleBuckets() {
+    log.i("[scheduleBuckets]>>>>>>>>>>")
     if (!sSnatcher.snatch()) return
     val executor = sThreadPoolExecutor
     breakable {
@@ -160,12 +162,14 @@ object Worker {
           if (r.nonNull && (runner.isNull || // 值越小优先级越大
             ((r.trat.priority$ + r.trat.period$.weight /*采用混合优先级*/)
               < runner.trat.priority$ + runner.trat.period$.weight))) {
+            log.i("[scheduleBuckets]即将执行 > index:%d, runner:%s.", index, runner)
             runner = r
             index = i
           }
         }
-        if (runner.isNull) if (!sSnatcher.glance()) break
-        else {
+        if (runner.isNull) {
+          if (!sSnatcher.glance()) break
+        } else {
           // 队列结构可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
           if (sPreparedBuckets.sQueues(index).remove(runner)) {
             sExecuting.sCounters(index).incrementAndGet

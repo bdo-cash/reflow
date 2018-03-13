@@ -73,7 +73,7 @@ object Scheduler {
     private lazy val state = new State$()
     @volatile private var delegatorRef: ref.WeakReference[Scheduler] = _
 
-    private[reflow] def start$(): Tracker.Impl = {
+    private[reflow] def start$(): Scheduler.Impl = {
       var permit = false
       Locker.sync {
         if (isDone) {
@@ -89,7 +89,7 @@ object Scheduler {
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
         delegatorRef = new ref.WeakReference[Scheduler](tracker)
         tracker.start()
-        tracker
+        this
       } else null
     }
 

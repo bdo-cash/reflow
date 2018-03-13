@@ -162,6 +162,7 @@ class Dependency private[reflow]() {
     * @return { @link Scheduler.Starter}接口。
     */
   def submit(outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
+    log.w("[submit]")
     requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
     val uselesx = useless.mapValues(_.mutable.as[mutable.Map[String, Kce[_ <: AnyRef]]]).mutable
@@ -252,15 +253,14 @@ object Dependency extends TAG.ClassName {
 
     def last(child: Boolean): Option[Trait[_]] = first$last(first$last = false, child)
 
-    private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_ <: Task]] = {
-      Option(if (traits.isEmpty) null
+    private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_ <: Task]] = Option(
+      if (traits.isEmpty) null
       else {
         val trat = traits.splitAt(if (first$last) 0 else traits.size - 1)._2.head
         if (child && trat.isParallel) {
           if (first$last) trat.asParallel.first() else trat.asParallel.last()
         } else trat
       })
-    }
   }
 
   class BasisMutable(basis: Basis) extends Basis {

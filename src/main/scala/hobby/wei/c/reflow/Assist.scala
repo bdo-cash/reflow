@@ -21,6 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.anno.proguard.Burden
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 
@@ -142,13 +143,13 @@ object Assist extends TAG.ClassName {
       val duration = end - begin
       val avg = period.average(duration)
       if (avg == 0 || duration <= avg) {
-        log.i("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.i("task:%s, period:%s, duration:%fs, average:%fs", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       } else {
-        log.w("task:%s, period:%s, duration:%fs, average:%fs", name, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.w("task:%s, period:%s, duration:%fs, average:%fs", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       }
     }
 
-    def abortion(triggerFrom: String, name: String, forError: Boolean): Unit = log.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom, name, forError)(tag("abortion"))
+    def abortion(triggerFrom: String, name: String, forError: Boolean): Unit = log.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom.s, name.s, forError)(tag("abortion"))
 
     @Burden
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {

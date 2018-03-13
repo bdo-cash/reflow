@@ -23,6 +23,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
+import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
@@ -138,7 +139,7 @@ private[reflow] class ReinforceCache {
   override def toString = s"ReinforceCache:\n caches:$caches,\n subs:$subs,\n begins:$begins,\n inputs:$inputs,\n outs:$outs."
 }
 
-private[reflow] object Tracker {
+private[reflow] object Tracker extends TAG.ClassName {
   private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], state: Scheduler.State$,
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
@@ -156,6 +157,7 @@ private[reflow] object Tracker {
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
 
     private[reflow] def start(): Unit = {
+      log.w("[start]=====>>>>>")
       assert(remaining.nonEmpty, s"`start()`时候，不应该存在空任务列表。isReinforcing:$isReinforcing")
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
       if (isReinforcing) {
@@ -181,7 +183,7 @@ private[reflow] object Tracker {
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
-      log.w("endRunner")(runner.trat.name$)
+      log.w("[endRunner]trait:%s.", runner.trat.name$.s)
       // 拿到父级`trait`（注意：如果当前是并行的任务，则`runner.trat`是子级）。
       val (tratGlobal, veryBeginning) = if (isInput(runner.trat)) (traitIn, true) else (remaining.head, false)
       // 断言`trat`与`remaining`的一致性。
@@ -292,7 +294,7 @@ private[reflow] object Tracker {
     }
 
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
-      log.e("innerError")(runner.trat.name$)
+      log.e("[innerError]trait:%s.", runner.trat.name$.s)
       // 正常情况下是不会走的，仅用于测试。
       performAbort(runner.trat.name$, runner, forError = true, runner.trat, e)
     }
@@ -434,26 +436,26 @@ private[reflow] object Tracker {
     override private[reflow] def onTaskStart(trat: Trait[_]): Unit = {
       if (isReinforcing) state.forward(REINFORCING)
       else {
-        val step = basis.stepOf(trat)
-        if (step >= 0) {
+        if (!isInput(trat)) {
           if (state.forward(EXECUTING))
           // 但反馈有且只有一次（上面forward方法只会成功一次）
-            if (step == 0) {
+            if (basis.stepOf(trat) == 0) {
               postReport(reporter.reportOnStart())
             } else {
-              // progress会在任务开始、进行中及结束时report，这里do nothing.
+              // progress会在任务开始、进行中及结束时report，这里do nothing。
             }
         }
       }
     }
 
+    // 为什么这里有个`name`? 可能是较深层次的`trat.name$`名称；`desc`同步。
     override private[reflow] def onTaskProgress(name: String, trat: Trait[_], progress: Float, out: Out, desc: String): Unit = {
       // 因为对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
       if (!isReinforcing) {
-        val step = basis.stepOf(trat)
-        if (step >= 0) { // 过滤掉input任务
+        if (!isInput(trat)) { // 过滤掉input任务
           Locker.syncr { // 为了保证并行的不同任务间进度的顺序性，这里还必须得同步。
             val subPogres = subProgress(trat, progress)
+            val step = basis.stepOf(trat)
             buffer4Reports += (() => reporter.reportOnProgress(name, step, subPogres, out, desc))
           }
           postReport() // 注意就这一个地方写法不同
@@ -482,7 +484,7 @@ private[reflow] object Tracker {
 
     override private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit = {
       joinOutFlow(flow)
-      Monitor.complete(basis.stepOf(trat), out, flow, outFlowTrimmed)
+      Monitor.complete(if (isInput(trat)) -1 else basis.stepOf(trat), out, flow, outFlowTrimmed)
     }
 
     private def postReport(action: => Unit): Unit = {
@@ -520,7 +522,7 @@ private[reflow] object Tracker {
     }
 
     override def run(): Unit = {
-      log.i("run----->>>>>")
+      log.i("[run]----->>>>>")
       var working = false
       try {
         task = trat.newTask()
@@ -536,7 +538,7 @@ private[reflow] object Tracker {
         }
       } catch {
         case e: Exception =>
-          log.i("exception:%s", e)
+          log.e(e, "[run]-----<<<<<")
           if (working) {
             e match {
               case _: AbortException => // 框架抛出的, 表示成功中断。
@@ -558,7 +560,7 @@ private[reflow] object Tracker {
     }
 
     private def transOutput(): Out = {
-      log.i("transOutput")
+      log.i("[transOutput]")
       if (env.tracker.isInput(trat)) env.out // 不在这里作转换的理由：无论如何，到tracker里去了之后还要进行一遍trim合并，那就在这里节省一遍吧。
       else {
         val flow = new Out(env.tracker.basis.dependencies(trat.name$))
@@ -576,7 +578,7 @@ private[reflow] object Tracker {
     }
 
     private def afterWork(flow: Out) {
-      log.i("afterWork")
+      log.i("[afterWork]")
       onComplete(env.out, flow)
       if (aborted) onAbort()
     }
@@ -586,7 +588,7 @@ private[reflow] object Tracker {
 
     /** 在执行任务`失败`后应该调用本方法。 */
     def onWorkEnd(doSth: => Unit) {
-      log.i("onWorkEnd")
+      log.i("[onWorkEnd]")
       import hobby.chenai.nakam.basis.TAG.ThrowMsg
       require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
       doSth
@@ -597,26 +599,26 @@ private[reflow] object Tracker {
     def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
 
     def onStart() {
-      log.i("onStart")
+      log.i("[onStart]")
       env.tracker.onTaskStart(trat)
       timeBegin = System.currentTimeMillis
     }
 
     def onComplete(out: Out, flow: Out) {
-      log.i("onComplete")
+      log.i("[onComplete]")
       Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
       env.tracker.onTaskComplete(trat, out, flow)
     }
 
     // 人为触发，表示任务失败
     def onFailed(e: Exception, name: String = trat.name$) {
-      log.e(e, name)
+      log.e(e, "[onFailed]trait:%s.", name.s)
       withAbort(name, e)
     }
 
     // 客户代码异常
     def onException(e: CodeException) {
-      log.e(e)
+      log.e(e, "[onException]")
       withAbort(trat.name$, e)
     }
 
@@ -628,7 +630,7 @@ private[reflow] object Tracker {
     }
 
     def innerError(e: Exception) {
-      log.e(e)
+      log.e(e, "[innerError]")
       env.tracker.innerError(this, e)
       throw new InnerError(e)
     }
@@ -705,6 +707,7 @@ private[reflow] object Tracker {
     }
 
     private[Tracker] def reportOnProgress(name: String, step: Int, subProgress: Float, out: Out, desc: String): Unit = {
+      log.i("[reportOnComplete]name:%s, step:%d, subProgress:%f, out:%s, desc:%s.", name.s, step, subProgress, out, desc.s)
       assert(subProgress >= _subProgress, s"调用没有同步？`$name`:`$desc`")
       if (_stateResetted) {
         assert(step == _step + 1)
@@ -722,6 +725,7 @@ private[reflow] object Tracker {
     }
 
     private[Tracker] def reportOnComplete(out: Out): Unit = {
+      log.i("[reportOnComplete]step:%d, subProgress:%f, out:%s.", _step, _subProgress, out)
       assert(_step == sum - 1 && _subProgress == 1)
       eatExceptions(feedback.onComplete(out))
     }
