@@ -130,12 +130,12 @@ object Worker extends TAG.ClassName {
   private val sSnatcher = new Snatcher
 
   def scheduleBuckets() {
-    log.i("[scheduleBuckets]>>>>>>>>>>")
+    if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>>")
     if (!sSnatcher.snatch()) {
-      log.w("[scheduleBuckets]<<<<<<<<<< ignore.")
+      if (debugMode) log.w("[scheduleBuckets]<<<<<<<<<< ignore.")
       return
     }
-    log.w("[scheduleBuckets]>>>>>>>>>> bingo >:")
+    if (debugMode) log.w("[scheduleBuckets]>>>>>>>>>> bingo >:")
     val executor = sThreadPoolExecutor
     breakable {
       while (true) {
@@ -166,14 +166,14 @@ object Worker extends TAG.ClassName {
           if (r.nonNull && (runner.isNull || // 值越小优先级越大
             ((r.trat.priority$ + r.trat.period$.weight /*采用混合优先级*/)
               < runner.trat.priority$ + runner.trat.period$.weight))) {
-            log.i("[scheduleBuckets]>>>>>>>>>> preparing exec >: index:%d, runner:%s.", index, runner)
+            if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> preparing exec >: index:%d, runner:%s.", index, runner)
             runner = r
             index = i
           }
         }
         if (runner.isNull) {
           if (!sSnatcher.glance()) {
-            log.w("[scheduleBuckets]<<<<<<<<<< all done.")
+            if (debugMode) log.w("[scheduleBuckets]<<<<<<<<<< all done.")
             break
           }
         } else {

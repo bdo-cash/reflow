@@ -157,7 +157,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
 
     private[reflow] def start(): Unit = {
-      log.w("[start]=====>>>>>")
+      if (debugMode) log.w("[start]=====>>>>>")
       assert(remaining.nonEmpty, s"`start()`时候，不应该存在空任务列表。isReinforcing:$isReinforcing")
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
       if (isReinforcing) {
@@ -183,7 +183,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
-      log.w("[endRunner]trait:%s.", runner.trat.name$.s)
+      if (debugMode) log.w("[endRunner]trait:%s.", runner.trat.name$.s)
       // 拿到父级`trait`（注意：如果当前是并行的任务，则`runner.trat`是子级）。
       val (tratGlobal, veryBeginning) = if (isInput(runner.trat)) (traitIn, true) else (remaining.head, false)
       // 断言`trat`与`remaining`的一致性。
@@ -295,7 +295,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
-      log.e("[innerError]trait:%s.", runner.trat.name$.s)
+      if (debugMode) log.e("[innerError]trait:%s.", runner.trat.name$.s)
       // 正常情况下是不会走的，仅用于测试。
       performAbort(runner.trat.name$, runner, forError = true, runner.trat, e)
     }
@@ -521,7 +521,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     override def run(): Unit = {
-      log.i("[run]----->>>>>")
+      if (debugMode) log.i("[run]----->>>>>")
       var working = false
       try {
         task = trat.newTask()
@@ -558,7 +558,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     private def transOutput(): Out = {
-      log.i("[transOutput]")
+      if (debugMode) log.i("[transOutput]")
       if (env.tracker.isInput(trat)) env.out // 不在这里作转换的理由：无论如何，到tracker里去了之后还要进行一遍trim合并，那就在这里节省一遍吧。
       else {
         val flow = new Out(env.tracker.basis.dependencies(trat.name$))
@@ -576,7 +576,7 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     private def afterWork(flow: Out) {
-      log.i("[afterWork]")
+      if (debugMode) log.i("[afterWork]")
       onComplete(env.out, flow)
       if (aborted) onAbort()
     }
@@ -586,7 +586,7 @@ private[reflow] object Tracker extends TAG.ClassName {
 
     /** 在执行任务`失败`后应该调用本方法。 */
     def onWorkEnd(doSth: => Unit) {
-      log.i("[onWorkEnd]")
+      if (debugMode) log.i("[onWorkEnd]")
       import hobby.chenai.nakam.basis.TAG.ThrowMsg
       require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
       doSth
@@ -597,26 +597,26 @@ private[reflow] object Tracker extends TAG.ClassName {
     def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
 
     def onStart() {
-      log.i("[onStart]")
+      if (debugMode) log.i("[onStart]")
       env.tracker.onTaskStart(trat)
       timeBegin = System.currentTimeMillis
     }
 
     def onComplete(out: Out, flow: Out) {
-      log.i("[onComplete]")
+      if (debugMode) log.i("[onComplete]")
       Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
       env.tracker.onTaskComplete(trat, out, flow)
     }
 
     // 人为触发，表示任务失败
     def onFailed(e: Exception, name: String = trat.name$) {
-      log.e(e, "[onFailed]trait:%s.", name.s)
+      if (debugMode) log.e(e, "[onFailed]trait:%s.", name.s)
       withAbort(name, e)
     }
 
     // 客户代码异常
     def onException(e: CodeException) {
-      log.e(e, "[onException].")
+      if (debugMode) log.e(e, "[onException].")
       withAbort(trat.name$, e)
     }
 

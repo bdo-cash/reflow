@@ -160,7 +160,7 @@ class Dependency private[reflow]() {
     * @return { @link Scheduler.Starter}接口。
     */
   def submit(outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
-    log.w("[submit]")
+    if (debugMode) log.w("[submit]")
     requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
     val uselesx = useless.mapValues(_.mutable.as[mutable.Map[String, Kce[_ <: AnyRef]]]).mutable
@@ -346,7 +346,7 @@ object Dependency extends TAG.ClassName {
         mapUseless.put(last.name$, outs)
       }
     }
-    log.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s.", last.name$.s, inputRequired, mapUseless)
+    if (debugMode) log.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s.", last.name$.s, inputRequired, mapUseless)
   }
 
   /**
@@ -364,7 +364,7 @@ object Dependency extends TAG.ClassName {
       }
     }
     genInputRequired(requires, inputRequired)
-    log.i("[genIOuts]inputRequired:%s, mapUseless:%s, basis.dependencies:%s.", inputRequired, mapUseless, basis.dependencies)
+    if (debugMode) log.i("[genIOuts]inputRequired:%s, mapUseless:%s, basis.dependencies:%s.", inputRequired, mapUseless, basis.dependencies)
   }
 
   /**
@@ -458,7 +458,7 @@ object Dependency extends TAG.ClassName {
         }
         mapPal ++= map
       }
-      log.i("[genOuts]trait:%s, mapPal:%s, map:%s.", trat.name$.s, mapPal, map)
+      if (debugMode) log.i("[genOuts]trait:%s, mapPal:%s, map:%s.", trat.name$.s, mapPal, map)
       map
     }
   }
@@ -533,7 +533,7 @@ object Dependency extends TAG.ClassName {
     basis.traits.reverse.foreach { trat =>
       trimOutsFlow(outsFlow, trat, basis, trimmed)
     }
-    log.i("[trimOutsFlow]outsFlow:%s.", outsFlow)
+    if (debugMode) log.i("[trimOutsFlow]outsFlow:%s.", outsFlow)
     outsFlow
   }
 

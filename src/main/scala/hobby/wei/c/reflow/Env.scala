@@ -18,7 +18,7 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.wei.c.reflow.Reflow.{logger => log}
+import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -32,7 +32,7 @@ trait Env extends TAG.ClassName {
     in.fillWith(tracker.getPrevOutFlow)
     val cached = myCache(create = false)
     if (cached.nonNull) in.cache(cached)
-    log.i("input: %s.", in)
+    if (debugMode) log.i("input: %s.", in)
     in
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)
