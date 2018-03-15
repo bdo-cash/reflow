@@ -698,32 +698,41 @@ private[reflow] object Tracker extends TAG.ClassName {
     private var _stateResetted = true
 
     private[Tracker] def reportOnStart(): Unit = {
-      assert(_stateResetted)
-      _stateResetted = false
+      if (debugMode) {
+        log.i("[reportOnStart]_stateResetted:%b.", _stateResetted)
+        assert(_stateResetted)
+        _step = -1
+        _subProgress = 0
+      }
       eatExceptions(feedback.onStart())
     }
 
     private[Tracker] def reportOnProgress(name: String, step: Int, subProgress: Float, out: Out, desc: String): Unit = {
-      log.i("[reportOnComplete]name:%s, step:%d, subProgress:%f, out:%s, desc:%s.", name.s, step, subProgress, out, desc.s)
-      assert(subProgress >= _subProgress, s"调用没有同步？`$name`:`$desc`")
-      if (_stateResetted) {
-        assert(step == _step + 1)
-        _step = step
-        _subProgress = 0
-      } else assert(step == _step)
-      if (subProgress > _subProgress) {
-        _subProgress = subProgress
-        // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
-        if (subProgress == 1) {
-          _stateResetted = true
+      if (debugMode) {
+        log.i("[reportOnProgress]name:%s, step:%d, subProgress:%f, out:%s, desc:%s.", name.s, step, subProgress, out, desc.s)
+        assert(subProgress >= _subProgress, s"调用没有同步？`$name`。")
+        if (_stateResetted) {
+          assert(step == _step + 1)
+          _step = step
+          _stateResetted = false
+        } else assert(step == _step)
+        if (subProgress > _subProgress) {
+          _subProgress = subProgress
+          // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
+          if (subProgress == 1) {
+            _subProgress = 0
+            _stateResetted = true
+          }
         }
       }
       eatExceptions(feedback.onProgress(name, out, step, sum, subProgress, desc))
     }
 
     private[Tracker] def reportOnComplete(out: Out): Unit = {
-      log.i("[reportOnComplete]step:%d, subProgress:%f, out:%s.", _step, _subProgress, out)
-      assert(_step == sum - 1 && _subProgress == 1)
+      if (debugMode) {
+        log.i("[reportOnComplete]step:%d, subProgress:%f, _stateResetted:%b, out:%s.", _step, _subProgress, _stateResetted, out)
+        assert(_stateResetted && _step == sum - 1 && _subProgress == 0)
+      }
       eatExceptions(feedback.onComplete(out))
     }
 

@@ -29,10 +29,10 @@ trait Env extends TAG.ClassName {
   private[reflow] val tracker: Tracker
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
-    log.i("input: %s", input)
     in.fillWith(tracker.getPrevOutFlow)
     val cached = myCache(create = false)
     if (cached.nonNull) in.cache(cached)
+    log.i("input: %s.", in)
     in
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)

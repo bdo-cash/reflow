@@ -65,7 +65,7 @@ object In {
 
   private def generate(map: Map[String, Any]): Set[Kce[_ <: AnyRef]] = {
     val set = new mutable.HashSet[Kce[_ <: AnyRef]]
-    map.foreach { kv: (String, Any) => set.add(new Kce(kv._1, kv._2.getClass) {}) }
+    map.foreach { kv: (String, Any) => set.add(new Kce(kv._1, kv._2.getClass, 0, true) {}) }
     set
   }
 

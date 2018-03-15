@@ -30,22 +30,22 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], _index: Int = 0) extends Equals {
+abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], _index: Int = 0, _raw: Boolean = false) extends Equals {
   protected def this(_key: String) = this(_key, null)
 
   final val key: String = _key.ensuring(_.nonEmpty)
   /**
     * 泛型参数的类型, 类似于这种结构: java.util.List<java.util.List<int[]>>。
     */
-  final val tpe: Type = Reflect.getSuperclassTypeParameter(if (_clazz.isNull) this.getClass else _clazz, true)(_index).ensuring(_.nonNull)
+  final val tpe: Type = (if (_raw) _clazz else Reflect.getSuperclassTypeParameter(if (_clazz.isNull) this.getClass else _clazz, true)(_index)).ensuring(_.nonNull)
   /**
     * 第一级泛型参数的Class表示。
     */
-  private val rawType: Class[_ >: T] = Reflect.getRawType(tpe).as[Class[_ >: T]]
+  private lazy val rawType: Class[_ >: T] = Reflect.getRawType(tpe).as[Class[_ >: T]]
   /**
     * 第一级泛型参数的子泛型参数, 可能不存在。作用或结构与tpe类似。
     */
-  private val subTypes: Array[Type] = Reflect.getSubTypes(tpe)
+  private lazy val subTypes: Array[Type] = Reflect.getSubTypes(tpe)
 
   /**
     * 走这个方法作类型转换, 确保value类型与定义的一致性。
