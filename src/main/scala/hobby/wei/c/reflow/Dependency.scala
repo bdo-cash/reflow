@@ -75,9 +75,7 @@ class Dependency private[reflow]() {
   def next(trat: Trait[_ <: Task]): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
     requireTaskNameDiff(trat, names)
-    basis.last(false).foreach { last =>
-      Dependency.genIOPrev(last, null, basis, inputRequired, useless)
-    }
+    basis.last(false).foreach(Dependency.genIOPrev(_, null, basis, inputRequired, useless))
     basis.traits += trat
     this
   }
@@ -96,15 +94,15 @@ class Dependency private[reflow]() {
           var first = true
           for (tt <- trat.traits()) {
             if (first) {
-              next(tt).transition$(dependency.basis.transformers(tt.name$), check = false)
+              next(tt).transition$(dependency.basis.transformers.getOrNull(tt.name$), check = false)
               first = false
             } else {
-              and(tt).transition$(dependency.basis.transformers(tt.name$), check = false)
+              and(tt).transition$(dependency.basis.transformers.getOrNull(tt.name$), check = false)
             }
           }
-        case _ => next(trat).transition$(dependency.basis.transformers(trat.name$), check = false)
+        case _ => next(trat).transition$(dependency.basis.transformers.getOrNull(trat.name$), check = false)
       }
-      next$(dependency.basis.transGlobal(trat.name$), check = false)
+      next$(dependency.basis.transGlobal.getOrNull(trat.name$), check = false)
     }
     this
   }
@@ -127,7 +125,7 @@ class Dependency private[reflow]() {
   def transition(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]]): Dependency = transition$(tranSet, check = true)
 
   private def transition$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], check: Boolean): Dependency = {
-    if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
+    if (check.ensuring(_ && tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
       basis.transformers.put(basis.last(true).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     }
     this
@@ -150,7 +148,7 @@ class Dependency private[reflow]() {
   def next(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]]): Dependency = next$(tranSet, check = true)
 
   private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], check: Boolean): Dependency = {
-    if (check.ensuring(tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
+    if (check.ensuring(_ && tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
       basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
   }
@@ -170,11 +168,12 @@ class Dependency private[reflow]() {
     val basisx = new BasisMutable(basis)
     Dependency.genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
     Dependency.genIOuts(outputs, basisx, inputReqx, uselesx)
+    basisx.traits.foreach(t => basisx.dependencies.getOrElseUpdate(t.name$, mutable.Map.empty)) // 避免空值
     new Reflow.Impl(new Dependency.Basis {
-      override val traits = basis.traits.to[immutable.Seq]
-      override val dependencies = basis.dependencies.mapValues(_.toMap).toMap
-      override val transformers = basis.transformers.mapValues(_.toSet).toMap
-      override val transGlobal = basis.transGlobal.mapValues(_.toSet).toMap
+      override val traits = basisx.traits.to[immutable.Seq]
+      override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
+      override val transformers = basisx.transformers.mapValues(_.toSet).toMap
+      override val transGlobal = basisx.transGlobal.mapValues(_.toSet).toMap
       override val outsFlowTrimmed = Dependency.trimOutsFlow(basisx, outputs).mapValues(_.toSet).toMap
       override val inputs = inputReqx.values.toSet
       override val outs = outputs.toSet
@@ -200,7 +199,9 @@ object Dependency extends TAG.ClassName {
     val transGlobal: Map[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     /** 虽然知道每个任务有哪些必要的输出, 但是整体上这些输出都要保留到最后吗? `key`为`top level trat.name$`。注意：存储的是`globalTrans`[前]的结果。 */
     val outsFlowTrimmed: immutable.Map[String, immutable.Set[Kce[_ <: AnyRef]]]
+    /** 任务流需要的初始输入。不为`null`。 */
     val inputs: immutable.Set[Kce[_ <: AnyRef]]
+    /** 任务流的最终输出。不为`null`。 */
     val outs: immutable.Set[Kce[_ <: AnyRef]]
 
     def steps() = traits.size
@@ -345,7 +346,7 @@ object Dependency extends TAG.ClassName {
         mapUseless.put(last.name$, outs)
       }
     }
-    log.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s", last.name$.s, inputRequired, mapUseless)
+    log.i("[genIOPrev]trait:%s, inputRequired:%s, mapUseless:%s.", last.name$.s, inputRequired, mapUseless)
   }
 
   /**
@@ -363,6 +364,7 @@ object Dependency extends TAG.ClassName {
       }
     }
     genInputRequired(requires, inputRequired)
+    log.i("[genIOuts]inputRequired:%s, mapUseless:%s, basis.dependencies:%s.", inputRequired, mapUseless, basis.dependencies)
   }
 
   /**
@@ -406,8 +408,8 @@ object Dependency extends TAG.ClassName {
       }
     } else {
       val outs = basis.dependencies.getOrElseUpdate(prev.name$,
-        if (prev.outs$.isEmpty) mutable.Map.empty[String, Kce[_ <: AnyRef]] // 如果没有输出，那就算执行转换必然也是空的。
-        else new mutable.AnyRefMap[String, Kce[_ <: AnyRef]])
+        if (prev.outs$.isEmpty) mutable.Map.empty // 如果没有输出，那就算执行转换必然也是空的。
+        else new mutable.AnyRefMap)
       consumeRequires(prev, requires, outs, mapUseless((if (parent.isNull) prev else parent).name$))
     }
   }
@@ -437,13 +439,13 @@ object Dependency extends TAG.ClassName {
 
   private def requireTypeMatch4Consume(require: Kce[_ <: AnyRef], out: Kce[_ <: AnyRef]): Unit = if (debugMode && !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
-  private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Kce[_ <: AnyRef]], basis: Basis): mutable.Map[String, Kce[_ <: AnyRef]] = {
+  private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable): mutable.Map[String, Kce[_ <: AnyRef]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
     else {
       val map = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
       trat.outs$.foreach(k => map.put(k.key, k))
       // 先加入转换
-      transOuts(basis.transformers.getOrElse(trat.name$, null), map)
+      transOuts(basis.transformers.getOrNull(trat.name$), map)
       // 再看看有没有相同的输出
       if (mapPal.nonNull) {
         if (debugMode) {
@@ -456,7 +458,7 @@ object Dependency extends TAG.ClassName {
         }
         mapPal ++= map
       }
-      log.i("[genOuts]trait:%s, mapPal:%s, map:%s", trat.name$.s, mapPal, map)
+      log.i("[genOuts]trait:%s, mapPal:%s, map:%s.", trat.name$.s, mapPal, map)
       map
     }
   }
@@ -531,6 +533,7 @@ object Dependency extends TAG.ClassName {
     basis.traits.reverse.foreach { trat =>
       trimOutsFlow(outsFlow, trat, basis, trimmed)
     }
+    log.i("[trimOutsFlow]outsFlow:%s.", outsFlow)
     outsFlow
   }
 
