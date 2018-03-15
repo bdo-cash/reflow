@@ -163,8 +163,8 @@ object Assist extends TAG.ClassName {
     def complete(step: => Int, out: Out, flow: Out, trimmed: Out): Unit = log.i("step:%d, out:%s, flow:%s, trimmed:%s.", step, out, flow, trimmed)(tag("complete"))
 
     def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean): Unit = log.i(
-      "{ThreadPool}%s, active/core:(%d/%d/%d), taskCount:%d, largestPool:%d.",
-      if (reject) "reject runner" else if (addThread) "add thread" else "offer queue",
+      "{ThreadPool}%s, active/core/max:(%d/%d/%d), taskCount:%d, largestPool:%d.",
+      if (reject) "reject runner".s else if (addThread) "add thread".s else "offer queue".s,
       pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize,
       pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
 
