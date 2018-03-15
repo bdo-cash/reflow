@@ -172,24 +172,21 @@ object Reflow {
     */
   def create(dependency: Dependency): Dependency = builder.next(dependency)
 
-  /**
-    * @see #execute(Runnable, Period, int, String)
-    */
-  @deprecated(message = "应该使用标准{Task}方式，至少应该使用{#execute(Runnable, Period, int, String)}。", since = "0.0.1")
-  def execute(runner: Runnable): Unit = execute$(runner, Period.SHORT, P_NORMAL, null)
+  def execute(_runner: => Unit)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = execute(
+    new Runnable {
+      override def run(): Unit = _runner
+    }, _period, _priority, _desc, _name)
 
   /**
     * 为{@link Runnable}提供运行入口，以便将其纳入框架的调度管理。
     *
-    * @param runner   包装要运行代码的{ @link Runnable}.
-    * @param period   同{ @link Trait#period()}.
-    * @param priority 同{ @link Trait#priority()}.
-    * @param desc     同{ @link Trait#description()}.
-    * @param name     同{ @link Trait#name()}.
+    * @param _runner   包装要运行代码的{ @link Runnable}.
+    * @param _period   同{ @link Trait#period()}.
+    * @param _priority 同{ @link Trait#priority()}.
+    * @param _desc     同{ @link Trait#description()}.
+    * @param _name     同{ @link Trait#name()}.
     */
-  def execute(runner: Runnable, period: Period.Tpe, priority: Int, desc: String, name: String = null): Unit = execute$(runner, period, priority, desc, name)
-
-  private def execute$(_runner: Runnable, _period: Period.Tpe, _priority: Int, _desc: String, _name: String = null) {
+  def execute(_runner: Runnable, _period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = {
     Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
