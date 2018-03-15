@@ -25,7 +25,7 @@ import scala.collection._
   * @version 1.0, 14/08/2016
   */
 object Helper {
-  object Keys {
+  object Kces {
     def empty(): immutable.Set[Kce[_ <: AnyRef]] = immutable.Set.empty
 
     def add(key: Kce[_ <: AnyRef]): Builder = new Builder().add(key)
@@ -43,10 +43,10 @@ object Helper {
 
   object Transformers {
     /**
-      * 将任务的某个输出在转换之后仍然保留。通过增加一个输出即输入转换。
+      * 将任务的某个输出在转换之后仍然保留。通过增加一个[输出即输入]转换。
       */
-    def retain[O <: AnyRef](key: String): Transformer[O, O] = new Transformer[O, O](key) {
-      override protected def transform(in: O) = in
+    def retain[O <: AnyRef](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
+      override def transform(in: Option[O]) = in
     }
 
     def add(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = new Builder().add(trans)
@@ -59,7 +59,7 @@ object Helper {
         this
       }
 
-      def retain[O <: AnyRef](key: String): Builder = add(Transformers.retain[O](key))
+      def retain[O <: AnyRef](key: Kce[O]): Builder = add(Transformers.retain[O](key))
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }

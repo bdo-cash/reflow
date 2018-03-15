@@ -24,7 +24,7 @@ import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{BasisMutable, IsPar, MapTo}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 
-import scala.collection.{Set, _}
+import scala.collection.{mutable, Set, _}
 import scala.util.control.Breaks._
 
 /**
@@ -110,7 +110,7 @@ class Dependency private[reflow]() {
   /**
     * @see #transition(Set)
     */
-  def transition(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Dependency = transition(Set[Transformer[_ <: AnyRef, _ <: AnyRef]](trans))
+  def transition(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = transition(trans.toSet)
 
   /**
     * 为前面最后添加的任务增加输出转换器，以便能够匹配后面任务的输入或结果的参数类型。
@@ -134,7 +134,7 @@ class Dependency private[reflow]() {
   /**
     * @see #then(Set)
     */
-  def next(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Dependency = next(Set[Transformer[_ <: AnyRef, _ <: AnyRef]](trans))
+  def next(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = next(trans.toSet)
 
   /**
     * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
@@ -149,7 +149,7 @@ class Dependency private[reflow]() {
 
   private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], check: Boolean): Dependency = {
     if (check.ensuring(_ && tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
+      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.HashSet])
     this
   }
 
@@ -272,7 +272,7 @@ object Dependency extends TAG.ClassName {
     override lazy val traits: mutable.ListBuffer[Trait[_ <: Task]] = new mutable.ListBuffer[Trait[_ <: Task]]
     override lazy val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Kce[_ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Map[String, Kce[_ <: AnyRef]]]
     override lazy val transformers: mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
-    override lazy val transGlobal: mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
+    override lazy val transGlobal: mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     override val outsFlowTrimmed = null
     override val inputs = null
     override val outs = null
@@ -281,7 +281,7 @@ object Dependency extends TAG.ClassName {
       src.traits.foreach(traits += _)
       src.dependencies.foreach { kv: (String, Map[String, Kce[_ <: AnyRef]]) => dependencies.put(kv._1, kv._2.mutable) }
       src.transformers.foreach { kv: (String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]) => transformers.put(kv._1, kv._2.toSet) }
-      src.transGlobal.foreach { kv: (String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]) => transGlobal.put(kv._1, kv._2.toSet) }
+      src.transGlobal.foreach { kv: (String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]) => transGlobal.put(kv._1, kv._2.to[mutable.HashSet]) }
     }
   }
 
@@ -370,26 +370,47 @@ object Dependency extends TAG.ClassName {
   /**
     * @param check 是否进行类型检查(在最后trim的时候，不需要再检查一遍)。
     */
-  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: Basis, check: Boolean = false): Unit =
-    consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , Set.empty), requires, check)
+  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable, check: Boolean = false): Unit =
+    consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , mutable.Set.empty), requires, check)
 
-  private[reflow] def consumeTranSet(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, Kce[_ <: AnyRef]], check: Boolean = false): Unit = {
-    lazy val copy = requires.values.toSet
-    tranSet.foreach(consumeTrans(_, requires, check)(copy))
-  }
-
-  private[reflow] def consumeTrans(t: Transformer[_ <: AnyRef, _ <: AnyRef], requires: mutable.Map[String, Kce[_ <: AnyRef]], check: Boolean = false)(
-    copy: Set[Kce[_ <: AnyRef]] = requires.values.toSet): Unit = {
+  /*
+   * 一、如果不自动将`Transformer`的输入保留到输出集合，要解决的问题：
+   * 1. 如果`requires`正好需要一个与`Transformer`的输入相同的输出，而又缺少一个[输入即输出]的转换，会导致消化检测阶段通过，但运行时出现缺少某输出的错误；
+   * 2. 客户代码需要增加看上去多此一举的[输入即输出]转换（不自动增加的话）；
+   * 二、如果自动保留（与`一`相反），要解决的问题：
+   * 1. 在现有数据结构状况下，在运行时，无法知晓是否应该保留哪些`Transformer`的输入到输出集合。因为很多输入是因为转换的需求才加入的，而不一定总被后面的任务需要；
+   * 2. 与任务的局部转换功能设计相冲突：局部转换的目的之一，是为了避免并行任务的输出`key`冲突，因此不应该自动保留；
+   * 3. 如果全部保留，会导致不再需要的数据淤积，与设计初衷相悖（即使把局部和全局转换的运行时执行区分开，也无法解决数据淤积问题，即使淤积仅仅占用下一任务的时间）。
+   * 最终方案：自动增加[输入即输出]转换（即：`retain`功能的`Transformer`）。
+   */
+  private[reflow] def consumeTranSet(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, Kce[_ <: AnyRef]], check: Boolean = false): Unit = {
+    var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
+    var retains: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
     breakable {
-      for (k <- copy if k.key == t.out.key) {
-        // 注意这里可能存在的一个问题：有两拨不同的需求对应同一个转换key但类型不同，
-        // 这里不沿用consumeRequires()中的做法(将消化掉的分存)。无妨。
-        if (debugMode && check) requireTypeMatch4Consume(k, t.out)
-        requires.remove(k.key)
-        requires.put(t.in.key, t.in)
-        break
+      tranSet.foreach { t =>
+        if (requires.isEmpty) break
+        requires.get(t.out.key).foreach { k =>
+          if (debugMode && check) requireTypeMatch4Consume(k, t.out)
+          requires.remove(k.key)
+          trans = t :: trans
+        }
+      }
+      // 已经被应用的转换器的输入，也是消化`requires`的一大资源。这些资源将赤裸裸的输出，需要检查类型匹配。
+      // 就算可以给未消化掉的加入到向前申请列表，但由于`key`的相同，有冲突。所以必须检查类型匹配。
+      trans.foreach { t =>
+        if (requires.isEmpty) break
+        requires.get(t.in /*注意这里不一样*/ .key).foreach { k =>
+          if (debugMode && check) requireTypeMatch4Consume(k, t.in)
+          requires.remove(k.key)
+          retains = Helper.Transformers.retain(t.in) :: retains
+        }
       }
     }
+    // 在构造的时候已经验证过`tranSet`：输入中相同的`in.key`有相同的`type`，而输出中的`out.key`各不相同。
+    trans.map(t => requires.put(t.in.key, t.in))
+    // 用不到的全局转换器一定要删除，否则它们会去消化别人的输入资源。
+    tranSet.clear()
+    tranSet ++= trans ++= retains
   }
 
   /**
@@ -419,7 +440,7 @@ object Dependency extends TAG.ClassName {
                               outs: mutable.Map[String, Kce[_ <: AnyRef]], useless: mutable.Map[String, Kce[_ <: AnyRef]]) {
     if (prev.outs$.isEmpty) return // 根本就没有输出，就不浪费时间了。
     if (requires.isEmpty) return
-    requires.values.to[Set].foreach { k =>
+    requires.values.foreach { k =>
       outs.get(k.key).fold(
         if (useless.contains(k.key)) {
           val out = useless(k.key)
@@ -471,7 +492,7 @@ object Dependency extends TAG.ClassName {
         // 先不从map移除, 可能多个transformer使用同一个源。
         val from = map(t.in.key)
         if (debugMode && !t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
-        if (t.in.key.equals(t.out.key)) sameKey = t :: sameKey
+        if (t.in.key == t.out.key) sameKey = t :: sameKey
         else trans = t :: trans
       }
       trans.foreach { t =>
@@ -526,7 +547,7 @@ object Dependency extends TAG.ClassName {
     }
   }
 
-  private def trimOutsFlow(basis: Basis, outputs: Set[Kce[_ <: AnyRef]]): Map[String, Set[Kce[_ <: AnyRef]]] = {
+  private def trimOutsFlow(basis: BasisMutable, outputs: Set[Kce[_ <: AnyRef]]): Map[String, Set[Kce[_ <: AnyRef]]] = {
     val outsFlow = new mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]]
     val trimmed = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
     putAll(trimmed, outputs)
@@ -540,7 +561,7 @@ object Dependency extends TAG.ClassName {
   /**
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行trim。
     */
-  private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]], trat: Trait[_], basis: Basis, trimmed: mutable.Map[String, Kce[_ <: AnyRef]]) {
+  private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]], trat: Trait[_], basis: BasisMutable, trimmed: mutable.Map[String, Kce[_ <: AnyRef]]) {
     consumeRequiresOnTransGlobal(trat, trimmed, basis, check = false)
     // 注意：放在这里，存储的是globalTrans`前`的结果。
     // 如果要存储globalTrans`后`的结果，则应该放在consumeTransGlobal前边（即第1行）。
@@ -590,12 +611,10 @@ object Dependency extends TAG.ClassName {
       tranSet.filter(t => if (prefer.isNull) true else prefer.contains(t.out.key)).foreach { t =>
         if (map.contains(t.in.key)) {
           // 先不从map移除, 可能多个transformer使用同一个源。
-          val o = t.transform(map)
-          if (o.isNull) nulls.put(t.out.key, t.out)
-          else out.put(t.out.key, o)
+          t.transform(map).fold[Unit](nulls.put(t.out.key, t.out))(out.put(t.out.key, _))
           trans = t :: trans
         } else if (nullVKeys.contains(t.in.key)) {
-          nulls.put(t.out.key, t.out)
+          t.transform(None).fold[Unit](nulls.put(t.out.key, t.out))(out.put(t.out.key, _))
           trans = t :: trans
         }
       }

@@ -343,7 +343,7 @@ private[reflow] object Tracker extends TAG.ClassName {
         doTransform(tranSet, map, nulls)
         val flow = new Out(if (isInput(trat)) basis.inputs else {
           val reasoning = outFlowTrimmed._keys.values.toSet -- tranSet.map(_.in) ++ tranSet.map(_.out)
-          if (next.isNull) basis.outs.ensuring(_ == reasoning)
+          if (next.isNull) basis.outs.ensuring(_.forall(reasoning.contains))
           else reasoning
         })
         flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)

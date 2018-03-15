@@ -129,7 +129,7 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
     * @tparam T
     * @return
     */
-  def get[T <: AnyRef](key: Kce[T]): Option[T] = Option(key.takeValue(_map))
+  def get[T <: AnyRef](key: Kce[T]): Option[T] = key.takeValue(_map)
 
   /**
     * 取得预定义的keys及类型。即: 希望输出的keys。

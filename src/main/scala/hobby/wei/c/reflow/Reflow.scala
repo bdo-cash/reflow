@@ -209,13 +209,14 @@ object Reflow {
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
-      consumeTranSet(inputs.trans, required, check = true)
+      val tranSet = inputs.trans.mutable
+      consumeTranSet(tranSet, required, check = true)
       val reqSet = required.values.toSet
       requireRealInEnough(reqSet, putAll(new mutable.AnyRefMap[String, Kce[_ <: AnyRef]], inputs.keys))
       val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)
       // 第一个任务是不需要trim的，至少从第二个以后。
       // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
-      new Scheduler.Impl(basis, traitIn, inputs.trans, feedback, poster, outer).start$()
+      new Scheduler.Impl(basis, traitIn, tranSet.toSet, feedback, poster, outer).start$()
     }
 
     override def toTrait(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null, poster: Poster = null) =

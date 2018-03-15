@@ -121,9 +121,9 @@ private[reflow] object Trait {
 
     override def newTask() = ???
 
-    override protected def requires() = Helper.Keys.empty()
+    override protected def requires() = Helper.Kces.empty()
 
-    override protected def outs() = Helper.Keys.empty()
+    override protected def outs() = Helper.Kces.empty()
 
     override protected def priority() = Reflow.P_NORMAL
 
@@ -135,9 +135,9 @@ private[reflow] object Trait {
   trait Adapter extends Trait[Task] {
     override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
 
-    override protected def requires() = Helper.Keys.empty()
+    override protected def requires() = Helper.Kces.empty()
 
-    override protected def outs() = Helper.Keys.empty()
+    override protected def outs() = Helper.Kces.empty()
 
     override protected def priority() = Reflow.P_NORMAL
 

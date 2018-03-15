@@ -88,7 +88,7 @@ object Assist extends TAG.ClassName {
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {
           val trans = map(t.in.key)
-          if (!t.in.equals(trans.in)) Throws.tranSameKeyButDiffType(t.in, trans.in)
+          if (t.in != trans.in) Throws.tranSameKeyButDiffType(t.in, trans.in)
         } else {
           map.put(t.in.key, t)
         }

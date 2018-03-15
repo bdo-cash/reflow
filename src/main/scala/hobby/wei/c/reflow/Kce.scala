@@ -79,10 +79,10 @@ abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], 
     * @param map Task的输入参数。
     * @return 返回Task在执行时当前key对应值的目标类型。
     */
-  def takeValue(map: Map[String, Any]): T = {
+  def takeValue(map: Map[String, Any]): Option[T] = {
     // 强制类型转换比较宽松, 只会检查对象类型, 而不会检查泛型。
     // 但是由于value值对象无法获得泛型类型, 因此这里不再作泛型检查。也避免了性能问题。
-    map.get(key).orNull.as[T]
+    map.get(key).as[Option[T]]
   }
 
   private def requireSameType(value: Any, ignoreDiffType: Boolean): Any = {

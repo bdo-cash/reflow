@@ -16,32 +16,29 @@
 
 package hobby.wei.c.reflow
 
-import hobby.chenai.nakam.lang.TypeBring.AsIs
+import hobby.chenai.nakam.lang.J2S.NonNull
 
 import scala.collection._
 
 /**
-  * 任务输出转换器。包括key和value的转换，
-  * 可定义仅转换value、或仅转换key、或key-value全都转换。
+  * 任务输出转换器。包括`key`和`value`的转换，
+  * 可定义仅转换`value`、或仅转换`key`、或`key-value`全都转换。
   *
   * @constructor 对于要将某key-value转换为其它key'-value'的, 应使用本构造方法。
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/07/2016
   */
-abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] protected(keyIn: String, keyOut: String) extends Equals {
-  /**
-    * 对于只转换某Key的值类型的, 应使用本构造方法。
-    *
-    * @param key
-    */
-  protected def this(key: String) = this(key, key)
+abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] private(_in: Kce[IN], _out: Kce[OUT], _keyIn: String, _keyOut: String) extends Equals {
+  protected def this(keyIn: String, keyOut: String) = this(null, null, keyIn, keyOut)
 
-  lazy val in: Kce[IN] = new Kce[IN](keyIn, this.getClass, 0) {}
-  lazy val out: Kce[OUT] = new Kce[OUT](keyOut, this.getClass, 1) {}
+  protected def this(in: Kce[IN], out: Kce[OUT]) = this(in, out, null, null)
 
-  def transform(input: Map[String, _]): OUT = Option(in.takeValue(input)).fold(0.as[OUT])(transform)
+  lazy val in: Kce[IN] = if (_in.nonNull) _in else new Kce[IN](_keyIn, this.getClass, 0) {}
+  lazy val out: Kce[OUT] = if (_out.nonNull) _out else new Kce[OUT](_keyOut, this.getClass, 1) {}
 
-  protected def transform(in: IN): OUT
+  final def transform(input: Map[String, _]): Option[OUT] = transform(in.takeValue(input))
+
+  def transform(in: Option[IN]): Option[OUT]
 
   override def equals(any: Any): Boolean = any match {
     case that: Transformer[_, _] if that.canEqual(this) =>
