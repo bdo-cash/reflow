@@ -131,7 +131,11 @@ object Worker extends TAG.ClassName {
 
   def scheduleBuckets() {
     log.i("[scheduleBuckets]>>>>>>>>>>")
-    if (!sSnatcher.snatch()) return
+    if (!sSnatcher.snatch()) {
+      log.w("[scheduleBuckets]<<<<<<<<<< ignore.")
+      return
+    }
+    log.w("[scheduleBuckets]>>>>>>>>>> bingo >:")
     val executor = sThreadPoolExecutor
     breakable {
       while (true) {
@@ -162,13 +166,16 @@ object Worker extends TAG.ClassName {
           if (r.nonNull && (runner.isNull || // 值越小优先级越大
             ((r.trat.priority$ + r.trat.period$.weight /*采用混合优先级*/)
               < runner.trat.priority$ + runner.trat.period$.weight))) {
-            log.i("[scheduleBuckets]即将执行 > index:%d, runner:%s.", index, runner)
+            log.i("[scheduleBuckets]>>>>>>>>>> preparing exec >: index:%d, runner:%s.", index, runner)
             runner = r
             index = i
           }
         }
         if (runner.isNull) {
-          if (!sSnatcher.glance()) break
+          if (!sSnatcher.glance()) {
+            log.w("[scheduleBuckets]<<<<<<<<<< all done.")
+            break
+          }
         } else {
           // 队列结构可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
           if (sPreparedBuckets.sQueues(index).remove(runner)) {

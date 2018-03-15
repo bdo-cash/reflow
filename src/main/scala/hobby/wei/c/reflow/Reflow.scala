@@ -156,6 +156,8 @@ object Reflow {
 
   def debugMode = _debugMode
 
+  def shutdown(): Unit = Worker.sThreadPoolExecutor.shutdown()
+
   /**
     * 创建以参数开始的新任务流。
     *
@@ -172,10 +174,10 @@ object Reflow {
     */
   def create(dependency: Dependency): Dependency = builder.next(dependency)
 
-  def execute(_runner: => Unit)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = execute(
-    new Runnable {
-      override def run(): Unit = _runner
-    }, _period, _priority, _desc, _name)
+//  def execute(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null)(_runner: => Unit): Unit = execute(
+//    new Runnable {
+//      override def run(): Unit = _runner
+//    }, _period, _priority, _desc, _name)
 
   /**
     * 为{@link Runnable}提供运行入口，以便将其纳入框架的调度管理。

@@ -144,7 +144,7 @@ private[reflow] object Tracker extends TAG.ClassName {
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
-    private lazy val buffer4Reports = new ListBuffer[() => Unit]
+    private lazy val buffer4Reports = new ListBuffer[() => Unit] // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
     private lazy val snatcher4Report = new Snatcher()
     private lazy val snatcher4EndRunner = new Snatcher()
 
@@ -233,31 +233,32 @@ private[reflow] object Tracker extends TAG.ClassName {
             }
           }
           val transGlobal = if (veryBeginning) Option(transIn) else basis.transGlobal.get(tratGlobal.name$)
-          val currIsLast = remaining.tail.isEmpty
+          val currIsLast = if (veryBeginning) remaining.isEmpty.ensuring(_ == false) else remaining.tail.isEmpty
           // 切换任务结果集
-          outFlowNextStage(tratGlobal, if (currIsLast) null else remaining.tail.head, transGlobal, (_, afterGlobalTrans) => {
-            // 处理完成事件
-            if (currIsLast) { // 当前是最后一个
-              if (isReinforcing) {
-                val prev = state.get
-                val success = state.forward(UPDATED)
-                // 会被混淆优化掉
-                Monitor.assertStateOverride(prev, UPDATED, success)
-                interruptSync(true)
-                // 即使放在interruptSync()的前面，也不能保证事件的到达会在sync()返回结果的前面，因此干脆放在后面算了。
-                postReport(reporter.reportOnUpdate(afterGlobalTrans))
-              } else {
-                val prev = state.get
-                val success = state.forward(COMPLETED)
-                // 会被混淆优化掉
-                Monitor.assertStateOverride(prev, COMPLETED, success)
-                interruptSync(!isReinforceRequired)
-                postReport(reporter.reportOnComplete(afterGlobalTrans))
+          outFlowNextStage(tratGlobal, if (currIsLast) null else if (veryBeginning) remaining.head else remaining.tail.head,
+            transGlobal, (_, afterGlobalTrans) => {
+              // 处理完成事件
+              if (currIsLast) { // 当前是最后一个
+                if (isReinforcing) {
+                  val prev = state.get
+                  val success = state.forward(UPDATED)
+                  // 会被混淆优化掉
+                  Monitor.assertStateOverride(prev, UPDATED, success)
+                  interruptSync(true)
+                  // 即使放在interruptSync()的前面，也不能保证事件的到达会在sync()返回结果的前面，因此干脆放在后面算了。
+                  postReport(reporter.reportOnUpdate(afterGlobalTrans))
+                } else {
+                  val prev = state.get
+                  val success = state.forward(COMPLETED)
+                  // 会被混淆优化掉
+                  Monitor.assertStateOverride(prev, COMPLETED, success)
+                  interruptSync(!isReinforceRequired)
+                  postReport(reporter.reportOnComplete(afterGlobalTrans))
+                }
               }
-            }
-          })
+            })
           progress.clear()
-          remaining = remaining.tail
+          if (!veryBeginning) remaining = remaining.tail
           if (remaining.nonEmpty) {
             tryScheduleNext(remaining.head)
           } else if (!isSubReflow && isReinforceRequired && state.forward(REINFORCE_PENDING)) {
@@ -368,11 +369,9 @@ private[reflow] object Tracker extends TAG.ClassName {
 
     override private[reflow] def performAbort(name: String, trigger: Runner, forError: Boolean, trat: Trait[_], e: Exception): Unit = {
       if (state.forward(if (forError) FAILED else ABORTED)) {
-        runnersParallel.foreach { r =>
-          val runner = r._1
-          runner.abort()
-          Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runner.trat.name$, forError)
-        }
+        // 如果能走到这里，那么总是先于`endRunner`之前执行，也就意味着`runnersParallel`不可能为`empty`。
+        Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runnersParallel.head._1.trat.name$, forError)
+        runnersParallel.foreach(_._1.abort())
         if (forError) postReport(reporter.reportOnFailed(name /*为null时不会走到这里*/ , e))
         else postReport(reporter.reportOnAbort())
       } else if (state.abort()) {
@@ -448,7 +447,7 @@ private[reflow] object Tracker extends TAG.ClassName {
       }
     }
 
-    // 为什么这里有个`name`? 可能是较深层次的`trat.name$`名称；`desc`同步。
+    // 为什么这里有个`name`? 可能是较深层次的`trat.name$`名称；`desc`与其同步。
     override private[reflow] def onTaskProgress(name: String, trat: Trait[_], progress: Float, out: Out, desc: String): Unit = {
       // 因为对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
       if (!isReinforcing) {
@@ -538,7 +537,6 @@ private[reflow] object Tracker extends TAG.ClassName {
         }
       } catch {
         case e: Exception =>
-          log.e(e, "[run]-----<<<<<")
           if (working) {
             e match {
               case _: AbortException => // 框架抛出的, 表示成功中断。
@@ -618,7 +616,7 @@ private[reflow] object Tracker extends TAG.ClassName {
 
     // 客户代码异常
     def onException(e: CodeException) {
-      log.e(e, "[onException]")
+      log.e(e, "[onException].")
       withAbort(trat.name$, e)
     }
 
@@ -630,7 +628,6 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
 
     def innerError(e: Exception) {
-      log.e(e, "[innerError]")
       env.tracker.innerError(this, e)
       throw new InnerError(e)
     }

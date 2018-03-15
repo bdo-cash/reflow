@@ -143,27 +143,27 @@ object Assist extends TAG.ClassName {
       val duration = end - begin
       val avg = period.average(duration)
       if (avg == 0 || duration <= avg) {
-        log.i("task:%s, period:%s, duration:%fs, average:%fs", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.i("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       } else {
-        log.w("task:%s, period:%s, duration:%fs, average:%fs", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.w("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       }
     }
 
-    def abortion(triggerFrom: String, name: String, forError: Boolean): Unit = log.i("triggerFrom:%1$s, task:%2$s, forError:%3$s", triggerFrom.s, name.s, forError)(tag("abortion"))
+    def abortion(trigger: String, name: String, forError: Boolean): Unit = log.i("trigger:%1$s, task:%2$s, forError:%3$s.", trigger.s, name.s, forError)(tag("abortion"))
 
     @Burden
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {
       if (!success) {
-        log.e("illegal state override! prev:%s, state:%s", prev, state)(tag("abortion"))
+        log.e("illegal state override! prev:%s, state:%s.", prev, state)(tag("abortion"))
         assertx(success)
       }
     }
 
     @Burden
-    def complete(step: => Int, out: Out, flow: Out, trimmed: Out): Unit = log.i("step:%d, out:%s, flow:%s, trimmed:%s", step, out, flow, trimmed)(tag("complete"))
+    def complete(step: => Int, out: Out, flow: Out, trimmed: Out): Unit = log.i("step:%d, out:%s, flow:%s, trimmed:%s.", step, out, flow, trimmed)(tag("complete"))
 
     def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean): Unit = log.i(
-      "{ThreadPool}%s, active/core:(%d/%d/%d), taskCount:%d, largestPool:%d",
+      "{ThreadPool}%s, active/core:(%d/%d/%d), taskCount:%d, largestPool:%d.",
       if (reject) "reject runner" else if (addThread) "add thread" else "offer queue",
       pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize,
       pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
