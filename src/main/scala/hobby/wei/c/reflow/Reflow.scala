@@ -174,21 +174,16 @@ object Reflow {
     */
   def create(dependency: Dependency): Dependency = builder.next(dependency)
 
-//  def execute(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null)(_runner: => Unit): Unit = execute(
-//    new Runnable {
-//      override def run(): Unit = _runner
-//    }, _period, _priority, _desc, _name)
-
   /**
-    * 为{@link Runnable}提供运行入口，以便将其纳入框架的调度管理。
+    * 为简单代码段或`Runnable`提供运行入口，以便将其纳入框架的调度管理。
     *
-    * @param _runner   包装要运行代码的{ @link Runnable}.
-    * @param _period   同{ @link Trait#period()}.
-    * @param _priority 同{ @link Trait#priority()}.
-    * @param _desc     同{ @link Trait#description()}.
-    * @param _name     同{ @link Trait#name()}.
+    * @param _runner   包装要运行代码。如果是`Runnable`，可以写`runnable.run()`。
+    * @param _period   同`Trait#period()`。
+    * @param _priority 同`Trait#priority()`。
+    * @param _desc     同`Trait#description()`。
+    * @param _name     同`Trait#name()`。
     */
-  def execute(_runner: Runnable, _period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = {
+  def execute(_runner: => Unit)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = {
     Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
@@ -199,7 +194,9 @@ object Reflow {
       override protected def desc() = if (_desc.isNull) name$ else _desc
 
       override def newTask() = null
-    }, _runner))
+    }, new Runnable {
+      override def run(): Unit = _runner
+    }))
     Worker.scheduleBuckets()
   }
 
