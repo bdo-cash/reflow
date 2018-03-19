@@ -210,7 +210,7 @@ object Reflow {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
       val tranSet = inputs.trans.mutable
-      consumeTranSet(tranSet, required, check = true)
+      consumeTranSet(tranSet, required, check = true, trim = true)
       val reqSet = required.values.toSet
       requireRealInEnough(reqSet, putAll(new mutable.AnyRefMap[String, Kce[_ <: AnyRef]], inputs.keys))
       val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)

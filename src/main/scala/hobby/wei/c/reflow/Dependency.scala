@@ -37,7 +37,7 @@ import scala.util.control.Breaks._
 class Dependency private[reflow]() {
   private val basis = new BasisMutable
   private val names = new mutable.HashSet[String]
-  // Key$是transform后的
+  // `Kce`是`transform`后的
   private val useless = new mutable.AnyRefMap[String, mutable.Map[String, Kce[_ <: AnyRef]]]
   private val inputRequired = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
 
@@ -47,7 +47,7 @@ class Dependency private[reflow]() {
     * @param trat 新增的任务具有的特性。
     * @return 当前依赖组装器。
     */
-  def and(trat: Trait[_ <: Task]): Dependency = {
+  def and(trat: Trait[_ <: Task], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
     require(!trat.ensuring(_.nonNull).isParallel)
     requireTaskNameDiff(trat, names)
     if (basis.traits.isEmpty) {
@@ -61,8 +61,9 @@ class Dependency private[reflow]() {
           basis.traits.remove(basis.traits.length - 1)
           basis.traits += parallel
           parallel.traits()
-      }).+=(trat)
+      }) += trat
     }
+    trans$(trans.toSet, trat)
     this
   }
 
@@ -81,6 +82,17 @@ class Dependency private[reflow]() {
   }
 
   /**
+    * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
+    * <p>
+    * 注意：参数指定集合中的转换器不一定全都应用，取决于后面任务和结果的需求。
+    *
+    * @param trans 转换器列表。
+    * @return 当前依赖组装器。
+    * @see Transformer
+    */
+  def next(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = next$(trans.toSet)
+
+  /**
     * 在前面已添加的任务之后，增加已有的任务流。
     *
     * @param dependency 已定义的任务流。
@@ -88,68 +100,41 @@ class Dependency private[reflow]() {
     */
   def next(dependency: Dependency): Dependency = {
     if (basis.traits.isEmpty) copy(dependency)
-    else for (trat <- dependency.basis.traits) {
+    else dependency.basis.traits.foreach { trat =>
       trat match {
-        case trat: Trait.Parallel =>
+        case par: Trait.Parallel =>
           var first = true
-          for (tt <- trat.traits()) {
+          par.traits().foreach { tt =>
             if (first) {
-              next(tt).transition$(dependency.basis.transformers.getOrNull(tt.name$), check = false)
+              next(tt).trans$(dependency.basis.transformers.getOrNull(tt.name$), tt)
               first = false
             } else {
-              and(tt).transition$(dependency.basis.transformers.getOrNull(tt.name$), check = false)
+              and(tt).trans$(dependency.basis.transformers.getOrNull(tt.name$), tt)
             }
           }
-        case _ => next(trat).transition$(dependency.basis.transformers.getOrNull(trat.name$), check = false)
+        case _ => next(trat).trans$(dependency.basis.transformers.getOrNull(trat.name$), trat)
       }
-      next$(dependency.basis.transGlobal.getOrNull(trat.name$), check = false)
+      next$(dependency.basis.transGlobal.getOrNull(trat.name$), trat)
     }
     this
   }
-
-  /**
-    * @see #transition(Set)
-    */
-  def transition(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = transition(trans.toSet)
 
   /**
     * 为前面最后添加的任务增加输出转换器，以便能够匹配后面任务的输入或结果的参数类型。
     * <p>
-    * 注意：本转换器仅作用于前面最后添加的任务。而且参数指定集合中的转换器不一定全都应用，
-    * 取决于后面任务和结果的需求，以及当前任务的输出。
+    * 注意：本转换器仅作用于前面最后添加的任务。而且参数指定集合中的转换器不一定全都应用，取决于当前任务的输出。
     *
     * @param tranSet 转换器集合。
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  def transition(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]]): Dependency = transition$(tranSet, check = true)
-
-  private def transition$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], check: Boolean): Dependency = {
-    if (check.ensuring(_ && tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty) {
-      basis.transformers.put(basis.last(true).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
-    }
+  private def trans$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], child: Trait[_] = basis.last(true).get): Dependency = {
+    if (tranSet.nonNull && tranSet.nonEmpty) basis.transformers.put(child.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
   }
 
-  /**
-    * @see #then(Set)
-    */
-  def next(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = next(trans.toSet)
-
-  /**
-    * 为前面所有任务的输出增加转换器。以便能够匹配后面任务的输入或结果的参数类型。
-    * <p>
-    * 注意：参数指定集合中的转换器不一定全都应用，取决于后面任务和结果的需求。
-    *
-    * @param tranSet 转换器集合。
-    * @return 当前依赖组装器。
-    * @see Transformer
-    */
-  def next(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]]): Dependency = next$(tranSet, check = true)
-
-  private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], check: Boolean): Dependency = {
-    if (check.ensuring(_ && tranSet.nonNull) || tranSet.nonNull) if (tranSet.nonEmpty)
-      basis.transGlobal.put(basis.last(false).get.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.HashSet])
+  private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], top: Trait[_] = basis.last(false).get): Dependency = {
+    if (tranSet.nonNull && tranSet.nonEmpty) basis.transGlobal.put(top.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.Set])
     this
   }
 
@@ -191,9 +176,9 @@ class Dependency private[reflow]() {
 object Dependency extends TAG.ClassName {
   trait Basis {
     val traits: Seq[Trait[_ <: Task]]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`child trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`top trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Kce[_ <: AnyRef]]]
-    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`child trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
+    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`top trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
     val transformers: Map[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。`key`为`top level trat.name$`。可能`get`出来为`null`。 */
     val transGlobal: Map[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
@@ -319,7 +304,7 @@ object Dependency extends TAG.ClassName {
       for (tt <- last.asParallel.traits()) {
         genIOPrev(tt, outsPal, basis, inputRequired, mapUseless)
       }
-      if (outsPal.nonEmpty) mapUseless.values.foreach(useless => outsPal.keySet.foreach(useless.remove))
+      if (outsPal.nonEmpty) mapUseless.values.foreach(useless => outsPal.keySet.foreach(useless.-=))
       mapUseless.put(last.name$, outsPal)
     } else {
       /*##### for requires #####*/
@@ -342,7 +327,7 @@ object Dependency extends TAG.ClassName {
       // 后面的输出可以覆盖掉前面的useless输出, 不论值类型。
       // 但只有非并行任务才可以。并行任务见上面if分支。
       if (mapParallelOuts.isNull) {
-        if (outs.nonEmpty) mapUseless.values.foreach(useless => outs.keySet.foreach(useless.remove))
+        if (outs.nonEmpty) mapUseless.values.foreach(useless => outs.keySet.foreach(useless.-=))
         mapUseless.put(last.name$, outs)
       }
     }
@@ -368,10 +353,11 @@ object Dependency extends TAG.ClassName {
   }
 
   /**
-    * @param check 是否进行类型检查(在最后trim的时候，不需要再检查一遍)。
+    * @param check 是否进行类型匹配检查（在最后`trim`的时候，不需要再检查一遍）。
+    * @param trim  是否删除多余的全局转换（仅在`trim`阶段进行）。
     */
-  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable, check: Boolean = false): Unit =
-    consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , mutable.Set.empty), requires, check)
+  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable, check: Boolean = true, trim: Boolean = false): Unit =
+    consumeTranSet(basis.transGlobal.getOrElse(prev.name$ /*不能是并行的，而这里必然不是*/ , mutable.Set.empty), requires, check, trim)
 
   /*
    * 一、如果不自动将`Transformer`的输入保留到输出集合，要解决的问题：
@@ -383,7 +369,7 @@ object Dependency extends TAG.ClassName {
    * 3. 如果全部保留，会导致不再需要的数据淤积，与设计初衷相悖（即使把局部和全局转换的运行时执行区分开，也无法解决数据淤积问题，即使淤积仅仅占用下一任务的时间）。
    * 最终方案：自动增加[输入即输出]转换（即：`retain`功能的`Transformer`）。
    */
-  private[reflow] def consumeTranSet(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, Kce[_ <: AnyRef]], check: Boolean = false): Unit = {
+  private[reflow] def consumeTranSet(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, Kce[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false): Unit = {
     var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
     var retains: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
     breakable {
@@ -408,9 +394,12 @@ object Dependency extends TAG.ClassName {
     }
     // 在构造的时候已经验证过`tranSet`：输入中相同的`in.key`有相同的`type`，而输出中的`out.key`各不相同。
     trans.map(t => requires.put(t.in.key, t.in))
-    // 用不到的全局转换器一定要删除，否则它们会去消化别人的输入资源。
-    tranSet.clear()
-    tranSet ++= trans ++= retains
+    // 用不到的全局转换器一定要删除，否则它们可能会去消化某些本不需要转换的输入资源。
+    // 不过：在构建任务流阶段的时候，不能删除；必须在`trim`之后再删除。
+    if (trim) {
+      tranSet.clear()
+      tranSet ++= trans ++= retains
+    }
   }
 
   /**
@@ -551,10 +540,8 @@ object Dependency extends TAG.ClassName {
     val outsFlow = new mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]]
     val trimmed = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
     putAll(trimmed, outputs)
-    basis.traits.reverse.foreach { trat =>
-      trimOutsFlow(outsFlow, trat, basis, trimmed)
-    }
-    if (debugMode) log.i("[trimOutsFlow]outsFlow:%s.", outsFlow)
+    basis.traits.reverse.foreach(trimOutsFlow(outsFlow, _, basis, trimmed))
+    if (debugMode) log.i("[trimOutsFlow]outsFlow:%s, globalTrans:%s.", outsFlow, basis.transGlobal)
     outsFlow
   }
 
@@ -562,7 +549,7 @@ object Dependency extends TAG.ClassName {
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行trim。
     */
   private def trimOutsFlow(outsFlow: mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]], trat: Trait[_], basis: BasisMutable, trimmed: mutable.Map[String, Kce[_ <: AnyRef]]) {
-    consumeRequiresOnTransGlobal(trat, trimmed, basis, check = false)
+    consumeRequiresOnTransGlobal(trat, trimmed, basis, check = false, trim = true)
     // 注意：放在这里，存储的是globalTrans`前`的结果。
     // 如果要存储globalTrans`后`的结果，则应该放在consumeTransGlobal前边（即第1行）。
     outsFlow.put(trat.name$, trimmed.values.toSet)
