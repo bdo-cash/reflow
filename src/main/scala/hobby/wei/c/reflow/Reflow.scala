@@ -17,6 +17,7 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
+import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Dependency._
@@ -205,17 +206,17 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Kce[_ <: AnyRef]]) extends Reflow {
+  class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Kce[_ <: AnyRef]]) extends Reflow with TAG.ClassName {
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
       val tranSet = inputs.trans.mutable
-      consumeTranSet(tranSet, required, check = true, trim = true)
+      val realIn = putAll(new mutable.AnyRefMap[String, Kce[_ <: AnyRef]], inputs.keys)
+      consumeTranSet(tranSet, required, realIn, check = true, trim = true)
       val reqSet = required.values.toSet
-      requireRealInEnough(reqSet, putAll(new mutable.AnyRefMap[String, Kce[_ <: AnyRef]], inputs.keys))
+      requireRealInEnough(reqSet, realIn)
+      if (debugMode) logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
       val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)
-      // 第一个任务是不需要trim的，至少从第二个以后。
-      // 不可以将参数放进basis的任何数据结构里，因为basis需要被反复重用。
       new Scheduler.Impl(basis, traitIn, tranSet.toSet, feedback, poster, outer).start$()
     }
 
