@@ -27,10 +27,11 @@ class ReflowSpec extends Spec {
 
     def `execute created flow`: Unit = {
       val reflow = Reflow.create(trait0_int2str)
-        .next(trans_str2int)
+        .next(trans_int2str)
         .next(trait1_int2str)
-        .submit(Helper.Kces.add(integer).add(string).ok())
-      val out = reflow.start(In.map(Map(integer.key -> 666), trans_int2str), Feedback.Log, null)
+        .next(trans_str2int)
+        .submit(Helper.Kces.add(int).add(str).ok())
+      val out = reflow.start(In.map(Map(int.key -> 666), trans_str2int, trans_int2str), Feedback.Log, null)
         .sync()
       Reflow.shutdown()
     }
@@ -39,8 +40,8 @@ class ReflowSpec extends Spec {
 
 object Traits {
   lazy val anyRef = new Kce[AnyRef]("anyr") {}
-  lazy val integer = new Kce[Integer]("int") {}
-  lazy val string = new Kce[String]("str") {}
+  lazy val int = new Kce[Integer]("int") {}
+  lazy val str = new Kce[String]("str") {}
   lazy val trans_int2str = new Transformer[Integer, String]("int", "str") {
     override def transform(in: Option[Integer]) = in.map(String.valueOf(_))
   }
@@ -51,15 +52,15 @@ object Traits {
   lazy val trait0_int2str = new Trait.Adapter {
     override protected def period() = Reflow.Period.TRANSIENT
 
-    override protected def requires() = Helper.Kces.add(integer).ok()
+    override protected def requires() = Helper.Kces.add(int).ok()
 
-    override protected def outs() = Helper.Kces.add(string).ok()
+    override protected def outs() = Helper.Kces.add(str).ok()
 
     override protected def name() = "trait0_int2str"
 
     override def newTask() = new Task() {
       override protected def doWork(): Unit = {
-        output(string.key, String.valueOf(input(integer.key).getOrElse(-1)))
+        output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
       }
     }
   }
@@ -67,15 +68,15 @@ object Traits {
   lazy val trait1_int2str = new Trait.Adapter {
     override protected def period() = Reflow.Period.TRANSIENT
 
-    override protected def requires() = Helper.Kces.add(integer).ok()
+    override protected def requires() = Helper.Kces.add(int).ok()
 
-    override protected def outs() = Helper.Kces.add(string).ok()
+    override protected def outs() = Helper.Kces.add(str).ok()
 
     override protected def name() = "trait1_int2str"
 
     override def newTask() = new Task() {
       override protected def doWork(): Unit = {
-        output(string.key, String.valueOf(input(integer.key).getOrElse(-1)))
+        output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
       }
     }
   }
