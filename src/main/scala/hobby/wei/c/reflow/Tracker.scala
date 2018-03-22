@@ -453,9 +453,9 @@ private[reflow] object Tracker extends TAG.ClassName {
       if (!isReinforcing) {
         if (!isInput(trat)) { // 过滤掉input任务
           Locker.syncr { // 为了保证并行的不同任务间进度的顺序性，这里还必须得同步。
-            val subPogres = subProgress(trat, progress)
+            val sub = subProgress(trat, progress)
             val step = basis.stepOf(trat)
-            buffer4Reports += (() => reporter.reportOnProgress(name, step, subPogres, out, desc))
+            buffer4Reports += (() => reporter.reportOnProgress(name, step, sub, out, desc))
           }
           postReport() // 注意就这一个地方写法不同
         }

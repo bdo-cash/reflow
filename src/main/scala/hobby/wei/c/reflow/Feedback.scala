@@ -31,14 +31,14 @@ trait Feedback {
 
   /**
     *
-    * @param name  正在执行(中途会更新进度)或完成的任务名称。来源于`Trait#name()`。
-    * @param out   进度的时刻已经获得的输出。
-    * @param count 任务计数。
-    * @param sum   任务流总数。用于计算主进度(%): `count * 1f / sum`, 和总进度(%): `(count + sub) / sum`。
-    * @param sub   任务内部进度值。
-    * @param desc  任务描述`Trait#desc()`。
+    * @param name 正在执行(中途会更新进度)或完成的任务名称。来源于`Trait#name()`。
+    * @param out  进度的时刻已经获得的输出。
+    * @param step 任务计数。
+    * @param sum  任务流总数。用于计算主进度(%): `step * 1f / sum`, 和总进度(%): `(step + sub) / sum`。
+    * @param sub  任务内部进度值。
+    * @param desc 任务描述`Trait#desc()`。
     */
-  def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit
+  def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit
 
   def onComplete(out: Out): Unit
 
@@ -71,8 +71,8 @@ object Feedback {
 
       override def onStart(): Unit = poster.post(feedback.onStart())
 
-      override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit = poster.post(
-        feedback.onProgress(name, out, count, sum, sub, desc)
+      override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit = poster.post(
+        feedback.onProgress(name, out, step, sum, sub, desc)
       )
 
       override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
@@ -88,7 +88,7 @@ object Feedback {
   class Adapter extends Feedback {
     override def onStart(): Unit = {}
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit = {}
+    override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit = {}
 
     override def onComplete(out: Out): Unit = {}
 
@@ -109,8 +109,8 @@ object Feedback {
 
     override def onStart(): Unit = obs.foreach(_.onStart())
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
-      obs.foreach(_.onProgress(name, out, count, sum, sub, desc))
+    override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit =
+      obs.foreach(_.onProgress(name, out, step, sum, sub, desc))
 
     override def onComplete(out: Out): Unit = obs.foreach(_.onComplete(out))
 
@@ -126,8 +126,8 @@ object Feedback {
 
     override def onStart(): Unit = log.i("[onStart]")
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
-      log.i("[onProgress]name:%s, out:%s, count:%s, sum:%s, sub:%s, desc:%s.", name.s, out, count, sum, sub, desc.s)
+    override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit =
+      log.i("[onProgress]step:%s, sub:%s, sum:%s, name:%s, desc:%s, out:%s.", step, sub, sum, name.s, desc.s, out)
 
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
 
