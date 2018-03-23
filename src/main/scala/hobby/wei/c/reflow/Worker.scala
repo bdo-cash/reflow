@@ -16,14 +16,12 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent._
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
-import hobby.wei.c.tool.{Locker, Snatcher}
-
+import hobby.wei.c.tool.Snatcher
+import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicInteger
 import scala.util.control.Breaks._
 
 /**
@@ -33,18 +31,17 @@ import scala.util.control.Breaks._
   * @version 1.0, 11/02/2017
   */
 object Worker extends TAG.ClassName {
-  private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
-
-  private final val sThreadFactory = new ThreadFactory() {
+  private final lazy val sThreadFactory = new ThreadFactory() {
     private val mIndex = new AtomicInteger(0)
 
     def newThread(runnable: Runnable): Thread = {
-      val thread = new Thread(runnable, "pool-thread-" + Worker.getClass.getName + "#" + mIndex.getAndIncrement())
+      val thread = new Thread(runnable, "pool-thread-" + Worker.getClass.getName + "#" + mIndex.getAndIncrement)
       resetThread(thread)
       thread
     }
   }
 
+  @volatile
   private var sThreadResetor = new ThreadResetor() {
     override def reset(thread: Thread): Unit = {
       if (thread.getPriority != Thread.NORM_PRIORITY) {
@@ -73,8 +70,8 @@ object Worker extends TAG.ClassName {
 
   lazy val sThreadPoolExecutor: ThreadPoolExecutor = {
     val config = Reflow.config
-    new ThreadPoolExecutor(config.corePoolSize(), config.maxPoolSize(),
-      config.keepAliveTime(), TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
+    new ThreadPoolExecutor(config.corePoolSize, config.maxPoolSize,
+      config.keepAliveTime, TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
         override def rejectedExecution(r: Runnable, executor: ThreadPoolExecutor): Unit = {
           Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
           try {
@@ -87,17 +84,12 @@ object Worker extends TAG.ClassName {
       })
   }
 
-  private[reflow] def setThreadResetor(resetor: ThreadResetor) = Locker.syncr {
-    sThreadResetor = resetor
-  }
+  private[reflow] def setThreadResetor(resetor: ThreadResetor) = sThreadResetor = resetor
 
   private[reflow] def updateConfig(config: Config) {
-    Locker.syncr {
-      if (sThreadPoolExecutor.isNull) return
-    }
-    sThreadPoolExecutor.setCorePoolSize(config.corePoolSize())
-    sThreadPoolExecutor.setMaximumPoolSize(config.maxPoolSize())
-    sThreadPoolExecutor.setKeepAliveTime(config.keepAliveTime(), TimeUnit.SECONDS)
+    sThreadPoolExecutor.setCorePoolSize(config.corePoolSize)
+    sThreadPoolExecutor.setMaximumPoolSize(config.maxPoolSize)
+    sThreadPoolExecutor.setKeepAliveTime(config.keepAliveTime, TimeUnit.SECONDS)
   }
 
   object sPreparedBuckets {

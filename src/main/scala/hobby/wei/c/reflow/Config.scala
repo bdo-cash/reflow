@@ -21,25 +21,27 @@ package hobby.wei.c.reflow
   * @version 1.0, 11/04/2016
   */
 class Config protected() {
-  def corePoolSize() = Config.CPU_COUNT + 1
+  require(maxPoolSize >= corePoolSize && corePoolSize > 0)
 
-  def maxPoolSize() = Config.CPU_COUNT * 5 + 1
+  lazy val corePoolSize = Config.CPU_COUNT + 1
+
+  lazy val maxPoolSize = Config.CPU_COUNT * 5 + 1
 
   /**
     * 空闲线程保留时间。单位: 秒。
     */
-  def keepAliveTime() = 5
+  lazy val keepAliveTime = 5
 }
 
 object Config {
-  val CPU_COUNT = Runtime.getRuntime.availableProcessors
-  val DEF = new Config
+  lazy val CPU_COUNT = Runtime.getRuntime.availableProcessors
+  lazy val DEF = new Config
 
-  def apply(coreSize: Int, poolSize: Int, aliveTime: Int): Config = new Config() {
-    override def corePoolSize() = coreSize
+  def apply(coreSize: => Int, maxSize: => Int, aliveTime: => Int = DEF.keepAliveTime): Config = new Config() {
+    override lazy val corePoolSize = coreSize
 
-    override def maxPoolSize() = poolSize
+    override lazy val maxPoolSize = maxSize
 
-    override def keepAliveTime() = aliveTime
+    override lazy val keepAliveTime = aliveTime
   }
 }
