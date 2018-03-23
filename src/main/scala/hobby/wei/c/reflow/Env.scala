@@ -24,7 +24,7 @@ import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/01/2018
   */
-trait Env extends TAG.ClassName {
+private[reflow] trait Env extends TAG.ClassName {
   private[reflow] val trat: Trait[_ <: Task]
   private[reflow] val tracker: Tracker
   private[reflow] final lazy val input: Out = {
