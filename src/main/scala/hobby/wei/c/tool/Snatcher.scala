@@ -17,7 +17,9 @@
 package hobby.wei.c.tool
 
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
+import scala.collection.mutable.ListBuffer
 import scala.util.control.Breaks._
 
 /**
@@ -96,5 +98,22 @@ class Snatcher {
       signature.set(false) // 等竞争到了再置为false.
       true // continue
     } else false // break
+  }
+}
+
+object Snatcher {
+  class ActionQueue()(implicit lock: ReentrantLock = Locker.getLockr(this)) {
+    // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
+    private lazy val buffer = new ListBuffer[() => Unit]
+    private lazy val snatcher = new Snatcher
+
+    def queueAction(action: => Unit): Unit = {
+      Locker.syncr(buffer += (() => action))
+      snatcher.tryOn {
+        while (Locker.syncr(buffer.nonEmpty).get) {
+          Locker.syncr(buffer.remove(0)).foreach(_ ())
+        }
+      }
+    }
   }
 }

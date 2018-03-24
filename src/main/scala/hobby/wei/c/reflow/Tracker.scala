@@ -33,7 +33,6 @@ import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.{Locker, Snatcher}
 
 import scala.collection.{mutable, _}
-import scala.collection.mutable.ListBuffer
 import scala.util.control.Breaks._
 
 /**
@@ -144,9 +143,7 @@ private[reflow] object Tracker extends TAG.ClassName {
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
-    private lazy val buffer4Reports = new ListBuffer[() => Unit] // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
-    private lazy val snatcher4Report = new Snatcher()
-    private lazy val snatcher4EndRunner = new Snatcher()
+    private lazy val snatcher = new Snatcher.ActionQueue()(lock)
 
     private val sum = basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
@@ -190,7 +187,7 @@ private[reflow] object Tracker extends TAG.ClassName {
       assert(runner.trat == tratGlobal || (tratGlobal.isParallel && tratGlobal.asParallel.traits().contains(runner.trat)))
       runnersParallel -= runner
       // 并行任务全部结束
-      snatcher4EndRunner.tryOn {
+      if (runnersParallel.isEmpty) snatcher.queueAction {
         val state$ = state.get$
         // 判断放在里面，`snatcher`如果在执行完毕后发现了信号重来，可以再次执行本判断，避免重复。
         // 正常情况下，本函数提执行完毕，由于已经直接或间接执行了`tryScheduleNext()`，`runnersParallel`不可能再为`empty`，
@@ -244,16 +241,18 @@ private[reflow] object Tracker extends TAG.ClassName {
                   val success = state.forward(UPDATED)
                   // 会被混淆优化掉
                   Monitor.assertStateOverride(prev, UPDATED, success)
+                  // 放在interruptSync()的前面，虽然不能保证有Poster的事件到达会在sync()返回结果的前面，但没有Poster的还是可以的，这样便于测试。
+                  // 这个比较特殊：因为本执行体已经在queueAction()里面了。
+                  /*snatcher.queueAction{*/ reporter.reportOnUpdate(afterGlobalTrans) /*}*/
                   interruptSync(true)
-                  // 即使放在interruptSync()的前面，也不能保证事件的到达会在sync()返回结果的前面，因此干脆放在后面算了。
-                  postReport(reporter.reportOnUpdate(afterGlobalTrans))
                 } else {
                   val prev = state.get
                   val success = state.forward(COMPLETED)
                   // 会被混淆优化掉
                   Monitor.assertStateOverride(prev, COMPLETED, success)
+                  // 这个比较特殊：因为本执行体已经在queueAction()里面了。
+                  /*snatcher.queueAction{*/ reporter.reportOnComplete(afterGlobalTrans) /*}*/
                   interruptSync(!isReinforceRequired)
-                  postReport(reporter.reportOnComplete(afterGlobalTrans))
                 }
               }
             })
@@ -372,8 +371,11 @@ private[reflow] object Tracker extends TAG.ClassName {
         // 如果能走到这里，那么总是先于`endRunner`之前执行，也就意味着`runnersParallel`不可能为`empty`。
         Monitor.abortion(if (trigger.isNull) null else trigger.trat.name$, runnersParallel.head._1.trat.name$, forError)
         runnersParallel.foreach(_._1.abort())
-        if (forError) postReport(reporter.reportOnFailed(name /*为null时不会走到这里*/ , e))
-        else postReport(reporter.reportOnAbort())
+        if (forError) snatcher.queueAction {
+          reporter.reportOnFailed(name /*为null时不会走到这里*/ , e)
+        } else snatcher.queueAction {
+          reporter.reportOnAbort()
+        }
       } else if (state.abort()) {
         // 已经到达COMPLETED/REINFORCE阶段了
       } else {
@@ -439,7 +441,9 @@ private[reflow] object Tracker extends TAG.ClassName {
           if (state.forward(EXECUTING))
           // 但反馈有且只有一次（上面forward方法只会成功一次）
             if (basis.stepOf(trat) == 0) {
-              postReport(reporter.reportOnStart())
+              snatcher.queueAction {
+                reporter.reportOnStart()
+              }
             } else {
               // progress会在任务开始、进行中及结束时report，这里do nothing。
             }
@@ -455,9 +459,10 @@ private[reflow] object Tracker extends TAG.ClassName {
           Locker.syncr { // 为了保证并行的不同任务间进度的顺序性，这里还必须得同步。
             val sub = subProgress(trat, progress)
             val step = basis.stepOf(trat)
-            buffer4Reports += (() => reporter.reportOnProgress(name, step, sub, out, desc))
+            snatcher.queueAction {
+              reporter.reportOnProgress(name, step, sub, out, desc)
+            }
           }
-          postReport() // 注意就这一个地方写法不同
         }
       }
     }
@@ -484,16 +489,6 @@ private[reflow] object Tracker extends TAG.ClassName {
     override private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit = {
       joinOutFlow(flow)
       Monitor.complete(if (isInput(trat)) -1 else basis.stepOf(trat), out, flow, outFlowTrimmed)
-    }
-
-    private def postReport(action: => Unit): Unit = {
-      Locker.syncr(buffer4Reports += (() => action))
-      snatcher4Report.tryOn {
-        while (Locker.syncr(buffer4Reports.nonEmpty).get) {
-          val f = Locker.syncr(buffer4Reports.remove(0)).get
-          f()
-        }
-      }
     }
   }
 
