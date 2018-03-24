@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent._
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
@@ -178,13 +179,17 @@ object Reflow {
   /**
     * 为简单代码段或`Runnable`提供运行入口，以便将其纳入框架的调度管理。
     *
+    * @tparam V 执行的结果类型。
     * @param _runner   包装要运行代码。如果是`Runnable`，可以写`runnable.run()`。
     * @param _period   同`Trait#period()`。
     * @param _priority 同`Trait#priority()`。
     * @param _desc     同`Trait#description()`。
     * @param _name     同`Trait#name()`。
     */
-  def execute(_runner: => Unit)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Unit = {
+  def submit[V](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Future[V] = {
+    val future = new FutureTask[V](new Callable[V] {
+      override def call() = _runner
+    })
     Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
@@ -195,10 +200,9 @@ object Reflow {
       override protected def desc() = if (_desc.isNull) name$ else _desc
 
       override def newTask() = null
-    }, new Runnable {
-      override def run(): Unit = _runner
-    }))
+    }, future))
     Worker.scheduleBuckets()
+    future
   }
 
   private def builder = new Dependency()
