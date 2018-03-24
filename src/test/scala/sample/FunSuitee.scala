@@ -1,12 +1,17 @@
 package sample
 
-import org.scalatest.FunSuite
+import org.scalatest.{BeforeAndAfter, FunSuite}
 
 /**
   * @author Wei.Chou
   * @version 1.0, 21/10/2017
   */
-class FunSuitee extends FunSuite {
+class FunSuitee extends FunSuite with BeforeAndAfter {
+  // http://doc.scalatest.org/1.8/org/scalatest/BeforeAndAfter.html
+  before {
+    // ...
+  }
+
   test("测试 expect 的用法") {
     assertResult(5) {
       // 6
@@ -26,5 +31,9 @@ class FunSuitee extends FunSuite {
     //  }
     //
     //  expect(5 === 6)
+  }
+
+  after {
+    // ...
   }
 }
