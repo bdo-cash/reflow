@@ -22,7 +22,7 @@ import org.scalatest._
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 23/03/2018
   */
-class ReflowFeatureSpec extends FeatureSpec with BeforeAndAfter with BeforeAndAfterAll {
+class ReflowFeatureSpec extends AsyncFeatureSpec with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(true)
     Reflow.setConfig(Config(1, 1))
@@ -31,5 +31,4 @@ class ReflowFeatureSpec extends FeatureSpec with BeforeAndAfter with BeforeAndAf
   before {}
 
   after {}
-
 }
