@@ -22,7 +22,7 @@ resolvers += "jitpack" at "https://jitpack.io"
 
 libraryDependencies ++= Seq(
   "com.github.dedge-space" % "Annoguard" % "1.0.3-beta",
-  "com.github.dedge-space" % "scala-lang" % "6ec81800ec",
+  "com.github.dedge-space" % "scala-lang" % "122124a805",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % "test",
