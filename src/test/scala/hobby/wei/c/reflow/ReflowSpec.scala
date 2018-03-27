@@ -2,14 +2,40 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S._
 import hobby.wei.c.reflow.Reflow.Period
-import org.scalatest.AsyncFlatSpec
+import org.scalatest._
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 13/03/2018
   */
-class ReflowSpec extends AsyncFlatSpec {
-  info("Reflow 的异步调用支持简写：")
+class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
+  override protected def beforeAll(): Unit = {
+    Reflow.setDebugMode(true)
+    Reflow.setConfig(Config(1, 1))
+  }
+
+  info("------------------------- 简介 -------------------------")
+  info("Reflow 是一个`任务串并联`组合调度框架。")
+
+  info("`数据`就是`电流`，而`任务（Task）`可以看做电路元器件；")
+
+  info("`任务`在组装`提交（submit）`之后，会获得一个`Reflow`对象，它可以启动执行，[同/异]步返回结果。")
+
+  info("任务需要被包装在`Trait`对象里，包含任务执行时需要的特征信息；")
+
+  info("任务的`组装`使用`Dependency`对象。")
+
+  info("Reflow 作为一个整体，也可以看做一个`电路`单位，一个电路元器件，即：任务。因此可以进行嵌套组装。")
+
+  info("------------------------- 测试 -------------------------")
+
+  info("Reflow 是异步调用的，但也支持同步（`不推荐`这样写，仅为了方便测试）：")
+
+  behavior of "sync()"
+
+  it should ""
+
+  info("支持简写： ----------------------------------------------")
 
   behavior of "call submit {...}"
 
@@ -24,6 +50,7 @@ class ReflowSpec extends AsyncFlatSpec {
   }
 
   info("但对于关系复杂任务集，应该使用 Dependency 构建依赖/并行关系：")
+
 
   //  {
   //    //    def `execute runnable` {
@@ -50,4 +77,8 @@ class ReflowSpec extends AsyncFlatSpec {
   //      Reflow.shutdown()
   //    }
   //  }
+
+  before {}
+
+  after {}
 }
