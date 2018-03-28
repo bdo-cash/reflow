@@ -19,11 +19,12 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Condition, ReentrantLock}
+import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.pool.S._2S
-import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Assist.{between, eatExceptions, AbortException, FailedException, InnerError, Monitor}
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
@@ -139,9 +140,7 @@ private[reflow] class ReinforceCache {
 
 private[reflow] object Tracker {
   private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], state: Scheduler.State$,
-                                   feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
-    implicit lazy val logTag: LogTag = LogTag(getClass.getName + "@" + Integer.toHexString(hashCode).take(3))
-
+                                   feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler with TAG.ClassName {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val snatcher = new Snatcher.ActionQueue()(lock)
@@ -493,10 +492,10 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class Runner private(env: Env, trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
+  private[reflow] class Runner private(env: Env, trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals with TAG.ClassName {
     def this(env: Env) = this(env, env.trat)
 
-    private implicit lazy val logTag: LogTag = new LogTag(trat.name$)
+    private implicit lazy val logTag: LogTag = new LogTag(className + "/" + trat.name$)
 
     private lazy val workDone = new AtomicBoolean(false)
     private lazy val runnerDone = new AtomicBoolean(false)
@@ -647,9 +646,7 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: () => Unit) extends Feedback {
-    private implicit lazy val logTag: LogTag = LogTag(getClass.getName + "@" + Integer.toHexString(hashCode).take(3))
-
+  private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: () => Unit) extends Feedback with TAG.ClassName {
     override def onStart(): Unit = {
       if (debugMode) log.i("[onStart]maybe call repeat, but no side effect:")
       runner.onStart()
@@ -707,7 +704,7 @@ private[reflow] object Tracker {
         _step = -1
         _sub = 0
       }
-      eatExceptions(feedback.onStart())
+      Assist.eatExceptions(feedback.onStart())
     }
 
     private[Tracker] def reportOnProgress(name: String, step: Int, sub: Float, out: Out, desc: String): Unit = {

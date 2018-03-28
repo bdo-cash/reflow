@@ -250,7 +250,7 @@ trait Reflow {
     * @param poster   转移<code>feedback</code>的调用线程, 可为null.
     * @return true 启动成功, false 正在运行。
     */
-  final def start(inputs: In, feedback: Feedback, poster: Poster): Scheduler = start(inputs, feedback, poster, null)
+  final def start(inputs: In, feedback: Feedback)(implicit poster: Poster): Scheduler = start(inputs, feedback, poster, null)
   private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
   @deprecated(message = "应该尽量使用{#toTrait(Period, int, String)}。", since = "0.0.1")

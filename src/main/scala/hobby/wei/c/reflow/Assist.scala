@@ -107,7 +107,7 @@ object Assist extends TAG.ClassName {
   }
 
   private[reflow] object Throws {
-    def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`${name}`的Task已存在, 请确认或尝试重写其name()方法。")
+    def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`$name`的Task已存在, 请确认或尝试重写其name()方法。")
 
     def sameOutKeyParallel(key: Kce[_ <: AnyRef], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
 
@@ -137,7 +137,7 @@ object Assist extends TAG.ClassName {
   }
 
   private[reflow] object Monitor extends TAG.ClassName {
-    private def tag(name: String): LogTag = new LogTag(className + "." + name)
+    private def tag(name: String): LogTag = new LogTag(className + "/" + name)
 
     def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe) {
       val duration = end - begin
