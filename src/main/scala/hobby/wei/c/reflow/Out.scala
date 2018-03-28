@@ -110,7 +110,7 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
     _nullValueKeys -= key
   }
 
-  def apply[T >: Null](key: String): Option[T] = get[T](key)
+  def apply[T >: Null](key: String): T = get[T](key).orNull
 
   /**
     * 取得key对应的value。

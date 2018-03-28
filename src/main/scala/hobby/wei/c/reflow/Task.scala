@@ -48,7 +48,7 @@ abstract class Task protected() {
     * @tparam T
     * @return
     */
-  protected final def input[T >: Null](key: String): Option[T] = env.input(key)
+  protected final def input[T >: Null](key: String): Option[T] = env.input.get(key)
 
   protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
