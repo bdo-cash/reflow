@@ -1,7 +1,8 @@
 package hobby.wei.c.reflow
 
-import hobby.chenai.nakam.lang.J2S._
 import hobby.wei.c.reflow.Reflow.Period
+import hobby.wei.c.reflow.implicits.InAddK._
+import hobby.wei.c.reflow.implicits.KceAdd._
 import org.scalatest._
 
 /**
@@ -29,25 +30,75 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   info("------------------------- 测试 -------------------------")
 
-  info("Reflow 是异步调用的，但也支持同步（`不推荐`这样写，仅为了方便测试）：")
+  lazy val outputStr = "---------->执行输出，done."
+  implicit val poster: Poster = null
+  implicit val feedback: Feedback = Feedback.Log
 
-  behavior of "sync()"
+  Feature("异步执行一段代码") {
+    Scenario("简写") {
+      When("把代码体作为参数提交")
+      val future = Reflow.submit {
+        // do something ...
+        Thread.sleep(1000)
+        outputStr
+      }(Period.SHORT)
+      Then("代码被异步执行")
+      And("输出：" + future.get)
+      assertResult(outputStr)(future.get)
+    }
 
-  it should ""
+    Scenario("也可以这样写") {
+      Given("一段代码")
+      lazy val someCodes: () => String = () => {
+        // do something ...
+        Thread.sleep(1000)
+        outputStr
+      }
+      When("提交")
+      val future = Reflow.submit(someCodes())(Period.SHORT)
+      Then("代码被异步执行")
+      And("输出：" + future.get)
+      assertResult(outputStr)(future.get)
+    }
 
-  info("支持简写： ----------------------------------------------")
+    Scenario("框架标准写法") {
+      Given("a Trait")
+      val trat = new Trait.Adapter {
+        override protected def name() = "test4outputstr"
 
-  behavior of "call submit {...}"
+        override protected def period() = Period.SHORT
 
-  it should "异步执行, 并返回预期结果。" in {
-    lazy val value: String = "一个预期的结果"
-    Reflow.submit {
-      Thread.sleep(1000)
-      value // 返回
-    }(Period.SHORT) map { v =>
-      assertResult(value)(v)
+        override protected def outs() = kces.outputstr
+
+        override def newTask() = new Task {
+          override protected def doWork(): Unit = {
+            // do something ...
+            Thread.sleep(1000)
+            output(kces.outputstr.key, outputStr)
+          }
+        }
+      }
+      Then("create a Dependency")
+      val dependency = Reflow.create(trat)
+      Then("submit the Dependency to got an Reflow")
+      val reflow = dependency.submit(kces.outputstr)
+      //      When("start the Reflow")
+      //      val scheduler = reflow.start(In.empty(), implicitly)
+      //      Then("代码被异步执行")
+      //      And("输出：" + scheduler.sync())
+      //      assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
+
+      val reflow1 = Reflow.create(reflow.toTrait).and(trats.int2str0).submit(kces.str + kces.outputstr)
+      val scheduler1 = reflow1.start((kces.int, Integer.valueOf(567)), implicitly)
+      Then("代码被异步执行")
+      And("输出：" + scheduler1.sync())
+      assertResult("567")(scheduler1.sync()(kces.str))
+      assertResult(outputStr)(scheduler1.sync()(kces.outputstr))
     }
   }
+
+  info("Reflow 是异步调用的，但也支持同步（`不推荐`这样写，仅为了方便测试）：")
+
 
   info("但对于关系复杂任务集，应该使用 Dependency 构建依赖/并行关系：")
 

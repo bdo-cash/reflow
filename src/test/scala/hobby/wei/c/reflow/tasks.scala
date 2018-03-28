@@ -16,6 +16,8 @@
 
 package hobby.wei.c.reflow
 
+import hobby.wei.c.reflow.implicits.KceAdd
+
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 23/03/2018
@@ -24,6 +26,7 @@ object kces {
   lazy val anyRef = new Kce[AnyRef]("anyr") {}
   lazy val int = new Kce[Integer]("int") {}
   lazy val str = new Kce[String]("str") {}
+  lazy val outputstr = new Kce[String]("outputstr") {}
 }
 
 object trans {
@@ -41,9 +44,9 @@ object trats {
   lazy val int2str0 = new Trait.Adapter {
     override protected def period() = Reflow.Period.TRANSIENT
 
-    override protected def requires() = Helper.Kces.add(int).ok()
+    override protected def requires() = int ok()
 
-    override protected def outs() = Helper.Kces.add(str).ok()
+    override protected def outs() = str.ok()
 
     override protected def name() = "int2str0"
 
@@ -57,9 +60,9 @@ object trats {
   lazy val int2str1 = new Trait.Adapter {
     override protected def period() = Reflow.Period.TRANSIENT
 
-    override protected def requires() = Helper.Kces.add(int).ok()
+    override protected def requires() = int.ok()
 
-    override protected def outs() = Helper.Kces.add(str).ok()
+    override protected def outs() = str.ok()
 
     override protected def name() = "int2str1"
 
@@ -72,5 +75,4 @@ object trats {
 }
 
 object tasks {
-
 }
