@@ -28,12 +28,12 @@ object Helper {
   object Kces {
     def empty(): immutable.Set[Kce[_ <: AnyRef]] = immutable.Set.empty
 
-    def add(key: Kce[_ <: AnyRef]): Builder = new Builder().add(key)
+    def +(ks: Kce[_ <: AnyRef]*): Builder = new Builder + (ks: _*)
     class Builder private[reflow]() {
       private val keys = new mutable.HashSet[Kce[_ <: AnyRef]]
 
-      def add(key: Kce[_ <: AnyRef]): Builder = {
-        keys.add(key.ensuring(_.nonNull))
+      def +(ks: Kce[_ <: AnyRef]*): Builder = {
+        keys ++= ks.ensuring(_.forall(_.nonNull))
         this
       }
 
@@ -45,21 +45,21 @@ object Helper {
     /**
       * 将任务的某个输出在转换之后仍然保留。通过增加一个[输出即输入]转换。
       */
-    def retain[O <: AnyRef](key: Kce[O]): Transformer[O, O] = new Transformer[O, O](key, key) {
+    def retain[O <: AnyRef](kce: Kce[O]): Transformer[O, O] = new Transformer[O, O](kce, kce) {
       override def transform(in: Option[O]) = in
     }
 
-    def add(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = new Builder().add(trans)
+    def +(trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Builder = new Builder + (trans: _*)
 
     class Builder private[reflow]() {
       private val trans = new mutable.HashSet[Transformer[_ <: AnyRef, _ <: AnyRef]]
 
-      def add(t: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = {
-        trans.add(t.ensuring(_.nonNull))
+      def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): Builder = {
+        trans ++= ts.ensuring(_.forall(_.nonNull))
         this
       }
 
-      def retain[O <: AnyRef](key: Kce[O]): Builder = add(Transformers.retain[O](key))
+      def retain[O <: AnyRef](kce: Kce[O]): Builder = this + Transformers.retain[O](kce)
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }

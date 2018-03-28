@@ -52,6 +52,8 @@ abstract class Task protected() {
 
   protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
+  protected final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = env.out.put(kce.key, value)
+
   protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
 
   /**

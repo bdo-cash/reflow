@@ -112,6 +112,8 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
 
   def apply[T >: Null](key: String): T = get[T](key).orNull
 
+  def apply[T >: Null <: AnyRef](kce: Kce[T]): T = get[T](kce).orNull
+
   /**
     * 取得key对应的value。
     *

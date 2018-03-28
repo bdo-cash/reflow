@@ -137,7 +137,7 @@ object Assist extends TAG.ClassName {
   }
 
   private[reflow] object Monitor extends TAG.ClassName {
-    private def tag(name: String): LogTag = new LogTag(TAG + "." + name)
+    private def tag(name: String): LogTag = new LogTag(className + "." + name)
 
     def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe) {
       val duration = end - begin

@@ -37,26 +37,31 @@ abstract class In protected(_keys: Set[Kce[_ <: AnyRef]], _trans: Transformer[_ 
 }
 
 object In {
+  def map[T <: AnyRef](kce: Kce[T], value: T): In = map(kce.key, value)
+
   def map(key: String, value: Any): In = map(Map((key, value)))
 
   def map(map: Map[String, Any], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): In = new M(generate(map), map, trans: _*)
 
   def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
-  def add(key: String, value: Any): Builder = new Builder().add(key, value)
+  def +(kv: (String, Any)): Builder = this + (kv._1, kv._2)
+
+  def +(key: String, value: Any): Builder = new Builder + (key, value)
 
   class Builder private[reflow]() {
-    private val map = new mutable.AnyRefMap[String, Any]
-    private var tb: Helper.Transformers.Builder = _
+    private lazy val map = new mutable.AnyRefMap[String, Any]
+    private lazy val tb: Helper.Transformers.Builder = new Helper.Transformers.Builder
 
-    def add(key: String, value: Any): Builder = {
-      map.put(key, value)
+    def +(kv: (String, Any)): Builder = this + (kv._1, kv._2)
+
+    def +(key: String, value: Any): Builder = {
+      map += (key, value)
       this
     }
 
-    def add(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Builder = {
-      if (tb.isNull) tb = Helper.Transformers.add(trans)
-      else tb.add(trans)
+    def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): Builder = {
+      tb + (ts: _*)
       this
     }
 

@@ -19,7 +19,6 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Condition, ReentrantLock}
-import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
@@ -138,9 +137,11 @@ private[reflow] class ReinforceCache {
   override def toString = s"ReinforceCache:\n caches:$caches,\n subs:$subs,\n begins:$begins,\n inputs:$inputs,\n outs:$outs."
 }
 
-private[reflow] object Tracker extends TAG.ClassName {
+private[reflow] object Tracker {
   private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], state: Scheduler.State$,
                                    feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler {
+    implicit lazy val logTag: LogTag = LogTag(getClass.getName + "@" + Integer.toHexString(hashCode).take(3))
+
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val snatcher = new Snatcher.ActionQueue()(lock)
@@ -251,7 +252,7 @@ private[reflow] object Tracker extends TAG.ClassName {
                   // 会被混淆优化掉
                   Monitor.assertStateOverride(prev, COMPLETED, success)
                   // 这个比较特殊：因为本执行体已经在queueAction()里面了。
-                  /*snatcher.queueAction{*/ reporter.reportOnComplete(afterGlobalTrans) /*}*/
+                  /*snatcher.queueAction{*/ reporter.reportOnComplete(tratGlobal.name$, afterGlobalTrans) /*}*/
                   interruptSync(!isReinforceRequired)
                 }
               }
@@ -492,10 +493,10 @@ private[reflow] object Tracker extends TAG.ClassName {
     }
   }
 
-  private[reflow] class Runner private(env: Env, trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals with TAG.ClassName {
+  private[reflow] class Runner private(env: Env, trat: Trait[_ <: Task]) extends Worker.Runner(trat: Trait[_ <: Task], null) with Equals {
     def this(env: Env) = this(env, env.trat)
 
-    private implicit lazy val TAG: LogTag = new LogTag(trat.name$)
+    private implicit lazy val logTag: LogTag = new LogTag(trat.name$)
 
     private lazy val workDone = new AtomicBoolean(false)
     private lazy val runnerDone = new AtomicBoolean(false)
@@ -647,14 +648,21 @@ private[reflow] object Tracker extends TAG.ClassName {
   }
 
   private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: () => Unit) extends Feedback {
-    override def onStart(): Unit = runner.onStart()
+    private implicit lazy val logTag: LogTag = LogTag(getClass.getName + "@" + Integer.toHexString(hashCode).take(3))
 
-    override def onProgress(name: String, out: Out, count: Int, sum: Int, sub: Float, desc: String): Unit =
-      env.tracker.onTaskProgress(name, env.trat, (count + sub) / sum, out, desc)
+    override def onStart(): Unit = {
+      if (debugMode) log.i("[onStart]maybe call repeat, but no side effect:")
+      runner.onStart()
+    }
+
+    override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit = {
+      // if (out ne env.out) env.out.fillWith(out, fullVerify = false) // 暂不要，以提高效率。
+      env.tracker.onTaskProgress(name, env.trat, (step + sub) / sum, out, desc)
+    }
 
     override def onComplete(out: Out): Unit = {
-      doSth()
       if (out ne env.out) env.out.fillWith(out)
+      doSth()
       runner.onWorkDone()
     }
 
@@ -687,9 +695,9 @@ private[reflow] object Tracker extends TAG.ClassName {
     * 该结构的目标是保证进度反馈的递增性。同时保留关键点，丢弃密集冗余。
     * 注意：事件到达本类，已经是单线程操作了。
     */
-  private class Reporter(feedback: Feedback, sum: Int) {
+  private class Reporter(feedback: Feedback, sum: Int)(implicit logTag: LogTag) {
     private var _step: Int = _
-    private var _subProgress: Float = _
+    private var _sub: Float = _
     private var _stateResetted = true
 
     private[Tracker] def reportOnStart(): Unit = {
@@ -697,36 +705,36 @@ private[reflow] object Tracker extends TAG.ClassName {
         log.i("[reportOnStart]_stateResetted:%b.", _stateResetted)
         assert(_stateResetted)
         _step = -1
-        _subProgress = 0
+        _sub = 0
       }
       eatExceptions(feedback.onStart())
     }
 
-    private[Tracker] def reportOnProgress(name: String, step: Int, subProgress: Float, out: Out, desc: String): Unit = {
+    private[Tracker] def reportOnProgress(name: String, step: Int, sub: Float, out: Out, desc: String): Unit = {
       if (debugMode) {
-        log.i("[reportOnProgress]name:%s, step:%d, subProgress:%f, out:%s, desc:%s.", name.s, step, subProgress, out, desc.s)
-        assert(subProgress >= _subProgress, s"调用没有同步？`$name`。")
-        if (_stateResetted) {
+        log.i("[reportOnProgress]name:%s, step:%d, sub:%s, sum:%d, out:%s, desc:%s.", name.s, step, sub, sum, out, desc.s)
+        assert(sub >= _sub, s"调用没有同步？`$name`。")
+        if (_stateResetted && sub == 0) {
           assert(step == _step + 1)
           _step = step
           _stateResetted = false
         } else assert(step == _step)
-        if (subProgress > _subProgress) {
-          _subProgress = subProgress
+        if (sub > _sub) {
+          _sub = sub
           // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
-          if (subProgress == 1) {
-            _subProgress = 0
+          if (sub == 1) {
+            _sub = 0
             _stateResetted = true
           }
         }
       }
-      eatExceptions(feedback.onProgress(name, out, step, sum, subProgress, desc))
+      eatExceptions(feedback.onProgress(name, out, step, sum, sub, desc))
     }
 
-    private[Tracker] def reportOnComplete(out: Out): Unit = {
+    private[Tracker] def reportOnComplete(name: String, out: Out): Unit = {
       if (debugMode) {
-        log.i("[reportOnComplete]step:%d, subProgress:%f, _stateResetted:%b, out:%s.", _step, _subProgress, _stateResetted, out)
-        assert(_stateResetted && _step == sum - 1 && _subProgress == 0)
+        log.i("[reportOnComplete]name:%s, step:%d, sub:%s, sum:%d, _stateResetted:%b, out:%s.", name.s, _step, _sub, sum, _stateResetted, out)
+        assert(_stateResetted && _step == sum - 1 && _sub == 0)
       }
       eatExceptions(feedback.onComplete(out))
     }
