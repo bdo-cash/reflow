@@ -45,11 +45,12 @@ class Dependency private[reflow]() extends TAG.ClassName {
   /**
     * 给前面最后添加的任务增加并行任务。
     *
-    * @param trat 新增的任务具有的特性。
+    * @param trat  新增的任务具有的特性。
+    * @param trans 转换器列表。
     * @return 当前依赖组装器。
     */
   def and(trat: Trait[_ <: Task], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
-    require(!trat.ensuring(_.nonNull).isParallel)
+    require(!trat.ensuring(_.nonNull).isPar)
     Assist.requireTaskNameDiff(trat, names)
     if (basis.traits.isEmpty) {
       basis.traits += trat
@@ -75,7 +76,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @return 当前依赖组装器。
     */
   def next(trat: Trait[_ <: Task]): Dependency = {
-    require(!trat.ensuring(_.nonNull).isParallel)
+    require(!trat.ensuring(_.nonNull).isPar)
     Assist.requireTaskNameDiff(trat, names)
     basis.last(false).foreach(Dependency.genIOPrev(_, null, basis, inputRequired, useless))
     basis.traits += trat
@@ -155,8 +156,8 @@ class Dependency private[reflow]() extends TAG.ClassName {
     Dependency.genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
     Dependency.genDeps(outputs, basisx.traits.reverse, basisx, inputReqx, uselesx)
     basisx.traits.foreach { trat =>
-      if (trat.isParallel) {
-        trat.asParallel.traits().foreach(t => basisx.dependencies.getOrElseUpdate(t.name$, mutable.Map.empty))
+      if (trat.isPar) {
+        trat.asPar.traits().foreach(t => basisx.dependencies.getOrElseUpdate(t.name$, mutable.Map.empty))
       } else basisx.dependencies.getOrElseUpdate(trat.name$, mutable.Map.empty)
     } // 避免空值
     // 必须先于下面transGlobal的读取。
@@ -202,7 +203,7 @@ object Dependency {
       var step = traits.indexOf(trat)
       if (step < 0) breakable {
         for (tt <- traits)
-          if (tt.isParallel && tt.asParallel.traits().contains(trat)) {
+          if (tt.isPar && tt.asPar.traits().contains(trat)) {
             step = traits.indexOf(tt)
             break
           }
@@ -217,7 +218,7 @@ object Dependency {
           if (tt.name$ == name) {
             result = tt
             break
-          } else if (tt.isParallel) for (trat <- tt.asParallel.traits() if trat.name$ == name) {
+          } else if (tt.isPar) for (trat <- tt.asPar.traits() if trat.name$ == name) {
             result = trat
             break
           }
@@ -227,14 +228,14 @@ object Dependency {
 
     def topOf(name: String): Trait[_ <: Task] = topOf(traitOf(name))
 
-    def topOf(trat: Trait[_ <: Task]): Trait[_ <: Task] = if (trat.isParallel) trat else {
+    def topOf(trat: Trait[_ <: Task]): Trait[_ <: Task] = if (trat.isPar) trat else {
       var result: Trait[_ <: Task] = null
       breakable {
         for (tt <- traits)
           if (tt == trat) {
             result = tt
             break
-          } else if (tt.isParallel && tt.asParallel.traits().contains(trat)) {
+          } else if (tt.isPar && tt.asPar.traits().contains(trat)) {
             result = tt
             break
           }
@@ -250,8 +251,8 @@ object Dependency {
       if (traits.isEmpty) null
       else {
         val trat = traits.splitAt(if (first$last) 0 else traits.size - 1)._2.head
-        if (child && trat.isParallel) {
-          if (first$last) trat.asParallel.first() else trat.asParallel.last()
+        if (child && trat.isPar) {
+          if (first$last) trat.asPar.first() else trat.asPar.last()
         } else trat
       })
   }
@@ -288,9 +289,9 @@ object Dependency {
   }
 
   implicit class IsPar(trat: Trait[_]) {
-    def isParallel: Boolean = trat.isInstanceOf[Trait.Parallel]
+    def isPar: Boolean = trat.isInstanceOf[Trait.Parallel]
 
-    def asParallel: Trait.Parallel = trat.as[Trait.Parallel]
+    def asPar: Trait.Parallel = trat.as[Trait.Parallel]
   }
 
   /**
@@ -304,9 +305,9 @@ object Dependency {
   private def genIOPrev(last: Trait[_], mapParallelOuts: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable,
                         inputRequired: mutable.Map[String, Kce[_ <: AnyRef]], mapUseless: mutable.Map[String, Map[String, Kce[_ <: AnyRef]]])
                        (implicit logTag: LogTag) {
-    if (last.isParallel) {
+    if (last.isPar) {
       val outsPal = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
-      for (tt <- last.asParallel.traits()) {
+      for (tt <- last.asPar.traits()) {
         genIOPrev(tt, outsPal, basis, inputRequired, mapUseless)
       }
       // 该消化的都已经消化了，剩下的可以删除，同时也等同于后面的覆盖了前面相同的`Kce.key`。
@@ -375,10 +376,10 @@ object Dependency {
     // 注意：放在这里，存储的是globalTrans`前`的结果。
     // 如果要存储globalTrans`后`的结果，则应该放在consumeTransGlobal前边（即第1行）。
     outsFlow.put(trat.name$, trimmed.values.toSet)
-    if (trat.isParallel) {
+    if (trat.isPar) {
       val inputs = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
       val outs = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
-      for (tt <- trat.asParallel.traits()) {
+      for (tt <- trat.asPar.traits()) {
         // 根据Tracker实现的实际情况，弃用这行。
         // outsFlow.put(tt.name$(), flow)
         basis.dependencies.get(tt.name$).fold() {
@@ -469,11 +470,11 @@ object Dependency {
     */
   private def consumeRequires(prev: Trait[_], parent: Trait.Parallel, requires: mutable.Map[String, Kce[_ <: AnyRef]],
                               basis: BasisMutable, mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]]) {
-    if (prev.isParallel) {
+    if (prev.isPar) {
       breakable {
-        for (tt <- prev.asParallel.traits()) {
+        for (tt <- prev.asPar.traits()) {
           if (requires.isEmpty) break
-          consumeRequires(tt, prev.asParallel, requires, basis, mapUseless)
+          consumeRequires(tt, prev.asPar, requires, basis, mapUseless)
         }
       }
     } else {

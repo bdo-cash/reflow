@@ -102,7 +102,7 @@ object Assist extends TAG.ClassName {
     try {
       work
     } catch {
-      case e: Exception => log.w("eatExceptions.", e)
+      case e: Exception => log.w(e, "eatExceptions.")
     }
   }
 
@@ -149,7 +149,10 @@ object Assist extends TAG.ClassName {
       }
     }
 
-    def abortion(trigger: String, name: String, forError: Boolean): Unit = if (debugMode) log.i("trigger:%1$s, task:%2$s, forError:%3$s.", trigger.s, name.s, forError)(tag("abortion"))
+    def duration(reflow: TAG.ClassName, begin: Long, end: Long, subReflow: Boolean): Unit = if (!subReflow) log.w(
+      "[Reflow Time Duration]>>>>>>>>>> duration:%fs <<<<<<<<<<.", (end - begin) / 1000f)(reflow.className)
+
+    def abortion(trigger: String, task: String, forError: Boolean): Unit = if (debugMode) log.i("trigger:%1$s, task:%2$s, forError:%3$s.", trigger.s, task.s, forError)(tag("abortion"))
 
     @Burden
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {

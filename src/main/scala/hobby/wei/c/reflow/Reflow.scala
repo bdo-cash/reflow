@@ -96,7 +96,7 @@ object Reflow {
       private var average = 0L
       private var count = 0L
 
-      def average(duration: Long): Long = Locker.sync {
+      def average(duration: Long): Long = Locker.syncr {
         if (duration > 0) {
           val prevAvg = average
           val prevCnt = count
@@ -163,10 +163,11 @@ object Reflow {
   /**
     * 创建以参数开始的新任务流。
     *
-    * @param trat 打头的{Trait}。
+    * @param trat  打头的`Trait`。
+    * @param trans 转换器列表。
     * @return 新的任务流。
     */
-  def create(trat: Trait[_ <: Task]): Dependency = builder.next(trat)
+  def create(trat: Trait[_ <: Task], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = builder.next(trat)
 
   /**
     * 复制参数到新的任务流。

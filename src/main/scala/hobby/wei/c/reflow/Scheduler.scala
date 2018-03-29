@@ -46,7 +46,7 @@ trait Scheduler {
     */
   @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
   @throws[InterruptedException]
-  def sync(reinforce: Boolean, milliseconds: Long): Out
+  def sync(reinforce: Boolean, milliseconds: Long = -1): Out
 
   def abort(): Unit
 
@@ -75,7 +75,7 @@ object Scheduler {
 
     private[reflow] def start$(): Scheduler.Impl = {
       var permit = false
-      Locker.sync {
+      Locker.syncr {
         if (isDone) {
           state.reset()
           permit = true
@@ -104,8 +104,8 @@ object Scheduler {
     }
 
     @throws[InterruptedException]
-    override def sync(reinforce: Boolean, milliseconds: Long): Out = {
-      val start = System.currentTimeMillis()
+    override def sync(reinforce: Boolean, milliseconds: Long = -1): Out = {
+      val start = System.currentTimeMillis
       var loop = true
       var delegator: Scheduler = null
       while (loop) {
@@ -117,7 +117,7 @@ object Scheduler {
           loop = false
         }
       }
-      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - (System.currentTimeMillis() - start))
+      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - (System.currentTimeMillis - start))
     }
 
     override def abort(): Unit = getDelegator.fold()(_.abort())
@@ -139,7 +139,7 @@ object Scheduler {
     @volatile private var state$ = State.IDLE
     @volatile private var overrided = false
 
-    def forward(state: State.Tpe): Boolean = Locker.sync {
+    def forward(state: State.Tpe): Boolean = Locker.syncr {
       if (this.state.canOverrideWith(state)) {
         this.state = state
         this.state$ = state
@@ -153,7 +153,7 @@ object Scheduler {
       *
       * @return 返回值与forward(State)方法互补的值。
       */
-    def abort(): Boolean = Locker.sync {
+    def abort(): Boolean = Locker.syncr {
       state$ = State.ABORTED
       state match {
         case State.REINFORCE_PENDING | State.REINFORCING =>
@@ -168,7 +168,7 @@ object Scheduler {
 
     def get$: Tpe = state$
 
-    private[Scheduler] def reset(): Unit = Locker.sync {
+    private[Scheduler] def reset(): Unit = Locker.syncr {
       state = State.IDLE
       state$ = State.IDLE
     }

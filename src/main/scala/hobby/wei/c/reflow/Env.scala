@@ -46,16 +46,16 @@ private[reflow] trait Env extends TAG.ClassName {
   }
 
   /** `TasK`的当前缓存。 */
-  final def myCache(create: Boolean = false): Out = if (create) {
+  private[reflow] final def myCache(create: Boolean = false): Out = if (create) {
     superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.Kces.empty()))
   } else superCache.caches.get(trat.name$).orNull
 
-  final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
+  private[reflow] final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
 
   /**
     * 请求强化运行。
     *
-    * @return （在本任务或者本次调用）之前是否已经请求过, 同{isReinforceRequired()}。
+    * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
   final def requireReinforce(t: Trait[_ <: Task] = trat): Boolean = tracker.requireReinforce(t)
 

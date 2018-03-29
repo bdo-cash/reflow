@@ -45,7 +45,7 @@ object In {
 
   def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
 
-  def +(kv: (String, Any)): Builder = this + (kv._1, kv._2)
+  def +[T <: AnyRef](kce: Kce[T], value: T): Builder = this + (kce.key, value)
 
   def +(key: String, value: Any): Builder = new Builder + (key, value)
 
@@ -53,7 +53,7 @@ object In {
     private lazy val map = new mutable.AnyRefMap[String, Any]
     private lazy val tb: Helper.Transformers.Builder = new Helper.Transformers.Builder
 
-    def +(kv: (String, Any)): Builder = this + (kv._1, kv._2)
+    def +[T <: AnyRef](kce: Kce[T], value: T): Builder = this + (kce.key, value)
 
     def +(key: String, value: Any): Builder = {
       map += (key, value)

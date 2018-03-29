@@ -64,9 +64,9 @@ object Locker {
     else if (r) getLockr(lockScope) else getLock(lockScope)
 
   @throws[InterruptedException]
-  def sync$[T](codes: Codes[T], lock: ReentrantLock): Option[T] = {
+  def sync$[T](codes: Codes[T], lock: ReentrantLock, interruptable: Boolean = true): Option[T] = {
     // 如果中断了, 则并没有获取到锁, 不需要unlock(), 同时抛出异常中止本sync方法。
-    lock.lockInterruptibly()
+    if (interruptable) lock.lockInterruptibly() else lock.lock()
     try {
       call(codes, lock)
     } finally {
@@ -169,7 +169,7 @@ object Locker {
     */
   def getLockr(lockScope: AnyRef): ReentrantLock = lazyGetr(
     Assist.getRef(sLocks.getOrElse(lockScope, null)).orNull) {
-    val lock = new ReentrantLock(true) // 公平锁
+    val lock = new ReentrantLock(/*true*/)
     sLocks.put(lockScope, new WeakReference(lock))
     lock
   }(sLock).get

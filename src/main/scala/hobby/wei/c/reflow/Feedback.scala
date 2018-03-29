@@ -49,15 +49,15 @@ trait Feedback {
     */
   def onUpdate(out: Out): Unit
 
-  def onAbort(): Unit
+  def onAbort(trigger: String): Unit
 
   /**
     * 任务失败。
     *
     * @param name 见`Trait#name()`。
     * @param e    分为两类:
-    *             第一类是客户代码自定义的Exception, 即显式传给`Task#failed(Exception)`方法的参数, 可能为null;
-    *             第二类是由客户代码质量问题导致的RuntimeException, 如`NullPointerException`等,
+    *             第一类是客户代码自定义的 Exception, 即显式传给`Task#failed(Exception)`方法的参数, 可能为`null`;
+    *             第二类是由客户代码质量问题导致的 RuntimeException, 如`NullPointerException`等,
     *             这些异常被包装在`CodeException`里, 可以通过`CodeException#getCause()`方法取出具体异对象。
     */
   def onFailed(name: String, e: Exception): Unit
@@ -79,7 +79,7 @@ object Feedback {
 
       override def onUpdate(out: Out): Unit = poster.post(feedback.onUpdate(out))
 
-      override def onAbort(): Unit = poster.post(feedback.onAbort())
+      override def onAbort(trigger: String): Unit = poster.post(feedback.onAbort(trigger))
 
       override def onFailed(name: String, e: Exception): Unit = poster.post(feedback.onFailed(name, e))
     }
@@ -94,7 +94,7 @@ object Feedback {
 
     override def onUpdate(out: Out): Unit = {}
 
-    override def onAbort(): Unit = {}
+    override def onAbort(trigger: String): Unit = {}
 
     override def onFailed(name: String, e: Exception): Unit = {}
   }
@@ -116,24 +116,24 @@ object Feedback {
 
     override def onUpdate(out: Out): Unit = obs.foreach(_.onUpdate(out))
 
-    override def onAbort(): Unit = obs.foreach(_.onAbort())
+    override def onAbort(trigger: String): Unit = obs.foreach(_.onAbort(trigger))
 
     override def onFailed(name: String, e: Exception): Unit = obs.foreach(_.onFailed(name, e))
   }
 
-  object Log extends Feedback with TAG.ClassName {
+  implicit object Log extends Feedback with TAG.ClassName {
     import Reflow.{logger => log}
 
     override def onStart(): Unit = log.i("[onStart]")
 
     override def onProgress(name: String, out: Out, step: Int, sum: Int, sub: Float, desc: String): Unit =
-      log.i("[onProgress]step:%s, sub:%s, sum:%s, name:%s, desc:%s, out:%s.", step, sub, sum, name.s, desc.s, out)
+      log.i("[onProgress]step:%d, sub:%f, sum:%d, name:%s, desc:%s, out:%s.", step, sub, sum, name.s, desc.s, out)
 
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
 
     override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
 
-    override def onAbort(): Unit = log.w("[onAbort]")
+    override def onAbort(trigger: String): Unit = log.w("[onAbort]trigger:%s.", trigger)
 
     override def onFailed(name: String, e: Exception): Unit = log.e(e, "[onFailed]name:%s.", name.s)
   }

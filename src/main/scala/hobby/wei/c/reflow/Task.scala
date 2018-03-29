@@ -39,20 +39,37 @@ abstract class Task protected() {
   @volatile private var aborted: Boolean = _
   @volatile private var working: Boolean = _
 
-  protected final def getEnv: Env = env
+  /**
+    * @return 与本任务相关的执行环境对象。
+    */
+  protected final def getEnv = env
 
   /**
-    * 取得输入的value.
+    * @return 与本任务相关的接口及调度参数信息对象。
+    */
+  protected final def trat: Trait[_ <: Task] = env.trat
+
+  /**
+    * 取得输入的value。
     *
-    * @param key
-    * @tparam T
-    * @return
+    * @param key value对应的key。
+    * @tparam T value的类型参数。
+    * @return `Option[T]`.
     */
   protected final def input[T >: Null](key: String): Option[T] = env.input.get(key)
 
+  protected final def input[T >: Null <: AnyRef](kce: Kce[T]): Option[T] = input(kce.key)
+
+  /**
+    * 输出结果。
+    *
+    * @param key
+    * @param value
+    * @tparam T
+    */
   protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
-  protected final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = env.out.put(kce.key, value)
+  protected final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = output(kce.key, value)
 
   protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
 
@@ -65,31 +82,63 @@ abstract class Task protected() {
     * @param value
     */
   protected final def cache[T](key: String, value: T): Unit = {
-    require(env.isReinforceRequired)
+    require(env.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
     env.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
     env.cache(key, value)
   }
 
-  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(env.trat.name$, env.trat, progress, env.out, env.trat.desc$)
+  protected final def cache[T <: AnyRef](kce: Kce[T], value: T): Unit = cache(kce.key, value)
+
+  /**
+    * 发送一个进度。
+    *
+    * @param progress 进度百分百，取值区间[0, 1]，必须是递增的。
+    */
+  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(
+    env.trat.name$, env.trat, progress.ensuring(p => p >= 0 && p <= 1), env.out, env.trat.desc$)
+
+  /**
+    * 请求强化运行。
+    *
+    * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
+    */
+  protected final def requireReinforce() = env.requireReinforce()
+
+  /**
+    * @return 当前是否已经请求过强化运行。
+    */
+  protected final def isReinforceRequired: Boolean = env.isReinforceRequired
+
+  /**
+    * @return 当前是否处于强化运行阶段。
+    */
+  protected final def isReinforcing: Boolean = env.isReinforcing
+
+  /**
+    * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（即：被包装在一个`Trait`里面被再次组装运行）。
+    */
+  protected final def isSubReflow: Boolean = env.isSubReflow
+
+  protected final def isAborted: Boolean = aborted
 
   /**
     * 如果认为任务失败, 则应该主动调用本方法来强制结束任务。
     * 不设计成直接声明{@link #doWork()}方法throws异常, 是为了让客户代码尽量自己处理好异常, 以防疏忽。
     *
-    * @param e
+    * @param e 自定义异常，可以为`null`。
     */
-  protected final def failed[T](e: Exception): T = {
+  protected final def failed(e: Exception = null) = {
     // 简单粗暴的抛出去, 由Runner统一处理。
     // 这里不抛出Exception的子类, 是为了防止被客户代码错误的给catch住。
-    // 但是exec()方法catch了本Error并转换为正常的Assist.FailedException
-    throw new FailedError(e.ensuring(_.nonNull))
+    // 但是exec()方法catch了本Error并转换为正常的Assist.FailedException。
+    throw new FailedError(e)
   }
 
   /**
     * 如果子类在{@link #doWork()}中检测到了中断请求(如: 在循环里判断{@link #isAborted()}),
     * 应该在处理好了当前事宜、准备好中断的时候调用本方法以中断整个任务。
     */
-  protected final def abortDone[T](): T = throw new AbortError()
+  protected final def abortDone() = throw new AbortError()
 
   @throws[CodeException]
   @throws[AbortException]
@@ -97,7 +146,7 @@ abstract class Task protected() {
   private[reflow] final def exec(_env: Env, _runner: Runner): Boolean = {
     env = _env
     Locker.syncr {
-      if (aborted) return true
+      if (aborted) return false
       thread = Thread.currentThread()
       working = true
     }
@@ -132,16 +181,16 @@ abstract class Task protected() {
     }
   }
 
-  protected final def trat: Trait[_] = env.trat
-
-  protected final def isAborted: Boolean = aborted
-
   /**
     * 客户代码扩展位置。<br>
     * 注意：必须仅有同步代码，不可以执行异步操作（如果有异步需求，应该运用本`Reflow`框架去并行化）。
     */
   protected def doWork(): Unit
 
+  /**
+    * 重写本方法以获得中断通知，并处理中断后的收尾工作。注意：本方法的执行与`doWork()`并不在同一线程，需谨慎处理。<br>
+    * 通常任务执行（`doWork()`）所使用的线程在此之前已经设置了中断标识（`thread.interrupt()`）。
+    */
   protected def onAbort(): Unit = {}
 
   /**

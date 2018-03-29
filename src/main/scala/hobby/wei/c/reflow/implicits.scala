@@ -16,6 +16,8 @@
 
 package hobby.wei.c.reflow
 
+import hobby.wei.c.reflow.Reflow.Period
+
 import scala.collection.immutable
 import scala.language.implicitConversions
 
@@ -24,59 +26,40 @@ import scala.language.implicitConversions
   * @version 1.0, 28/03/2018
   */
 object implicits {
-  implicit class KceAdd(kce: Kce[_ <: AnyRef]) {
-    def +(ks: Kce[_ <: AnyRef]*) = Helper.Kces + kce + (ks: _*)
+  lazy val P_HIGH = Reflow.P_HIGH
+  lazy val P_NORMAL = Reflow.P_NORMAL
+  lazy val P_LOW = Reflow.P_LOW
 
-    def ok() = Helper.Kces + kce ok()
-  }
+  lazy val TRANSIENT = Period.TRANSIENT
+  lazy val SHORT = Period.SHORT
+  lazy val LONG = Period.LONG
+  lazy val INFINITE = Period.INFINITE
 
-  object KceAdd {
-    implicit def kceAddOk(kce: Kce[_ <: AnyRef]): immutable.Set[Kce[_ <: AnyRef]] = kce ok()
+  // def方法不能直接起作用，这里转换为函数值。
+  implicit lazy val + = kce2Bdr _
+  implicit lazy val - = trans2Bdr _
+  implicit lazy val * = kceKv2Bdr _
+  implicit lazy val / = strKv2Bdr _
 
-    implicit def kceAddOk(kb: Helper.Kces.Builder): immutable.Set[Kce[_ <: AnyRef]] = kb ok()
-  }
+  implicit def kce2Bdr(kce: Kce[_ <: AnyRef]): Helper.Kces.Builder = Helper.Kces + kce
 
-  implicit class TransAdd(trans: Transformer[_ <: AnyRef, _ <: AnyRef]) {
-    def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*) = Helper.Transformers + trans + (ts: _*)
+  implicit def kce2Ok(kce: Kce[_ <: AnyRef]): immutable.Set[Kce[_ <: AnyRef]] = kce ok()
 
-    def ok() = Helper.Transformers + trans ok()
-  }
+  implicit def kceBdr2Ok(kb: Helper.Kces.Builder): immutable.Set[Kce[_ <: AnyRef]] = kb ok()
 
-  object TransAdd {
-    implicit def transAddOk(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans ok()
+  implicit def trans2Bdr(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Helper.Transformers.Builder = Helper.Transformers + trans
 
-    implicit def transAddOk(tb: Helper.Transformers.Builder): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = tb ok()
-  }
+  implicit def trans2Ok(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans ok()
 
-  implicit class InAdd[V](kv: (String, V)) {
-    def +[VK <: AnyRef](kce: Kce[VK], value: VK) = In + kv + (kce.key, value)
+  implicit def transBdr2Ok(tb: Helper.Transformers.Builder): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = tb ok()
 
-    def +(_kv: (String, Any)) = In + kv + _kv
+  implicit def kceKv2Bdr[V <: AnyRef](kv: (Kce[V], V)): In.Builder = In + (kv._1.key, kv._2)
 
-    def +(key: String, value: Any) = In + kv + (key, value)
+  implicit def kceKv2Ok[V <: AnyRef](kv: (Kce[V], V)): In = kv ok()
 
-    def ok() = In + kv ok()
-  }
+  implicit def strKv2Bdr[V](kv: (String, V)): In.Builder = In + (kv._1, kv._2)
 
-  object InAdd {
-    implicit def inAddOk[V](kv: (String, V)): In = kv ok()
+  implicit def strKv2Ok[V](kv: (String, V)): In = kv ok()
 
-    implicit def inAddOk[V](ib: In.Builder): In = ib ok()
-  }
-
-  implicit class InAddK[V <: AnyRef](kv: (Kce[V], V)) {
-    def +[VK <: AnyRef](_kv: (Kce[VK], VK)) = In + (kv._1.key, kv._2) + (_kv._1.key, _kv._2)
-
-    def +[VK <: AnyRef](kce: Kce[VK], value: VK) = In + (kv._1.key, kv._2) + (kce.key, value)
-
-    def +(key: String, value: Any) = In + (kv._1.key, kv._2) + (key, value)
-
-    def ok() = In + (kv._1.key, kv._2) ok()
-  }
-
-  object InAddK {
-    implicit def inAddOk[V <: AnyRef](kv: (Kce[V], V)): In = kv ok()
-
-    implicit def inAddOk[V](ib: In.Builder): In = ib ok()
-  }
+  implicit def inBdr2Ok(ib: In.Builder): In = ib ok()
 }
