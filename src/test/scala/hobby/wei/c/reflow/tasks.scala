@@ -16,7 +16,7 @@
 
 package hobby.wei.c.reflow
 
-import hobby.wei.c.reflow.implicits.KceAdd
+import hobby.wei.c.reflow.implicits._
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -27,6 +27,7 @@ object kces {
   lazy val int = new Kce[Integer]("int") {}
   lazy val str = new Kce[String]("str") {}
   lazy val outputstr = new Kce[String]("outputstr") {}
+  lazy val seq = new Kce[Seq[_]]("seq") {}
 }
 
 object trans {
@@ -42,33 +43,44 @@ object trats {
   import kces._
 
   lazy val int2str0 = new Trait.Adapter {
-    override protected def period() = Reflow.Period.TRANSIENT
+    override protected def period() = TRANSIENT
 
-    override protected def requires() = int ok()
+    override protected def requires() = int
 
-    override protected def outs() = str.ok()
+    override protected def outs() = str
 
     override protected def name() = "int2str0"
 
     override def newTask() = new Task() {
       override protected def doWork(): Unit = {
-        output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
+        //        requireReinforce()
+        //        cache(str, "987654321")
+        if (isReinforcing) {
+          Thread.sleep(1000)
+          output(str, input(str).orNull)
+        } else output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
       }
     }
   }
 
   lazy val int2str1 = new Trait.Adapter {
-    override protected def period() = Reflow.Period.TRANSIENT
+    override protected def period() = TRANSIENT
 
-    override protected def requires() = int.ok()
+    override protected def requires() = int
 
-    override protected def outs() = str.ok()
+    override protected def outs() = str
 
     override protected def name() = "int2str1"
 
     override def newTask() = new Task() {
       override protected def doWork(): Unit = {
-        output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
+        //        failed(new Exception("987654321"))
+        requireReinforce()
+        cache(str, "987654321")
+        if (isReinforcing) {
+          Thread.sleep(1000)
+          output(str, input(str).orNull)
+        } else output(str.key, String.valueOf(input(int.key).getOrElse(-1)))
       }
     }
   }
