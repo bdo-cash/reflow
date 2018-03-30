@@ -652,7 +652,7 @@ private[reflow] object Tracker {
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
       progress(0)
       val trat = env.trat.as[ReflowTrait]
-      scheduler = trat.reflow.start(In.from(env.input), trat.feedback.withPoster(trat.poster).join(env, runner, progress(1)), null, env)
+      scheduler = trat.reflow.start(In.from(env.input), trat.feedback.join(env, runner, progress(1)), null, env)
       false // 异步。
     }
 

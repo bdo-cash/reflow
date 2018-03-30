@@ -37,6 +37,8 @@ object Config {
   lazy val CPU_COUNT = Runtime.getRuntime.availableProcessors
   lazy val DEF = new Config
 
+  lazy val SINGLE_THREAD = Config(1, 1)
+
   def apply(coreSize: => Int, maxSize: => Int, aliveTime: => Int = DEF.keepAliveTime): Config = new Config() {
     override lazy val corePoolSize = coreSize
 

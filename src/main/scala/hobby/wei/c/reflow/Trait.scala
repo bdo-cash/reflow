@@ -156,7 +156,7 @@ private[reflow] object Trait {
     override protected def period() = Period.TRANSIENT
   }
 
-  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback, val poster: Poster = null) extends Trait[SubReflowTask] {
+  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback) extends Trait[SubReflowTask] {
     override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
 
     override final def newTask() = new SubReflowTask()

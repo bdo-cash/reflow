@@ -211,7 +211,7 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Kce[_ <: AnyRef]]) extends Reflow with TAG.ClassName {
+  private[reflow] class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Kce[_ <: AnyRef]]) extends Reflow with TAG.ClassName {
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
@@ -222,11 +222,11 @@ object Reflow {
       requireRealInEnough(reqSet, realIn)
       if (debugMode) logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
       val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)
-      new Scheduler.Impl(basis, traitIn, tranSet.toSet, feedback, poster, outer).start$()
+      new Scheduler.Impl(basis, traitIn, tranSet.toSet, feedback.wizh(poster), outer).start$()
     }
 
-    override def toTrait(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null, poster: Poster = null) =
-      new ReflowTrait(this, feedback, poster) {
+    override def torat(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null)(implicit poster: Poster) =
+      new ReflowTrait(this, feedback.wizh(poster)) {
         override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
         override protected def requires() = inputRequired.values.toSet
@@ -254,8 +254,14 @@ trait Reflow {
   final def start(inputs: In, feedback: Feedback)(implicit poster: Poster): Scheduler = start(inputs, feedback, poster, null)
   private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
-  @deprecated(message = "应该尽量使用{#toTrait(Period, int, String)}。", since = "0.0.1")
-  def toTrait: ReflowTrait = toTrait(Period.SHORT, P_NORMAL, null)
+  /**
+    * @see #torat(Period, Int, String, String, Feedback, Poster)
+    */
+  @deprecated(message = "应该尽量使用{#torat(Period, Int, String)}，本简写仅用于临时使用。", since = "0.0.1")
+  def torat: ReflowTrait = torat(Period.SHORT, P_NORMAL, null)(null)
 
-  def toTrait(period: Period.Tpe, priority: Int, desc: String, name: String = null, feedback: Feedback = null, poster: Poster = null): ReflowTrait
+  /**
+    * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
+    */
+  def torat(period: Period.Tpe, priority: Int, desc: String, name: String = null, feedback: Feedback = null)(implicit poster: Poster): ReflowTrait
 }

@@ -65,7 +65,7 @@ trait Feedback {
 
 object Feedback {
   implicit class WithPoster(feedback: Feedback) {
-    @inline def withPoster(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
+    @inline def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
       require(feedback.nonNull)
       require(poster.nonNull)
 

@@ -35,6 +35,8 @@ object implicits {
   lazy val LONG = Period.LONG
   lazy val INFINITE = Period.INFINITE
 
+  lazy val SINGLE_THREAD = Config.SINGLE_THREAD
+
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val + = kce2Bdr _
   implicit lazy val - = trans2Bdr _
