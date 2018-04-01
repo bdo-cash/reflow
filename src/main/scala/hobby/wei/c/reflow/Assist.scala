@@ -149,8 +149,8 @@ object Assist extends TAG.ClassName {
       }
     }
 
-    def duration(reflow: TAG.ClassName, begin: Long, end: Long, subReflow: Boolean): Unit = if (!subReflow) log.w(
-      "[Reflow Time Duration]>>>>>>>>>> duration:%fs <<<<<<<<<<.", (end - begin) / 1000f)(reflow.className)
+    def duration(reflow: TAG.ClassName, name: String, begin: Long, end: Long, state: State.Tpe, state$: State.Tpe, subReflow: Boolean): Unit = if (!subReflow)
+      log.w("[Reflow Time Duration]>>>>>>>>>> name:%s, duration:%fs, state:%s/%s <<<<<<<<<<.", name.s, (end - begin) / 1000f, state, state$)(reflow.className)
 
     def abortion(trigger: String, task: String, forError: Boolean): Unit = if (debugMode) log.i("trigger:%1$s, task:%2$s, forError:%3$s.", trigger.s, task.s, forError)(tag("abortion"))
 

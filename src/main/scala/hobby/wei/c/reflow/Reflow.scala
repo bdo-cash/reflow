@@ -22,7 +22,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Dependency._
-import hobby.wei.c.reflow.Reflow.{P_NORMAL, Period}
+import hobby.wei.c.reflow.Reflow.Period
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
@@ -91,10 +91,12 @@ object Reflow {
     /**
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
-    case class Period(weight: Int) extends Val {
+    private[reflow] case class Period(weight: Int) extends Val with Ordering[Period] {
       private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
       private var average = 0L
       private var count = 0L
+
+      override def compare(x: Period, y: Period) = if (x.weight < y.weight) -1 else if (x.weight == y.weight) 0 else 1
 
       def average(duration: Long): Long = Locker.syncr {
         if (duration > 0) {
@@ -211,7 +213,8 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  private[reflow] class Impl private[reflow](basis: Dependency.Basis, inputRequired: immutable.Map[String, Kce[_ <: AnyRef]]) extends Reflow with TAG.ClassName {
+  private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
+    Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
     override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
@@ -221,28 +224,28 @@ object Reflow {
       val reqSet = required.values.toSet
       requireRealInEnough(reqSet, realIn)
       if (debugMode) logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
-      val traitIn = new Trait.Input(inputs, reqSet, basis.first(true).get.priority$)
-      new Scheduler.Impl(basis, traitIn, tranSet.toSet, feedback.wizh(poster), outer).start$()
+      val traitIn = new Trait.Input(this, inputs, reqSet)
+      new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster), outer).start$()
     }
 
-    override def torat(_period: Period.Tpe, _priority: Int, _desc: String, _name: String = null, feedback: Feedback = null)(implicit poster: Poster) =
+    override def torat(_period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null) =
       new ReflowTrait(this, feedback.wizh(poster)) {
-        override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
+        override protected def name() = reflow.name
 
         override protected def requires() = inputRequired.values.toSet
 
-        override protected def outs() = basis.outs
+        override protected def outs() = reflow.basis.outs
 
-        override protected def priority() = _priority
+        override protected def period() = _period.ensuring(_ >= reflow.basis.maxPeriod())
 
-        override protected def period() = _period
-
-        override protected def desc() = if (_desc.isNull || _desc.isEmpty) name$ else _desc
+        override protected def desc() = if (reflow.desc.isNull || reflow.desc.isEmpty) name$ else reflow.desc
       }
   }
 }
 
-trait Reflow {
+abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: String = null) {
+  require(name.nonEmpty)
+
   /**
     * 启动任务。可并行启动多个。
     *
@@ -252,16 +255,11 @@ trait Reflow {
     * @return true 启动成功, false 正在运行。
     */
   final def start(inputs: In, feedback: Feedback)(implicit poster: Poster): Scheduler = start(inputs, feedback, poster, null)
-  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
-  /**
-    * @see #torat(Period, Int, String, String, Feedback, Poster)
-    */
-  @deprecated(message = "应该尽量使用{#torat(Period, Int, String)}，本简写仅用于临时使用。", since = "0.0.1")
-  def torat: ReflowTrait = torat(Period.SHORT, P_NORMAL, null)(null)
+  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
-  def torat(period: Period.Tpe, priority: Int, desc: String, name: String = null, feedback: Feedback = null)(implicit poster: Poster): ReflowTrait
+  def torat(period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null): ReflowTrait
 }

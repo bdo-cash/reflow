@@ -92,7 +92,7 @@ trait Trait[T <: Task] extends Equals {
     name$, requires$, outs$, priority$, period$, desc$)
 }
 
-private[reflow] object Trait {
+object Trait {
   private final val sCount = new AtomicInteger(0)
 
   private[reflow] final class Parallel private[reflow](trats: Seq[Trait[_ <: Task]]) extends Trait[Task] {
@@ -144,7 +144,7 @@ private[reflow] object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(in: In, outsTrimmed: immutable.Set[Kce[_ <: AnyRef]], override val priority: Int) extends Adapter {
+  private[reflow] final class Input(reflow: Reflow, in: In, outsTrimmed: immutable.Set[Kce[_ <: AnyRef]]) extends Adapter {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
     override def newTask() = new Task {
@@ -153,12 +153,14 @@ private[reflow] object Trait {
 
     override protected def outs() = outsTrimmed
 
+    override protected def priority() = reflow.basis.first(child = true).get.priority$
+
     override protected def period() = Period.TRANSIENT
   }
 
   private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback) extends Trait[SubReflowTask] {
-    override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
-
     override final def newTask() = new SubReflowTask()
+
+    override final def priority() = reflow.basis.first(child = true).get.priority$
   }
 }

@@ -16,18 +16,22 @@
 
 package hobby.wei.c.reflow
 
+import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
+
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 22/07/2016
   */
+@KeepVp$
+@KeepMp$ // 保留枚举名称
 object State extends Enumeration {
   type Tpe = State
 
-  case class State(group: Int, id: Int) {
+  private[reflow] case class State(group: Int, sn: Int) extends Val {
     def canOverrideWith(state: Tpe): Boolean = (
-      state.group == group && Math.abs(state.id - id) == 1 /*自己不能覆盖自己*/
+      state.group == group && Math.abs(state.sn - sn) == 1 /*自己不能覆盖自己*/
         || state.group == group + 1
-        || state.group > group + 1 && state.id == id
+        || state.group > group + 1 && state.sn == sn
       )
   }
 

@@ -146,7 +146,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param outputs 输出值的key列表。
     * @return { @link Scheduler.Starter}接口。
     */
-  def submit(outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
+  def submit(name: String, outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
     if (debugMode) log.w("[submit]")
     Assist.requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
@@ -162,7 +162,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     } // 避免空值
     // 必须先于下面transGlobal的读取。
     val trimmed = Dependency.trimOutsFlow(basisx, outputs, uselesx)
-    new Reflow.Impl(new Dependency.Basis {
+    new Reflow.Impl(name, new Dependency.Basis {
       override val traits = basisx.traits.to[immutable.Seq]
       override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
       override val transformers = basisx.transformers.mapValues(_.toSet).toMap
@@ -255,6 +255,24 @@ object Dependency {
           if (first$last) trat.asPar.first() else trat.asPar.last()
         } else trat
       })
+
+    def minPeriod(ts: Seq[Trait[_ <: Task]] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+      import l.mkOrderingOps
+      l min (if (r.isPar) minPeriod(r.asPar.traits()) else r.period$)
+    }
+
+    def maxPeriod(ts: Seq[Trait[_ <: Task]] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+      import l.mkOrderingOps
+      l max (if (r.isPar) maxPeriod(r.asPar.traits()) else r.period$)
+    }
+
+    def lowestPriority(ts: Seq[Trait[_ <: Task]] = traits): Int = (P_HIGH /: ts) { (l, r) =>
+      l max (if (r.isPar) lowestPriority(r.asPar.traits()) else r.priority$)
+    }
+
+    def highestPriority(ts: Seq[Trait[_ <: Task]] = traits): Int = (P_LOW /: ts) { (l, r) =>
+      l min (if (r.isPar) highestPriority(r.asPar.traits()) else r.priority$)
+    }
   }
 
   class BasisMutable(basis: Basis) extends Basis {

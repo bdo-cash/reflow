@@ -40,7 +40,7 @@ import scala.util.control.Breaks._
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018.
   */
-private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env]) extends TAG.ClassName {
+private[reflow] abstract class Tracker(val reflow: Reflow, val outer: Option[Env]) extends TAG.ClassName {
   private lazy final val snatcher4Init = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在Reinforce阶段，会从外部传入。
@@ -91,7 +91,7 @@ private[reflow] abstract class Tracker(val basis: Basis, val outer: Option[Env])
       cache.inputs = getPrevOutFlow.ensuring(_.nonNull)
       if (debugMode) log.w("[requireReinforce]**********************************************************cache.inputs:%s.", cache.inputs)
     }
-    if (cache.begins.isEmpty || basis.topOf(cache.begins.head._1) == basis.topOf(trat) /*处于同一个并行组*/ ) {
+    if (cache.begins.isEmpty || reflow.basis.topOf(cache.begins.head._1) == reflow.basis.topOf(trat) /*处于同一个并行组*/ ) {
       cache.begins += ((trat.name$, ()))
       onRequireReinforce(trat, cache)
     }
@@ -139,17 +139,17 @@ private[reflow] class ReinforceCache {
 }
 
 private[reflow] object Tracker {
-  private[reflow] final class Impl(basis: Basis, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], state: Scheduler.State$,
-                                   feedback: Feedback, outer: Option[Env]) extends Tracker(basis: Basis, outer: Option[Env]) with Scheduler with TAG.ClassName {
+  private[reflow] final class Impl(reflow: Reflow, traitIn: Trait[_ <: Task], transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], state: Scheduler.State$,
+                                   feedback: Feedback, outer: Option[Env]) extends Tracker(reflow: Reflow, outer: Option[Env]) with Scheduler with TAG.ClassName {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val snatcher = new Snatcher.ActionQueue()(lock)
 
-    private val sum = basis.traits.length
+    private val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Float]
     private lazy val reporter = new Reporter(feedback, sum)
-    @volatile private var remaining = basis.traits
+    @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
     @volatile private var timeStart: Long = _
@@ -170,7 +170,7 @@ private[reflow] object Tracker {
         // 切换到reinforce的开始位置
         switch2ReinforceBegins(cache)
         prevOutFlow = cache.inputs
-        outFlowTrimmed = new Out(basis.outsFlowTrimmed(remaining.head.name$))
+        outFlowTrimmed = new Out(reflow.basis.outsFlowTrimmed(remaining.head.name$))
         outFlowTrimmed.fillWith(prevOutFlow, fullVerify = false)
         tryScheduleNext(remaining.head)
       } else {
@@ -219,7 +219,7 @@ private[reflow] object Tracker {
             } else if (isReinforceRequired /*必须放在`else`分支，即必须在`!isReinforcing`的前提下。*/ ) {
               if (isOnReinforceBegins(tratGlobal, cache))
                 if (tratGlobal.isPar) {
-                  val map = (new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: cache.begins.keySet) (_ ++= basis.dependencies(_))
+                  val map = (new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: cache.begins.keySet) (_ ++= reflow.basis.dependencies(_))
                   // val keys = outFlowTrimmed._keys.keySet &~ map.keySet
                   // val out = new Out(outFlowTrimmed._keys.filterKeys(keys.contains))
                   val out = new Out(outFlowTrimmed._keys.filterNot(map contains _._1))
@@ -232,7 +232,7 @@ private[reflow] object Tracker {
                 }
             }
           }
-          val transGlobal = if (veryBeginning) Option(transIn) else basis.transGlobal.get(tratGlobal.name$)
+          val transGlobal = if (veryBeginning) Option(transIn) else reflow.basis.transGlobal.get(tratGlobal.name$)
           val currIsLast = if (veryBeginning) remaining.isEmpty.ensuring(_ == false) else remaining.tail.isEmpty
           // 切换任务结果集
           outFlowNextStage(tratGlobal, if (currIsLast) null else if (veryBeginning) remaining.head else remaining.tail.head,
@@ -264,7 +264,7 @@ private[reflow] object Tracker {
           if (remaining.nonEmpty) {
             tryScheduleNext(remaining.head)
           } else if (!isSubReflow && isReinforceRequired && state.forward(REINFORCE_PENDING)) {
-            remaining = basis.traits
+            remaining = reflow.basis.traits
             start()
           }
         }
@@ -342,16 +342,16 @@ private[reflow] object Tracker {
       val transOut = transGlobal.fold {
         // 对于Input任务，如果没用trans，则其输出与basis.inputs完全一致；
         // 而对于其它任务，本来在转换之前的就是trimmed了的，没用trans，那就保留原样。
-        if (debugMode && isInput(trat)) assert(outFlowTrimmed._keys.values.toSet == basis.inputs)
+        if (debugMode && isInput(trat)) assert(outFlowTrimmed._keys.values.toSet == reflow.basis.inputs)
         outFlowTrimmed
       } { ts =>
         val tranSet = ts.mutable
         val map = outFlowTrimmed._map.mutable
         val nulls = outFlowTrimmed._nullValueKeys.mutable
         doTransform(tranSet, map, nulls)
-        val flow = new Out(if (isInput(trat)) basis.inputs else {
+        val flow = new Out(if (isInput(trat)) reflow.basis.inputs else {
           val reasoning = outFlowTrimmed._keys.values.toSet -- tranSet.map(_.in) ++ tranSet.map(_.out)
-          if (next.isNull) basis.outs.ensuring(_.forall(reasoning.contains))
+          if (next.isNull) reflow.basis.outs.ensuring(_.forall(reasoning.contains))
           else reasoning
         })
         flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
@@ -360,7 +360,7 @@ private[reflow] object Tracker {
       onTransGlobal(outFlowTrimmed, transOut)
       prevOutFlow = transOut
       if (next.nonNull) {
-        outFlowTrimmed = new Out(basis.outsFlowTrimmed(next.name$))
+        outFlowTrimmed = new Out(reflow.basis.outsFlowTrimmed(next.name$))
         outFlowTrimmed.fillWith(prevOutFlow, fullVerify = false)
       } else {
         // 全部执行完毕
@@ -422,7 +422,7 @@ private[reflow] object Tracker {
     }.get
 
     private def interruptSync(reinforce: Boolean) {
-      Monitor.duration(this, timeStart, System.currentTimeMillis, isSubReflow)
+      Monitor.duration(this, reflow.name, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)
       if (debugMode) log.i("[interruptSync]------------------------------------------------------------------------------reinforce:%s.", reinforce)
       normalDone = true
       if (reinforce) reinforceDone = true
@@ -458,7 +458,7 @@ private[reflow] object Tracker {
         snatcher.queueAction {
           if (state.forward(EXECUTING)) {
             // 但反馈有且只有一次（上面forward方法只会成功一次）
-            if (basis.stepOf(trat) == 0) reporter.reportOnStart()
+            if (reflow.basis.stepOf(trat) == 0) reporter.reportOnStart()
             else { // progress会在任务开始、进行中及结束时report，这里do nothing。
             }
           }
@@ -471,7 +471,7 @@ private[reflow] object Tracker {
       // 跟上面onTaskStart()保持一致，否则会出现顺序问题。
       snatcher.queueAction {
         // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
-        if (state.get == EXECUTING) reporter.reportOnProgress(name, basis.stepOf(trat), subProgress(trat, progress), out, desc)
+        if (state.get == EXECUTING) reporter.reportOnProgress(name, reflow.basis.stepOf(trat), subProgress(trat, progress), out, desc)
       }
     }
 
@@ -496,7 +496,7 @@ private[reflow] object Tracker {
 
     override private[reflow] def onTaskComplete(trat: Trait[_], out: Out, flow: Out): Unit = {
       joinOutFlow(flow)
-      Monitor.complete(if (isInput(trat)) -1 else basis.stepOf(trat), out, flow, outFlowTrimmed)
+      Monitor.complete(if (isInput(trat)) -1 else reflow.basis.stepOf(trat), out, flow, outFlowTrimmed)
     }
   }
 
@@ -571,8 +571,8 @@ private[reflow] object Tracker {
       if (debugMode) log.i("[transOutput]")
       if (env.tracker.isInput(trat)) env.out // 不在这里作转换的理由：无论如何，到tracker里去了之后还要进行一遍trim合并，那就在这里节省一遍吧。
       else {
-        val flow = new Out(env.tracker.basis.dependencies(trat.name$))
-        env.tracker.basis.transformers.get(trat.name$).fold {
+        val flow = new Out(env.tracker.reflow.basis.dependencies(trat.name$))
+        env.tracker.reflow.basis.transformers.get(trat.name$).fold {
           flow.putWith(env.out._map, env.out._nullValueKeys, ignoreDiffType = false, fullVerify = true)
           flow
         } { t =>
