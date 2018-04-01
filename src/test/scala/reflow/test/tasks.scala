@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package hobby.wei.c.reflow
+package reflow.test
 
+import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 
 /**

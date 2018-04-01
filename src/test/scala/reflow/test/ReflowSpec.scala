@@ -1,5 +1,6 @@
-package hobby.wei.c.reflow
+package reflow.test
 
+import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import org.scalatest._
 
@@ -24,7 +25,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   info("任务的`组装`使用`Dependency`对象。")
 
-  info("Reflow 作为一个整体，也可以看做一个`电路`单位或元器件，即：单一任务。因此可以进行嵌套组装。")
+  info("Reflow 还可以进行嵌套组装：作为一个整体，可以看做一个单一`任务`，可以再次被包装在`Trait`里。")
 
   info("-------------------- Features & 测试 --------------------")
 
@@ -84,7 +85,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       Then("为任务创建依赖`Dependency`")
       val dependency = Reflow.create(trat)
       Then("提交这个依赖，获得任务流对象`Reflow`")
-      val reflow = dependency.submit(kces.outputstr)
+      val reflow = dependency.submit("reflow test 1", kces.outputstr)
       When("启动运行任务流")
       val scheduler = reflow.start(In.empty(), implicitly)
       info("代码被异步执行")
@@ -104,7 +105,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   Feature("便捷的[同/异]步调用切换") {
     Scenario("异步执行任务") {
       Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
       Given("一个反馈接口")
       val feedback = new Feedback.Adapter {
         override def onComplete(out: Out): Unit = info(s"反馈接口输出`out`对象：onComplete->out:$out")
@@ -116,29 +117,29 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       assert(true)
     }
 
-    Scenario("异步将异步转换为同步") {
+    Scenario("将异步转换为同步") {
       info("通常情况下，等待反馈接口的回调及")
       Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+      val reflow = Reflow.create(trats.int2str0).submit("reflow test 3", kces.str)
       Then("启动它")
       reflow.start((kces.str, "12345") + trans.str2int, implicitly)
 
 
-      info("Reflow 是异步调用的，但也支持同步。但`不推荐`这样写，仅为了方便测试。")
+      info("Reflow 是异步调用的，但也支持同步。不过`不推荐`这样写，仅为了方便测试。")
       assert(true)
     }
 
-//    Scenario("异步将异步转换为同步") {
-//      info("通常情况下，等待反馈接口的回调及")
-//      Given("一个Reflow")
-//      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
-//      Then("启动它")
-//      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
-//
-//
-//      info("Reflow 是异步调用的，但也支持同步。但`不推荐`这样写，仅为了方便测试。")
-//      assert(true)
-//    }
+    //    Scenario("异步将异步转换为同步") {
+    //      info("通常情况下，等待反馈接口的回调及")
+    //      Given("一个Reflow")
+    //      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+    //      Then("启动它")
+    //      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
+    //
+    //
+    //      info("Reflow 是异步调用的，但也支持同步。但`不推荐`这样写，仅为了方便测试。")
+    //      assert(true)
+    //    }
 
     //    Scenario("简写") {
     //      val reflow1 = Reflow.create(reflow.torat, trans.str2int).and(trats.int2str0).submit(kces.outputstr)
