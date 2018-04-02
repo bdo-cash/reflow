@@ -6,10 +6,10 @@
 
 本框架完全采用 Scala 语言编写，参数都支持 **简写**，会自动 **按需** 转义（implicit 隐式转换）。可用于采用 jvm 的任何平台。
 
-本框架衍生了一个特别的 **抗阻塞**_线程同步_ 工具 [`Snatcher`](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala#L24)（详见代码文档）。
+本框架衍生了一个特别的 **抗阻塞**_线程同步_ 工具 [`Snatcher`](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala#L25)（详见代码文档）。
 
 * 特别说明：本框架没有采用 `java.util.concurrent.Future<V>` 工具来处理并行任务，因为它是基于 **线程阻塞** 模型实现的，不符合本框架的设计目标。
 
 #### 开始使用 Reflow
 
-**应用示例** 见特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala#L7)。
+**应用示例** 见特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
