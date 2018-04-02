@@ -8,14 +8,14 @@
 此外还有优化的 _[可配置](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Config.scala#L19)_ [线程池](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Worker.scala#L71)、基于 _[优先级](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L58)_ 和 _[预估时长](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L63)_ 的 **按需的** 任务装载机制、便捷的 **[同](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L34)/异（默认）步** 切换调度、巧妙的 _[中断](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L51)策略_ 、任务的 _无限_ **嵌套** 组装、**浏览/[强化](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L100)** 运行模式、 _无依赖输出_ **丢弃**、事件反馈可 **指定到线程** 和对异常事件的 _确定性分类_ 等设计，实现了线程的 **无** _阻塞_ 高效利用、全局 **精准** 的任务管理、内存的 _有效利用（垃圾丢弃）_ 、以及数据的 _快速加载（**浏览** 模式）_ 和进度的 _策略化反馈_ ，极大地满足了大型项目的需求。
 
 
-##### 1.1 相关
+##### _1.1 相关_
 
 本框架的主要功能类似 [Facebook Bolts](http://github.com/BoltsFramework/Bolts-Android) 和 [RxJava](https://github.com/ReactiveX/RxJava)，可以视为对它们 _任务组合能力_ 的细粒度扩展，但更加严谨、高规格和 **贴近实际项目需求**。
 
 本框架基于 **线程池**（`java.util.concurrent.ThreadPoolExecutor`）实现而非 **Fork/Join 框架（JDK 1.7）**（`java.util.concurrent.ForkJoinPool`），并对前者作了 [改进](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Worker.scala#L59) 以符合 **先增加线程数到 [最大](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Config.scala#L28)，再入队列，空闲释放线程** 这个基本逻辑；后者适用于计算密集型任务，但不适用于本框架的设计目标，也不适用于资源受限的设备（如：手机等）。
 
 
-##### 1.2 说明
+##### _1.2 说明_
 
 本框架完全采用 Scala 语言编写，参数都支持 **[简写](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala#L130)**，会自动 **按需** 转义（[implicit](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/implicits.scala#L40) 隐式转换）。可用于采用 jvm 的任何平台。
 
