@@ -4,11 +4,6 @@ import org.scalatest.{AsyncFeatureSpec, GivenWhenThen}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-/**
-  * @author Chenai Nakam(chenai.nakam@gmail.com)
-  * @version 1.0, 25/03/2018
-  */
-
 // Defining actor messages
 case object IsOn
 case object PressPowerButton

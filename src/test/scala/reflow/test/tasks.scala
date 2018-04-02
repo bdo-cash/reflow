@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-present, Chenai Nakam(chenai.nakam@gmail.com)
+ * Copyright (C) 2018-present, Wei Chou(weichou2010@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 
 /**
-  * @author Chenai Nakam(chenai.nakam@gmail.com)
+  * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 23/03/2018
   */
 object kces {

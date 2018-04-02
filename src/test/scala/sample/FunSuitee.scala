@@ -2,10 +2,6 @@ package sample
 
 import org.scalatest.{BeforeAndAfter, FunSuite}
 
-/**
-  * @author Wei.Chou
-  * @version 1.0, 21/10/2017
-  */
 class FunSuitee extends FunSuite with BeforeAndAfter {
   // http://doc.scalatest.org/1.8/org/scalatest/BeforeAndAfter.html
   before {
