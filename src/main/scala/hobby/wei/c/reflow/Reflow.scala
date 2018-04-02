@@ -29,33 +29,32 @@ import hobby.wei.c.tool.Locker
 import scala.collection.{mutable, _}
 
 /**
-  * 任务[串并联]组合调度框架。
-  * <p><b><i>
+  * 任务[串/并联]组合调度框架。
+  * <p>
   * 概述
-  * </i></b>
   * <p>
-  * 本框架为简化[多{@link Task 任务}之间的数据流转和事件处理]的编码复杂度而生，通过[要求{@link Trait
- * 显式定义}任务的{@link Trait#requires() I}/{@link Trait#outs() O}]、基于{@link Key$
- * [关键字]和[数据类型]}的[预先&运行时输出]检查(深层泛型解析)策略、一致的{@link Feedback
- * 事件反馈}及错误处理接口的设计，实现了预期目标。
+  * 本框架为`简化复杂业务逻辑中`<i>多任务之间的数据流转和事件处理</i>的`编码复杂度`而生。通过`要求显式定义`任务的I/O、
+  * 基于`关键字`和`值类型`分析的智能化`依赖管理`、一致的`运行调度`、`事件反馈`及`错误处理`接口等设计，实现了既定目标：`任务
+  * 串/并联组合调度`。 数据即`电流`， 任务即`元件`。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法
+  * 规范化，编码失误也极易被检测，这将大大增强程序的`易读性`、`健壮性`和`可扩展性`。
   * <p>
-  * 此外还有优化的{@link Config 可配置} {@link Worker 线程池}、基于{@link #P_NORMAL 优先级}和{@link Period
- * 预估时长}的[按需的]任务装载机制、便捷的[{@link Scheduler#sync() 同}/异(默认)步]调用接口、巧妙的{@link Scheduler#abort()
- * 中断}策略、[浏览/{@link Task#requireReinforce() 强化}]运行模式、无依赖输出丢弃等设计，可实现线程的无阻塞高效利用、
-  * 全局精准的任务管理、任务的自由串并联组合、内存的有效利用(丢弃)、以及数据的快速加载(浏览模式)，以满足实际项目需求。
-  * <p><b><i>
-  * 其它
-  * </i></b>
+  * 此外还有优化的`可配置`线程池、基于`优先级`和`预估时长`的`按需的`任务装载机制、便捷的`同/异（默认）步`切换调度、巧妙的`中断
+  * 策略`、任务的`无限`嵌套组装、`浏览/强化`运行模式、无依赖输出`丢弃`、事件反馈可`指定到线程`和对异常事件的`确定性分类`等设计，
+  * 实现了线程的`无`阻塞高效利用、全局`精准`的任务管理、内存的`有效利用（垃圾丢弃）`、以及数据的`快速加载（浏览模式）`和进度的`策略化
+  * 反馈`，极大地满足了大型项目的需求。
+  * <p><i>
+  * 相关
+  * </i>
   * <p>
   * 本框架的主要功能类似<a href="http://github.com/BoltsFramework/Bolts-Android">Facebook
-  * Bolts</a>和<a href="https://github.com/ReactiveX/RxJava">RxJava</a>的部分功能，
-  * 可以视为对它们[任务组合能力的]细粒度的扩展。
+  * Bolts</a>和<a href="https://github.com/ReactiveX/RxJava">RxJava</a>，可以视为对它们[任务组合能力]的细粒度扩展，
+  * 但更加严谨、高规格和`贴近实际项目需求`。
   * <p>
   * 本框架基于{@link java.util.concurrent.ThreadPoolExecutor
- * 线程池}实现而非{@link java.util.concurrent.ForkJoinPool
- * Fork/Join框架(JDK 1.7)}，并对前者作了改进以符合[先增加线程数到{@link Config#maxPoolSize()
- * 最大}，再入队列，空闲释放线程]这个基本逻辑；
-  * 后者适用于计算密集型任务，但不适用于本框架的调度策略，也不适用于资源受限的设备(如：手机等)。
+  * 线程池}实现而非{@link java.util.concurrent.ForkJoinPool
+  * Fork/Join框架（JDK 1.7）}，并对前者作了改进以符合[先增加线程数到{@link Config#maxPoolSize
+  * 最大}，再入队列，空闲释放线程]这个基本逻辑；
+  * 后者适用于计算密集型任务，但不适用于本框架的设计目标，也不适用于资源受限的设备(如：手机等)。
   *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 12/04/2015
@@ -225,6 +224,7 @@ object Reflow {
       requireRealInEnough(reqSet, realIn)
       if (debugMode) logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
       val traitIn = new Trait.Input(this, inputs, reqSet)
+      // TODO: 需要增加全局记录功能。
       new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster), outer).start$()
     }
 

@@ -30,6 +30,7 @@ trait Feedback {
   def onStart(): Unit
 
   /**
+    * 进度反馈。
     *
     * @param name 正在执行(中途会更新进度)或完成的任务名称。来源于`Trait#name()`。
     * @param out  进度的时刻已经获得的输出。

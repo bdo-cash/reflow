@@ -31,7 +31,7 @@ trait Scheduler {
   /**
     * @see #sync(boolean, long)
     */
-  @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。")
+  @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
   def sync(): Out
 
   /**
