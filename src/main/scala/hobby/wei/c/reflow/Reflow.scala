@@ -21,12 +21,15 @@ import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
+import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.Period
+import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
 import scala.collection.{mutable, _}
+import scala.collection.concurrent.TrieMap
 
 /**
   * 任务[串/并联]组合调度框架。
@@ -168,7 +171,7 @@ object Reflow {
     * @param trans 转换器列表。
     * @return 新的任务流。
     */
-  def create(trat: Trait[_ <: Task], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = builder.next(trat)
+  def create(trat: Trait, trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = builder.next(trat)
 
   /**
     * 复制参数到新的任务流。
@@ -210,11 +213,63 @@ object Reflow {
   private def builder = new Dependency()
 
   //////////////////////////////////////////////////////////////////////////////////////
+  //********************************** Global Track **********************************//
+
+  object GlobalTrack {
+    private[reflow] lazy val globalTrackMap = new TrieMap[Feedback, GlobalTrack]
+    private lazy val obtainer = getAllItems _
+
+    def getAllItems = globalTrackMap.values
+
+    @volatile
+    private var obs: Seq[GlobalTrackObserver] = Nil
+
+    // 由于有此需求的比较少，最终存`Seq`可提高反馈的效率。
+    def registerGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull)).toSeq
+
+    def unregisterGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull)).toSeq
+
+    trait GlobalTrackObserver {
+      def onUpdate(current: GlobalTrack, items: obtainer.type): Unit
+    }
+
+    private[reflow] class Feedback4GlobalTrack extends Feedback {
+      private[reflow] def reportOnUpdate(gt: GlobalTrack = globalTrack): Unit = obs.foreach { o => eatExceptions(o.onUpdate(gt, obtainer)) }
+
+      private lazy val globalTrack = globalTrackMap(this)
+
+      override def onStart(): Unit = reportOnUpdate()
+
+      override def onProgress(progress: Feedback.Progress, out: Out): Unit = reportOnUpdate(globalTrack.progress(progress))
+
+      override def onComplete(out: Out): Unit = {
+        reportOnUpdate()
+        if (globalTrack.scheduler.isDone) globalTrackMap.remove(this)
+      }
+
+      override def onUpdate(out: Out): Unit = {
+        reportOnUpdate()
+        globalTrackMap.remove(this)
+      }
+
+      override def onAbort(trigger: Trait): Unit = {
+        reportOnUpdate()
+        globalTrackMap.remove(this)
+      }
+
+      override def onFailed(trat: Trait, e: Exception): Unit = {
+        reportOnUpdate()
+        globalTrackMap.remove(this)
+      }
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
   private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
     Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
-    override def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler = {
+    override private[reflow] def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler.Impl = {
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
       val tranSet = inputs.trans.mutable
@@ -224,8 +279,16 @@ object Reflow {
       requireRealInEnough(reqSet, realIn)
       if (debugMode) logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
       val traitIn = new Trait.Input(this, inputs, reqSet)
-      // TODO: 需要增加全局记录功能。
-      new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster), outer).start$()
+      // 全局记录跟踪
+      val feedback4track = new Feedback4GlobalTrack
+      val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster).join(feedback4track), outer)
+      // 异步反馈新增任务到全局跟踪器
+      Reflow.submit {
+        GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
+        scheduler.start$()
+        feedback4track.reportOnUpdate()
+      }(Period.TRANSIENT, P_HIGH)
+      scheduler
     }
 
     override def torat(_period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null) =
@@ -256,7 +319,7 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
     */
   final def start(inputs: In, feedback: Feedback)(implicit poster: Poster): Scheduler = start(inputs, feedback, poster, null)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler
+  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。

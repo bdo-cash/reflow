@@ -19,6 +19,7 @@ package hobby.wei.c.reflow
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.tool.Locker
 import hobby.wei.c.tool.Locker.CodeZ
@@ -47,7 +48,7 @@ abstract class Task protected() {
   /**
     * @return 与本任务相关的接口及调度参数信息对象。
     */
-  protected final def trat: Trait[_ <: Task] = env.trat
+  protected final def trat: Trait = env.trat
 
   /**
     * 取得输入的value。
@@ -92,10 +93,22 @@ abstract class Task protected() {
   /**
     * 发送一个进度。
     *
-    * @param progress 进度百分百，取值区间[0, 1]，必须是递增的。
+    * @param _progress 进度百分百，取值区间[0, 1]，必须是递增的。
     */
-  protected final def progress(progress: Float): Unit = env.tracker.onTaskProgress(
-    env.trat.name$, env.trat, progress.ensuring(p => p >= 0 && p <= 1), env.out, env.trat.desc$)
+  protected final def progress(_progress: Float): Unit = {
+    val s = String.valueOf(_progress)
+    val unit = math.pow(10, s.length - (s.indexOf('.') + 1)).toInt
+    progress((_progress * unit).round, unit)
+  }
+
+  /**
+    * 发送一个进度。
+    *
+    * @param step 进度的分子。必须是递增的。
+    * @param sum  进度的分母。必须大于`step`且不可变。
+    */
+  protected final def progress(step: Int, sum: Int): Unit = env.tracker.onTaskProgress(
+    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env.out)
 
   /**
     * 请求强化运行。
@@ -117,7 +130,7 @@ abstract class Task protected() {
   /**
     * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（即：被包装在一个`Trait`里面被再次组装运行）。
     */
-  protected final def isSubReflow: Boolean = env.isSubReflow
+  protected final def isSubReflow: Boolean = env.tracker.isSubReflow
 
   protected final def isAborted: Boolean = aborted
 
@@ -176,8 +189,11 @@ abstract class Task protected() {
       aborted = true
     }
     if (working) {
-      thread.interrupt()
-      onAbort()
+      try {
+        onAbort()
+      } finally {
+        thread.interrupt()
+      }
     }
   }
 

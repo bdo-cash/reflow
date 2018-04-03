@@ -17,7 +17,6 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
-import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
 
@@ -42,7 +41,6 @@ trait Scheduler {
     * @param milliseconds 延迟的deadline, 单位：毫秒。
     * @return 任务的最终结果，不会为`null`。
     * @throws InterruptedException 到达deadline了或者被中断。
-    * @deprecated 好用但应慎用。会block住当前线程，几乎是不需要的。
     */
   @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
   @throws[InterruptedException]
@@ -67,11 +65,11 @@ object Scheduler {
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  class Impl(reflow: Reflow, traitIn: Trait[_ <: Task], inputTrans: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
-             feedback: Feedback, outer: Env = null) extends Scheduler {
+  private[reflow] class Impl(reflow: Reflow, traitIn: Trait, inputTrans: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
+                             feedback: Feedback, outer: Env = null) extends Scheduler {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
     private lazy val state = new State$()
-    @volatile private var delegatorRef: ref.WeakReference[Scheduler] = _
+    @volatile private var delegatorRef: ref.WeakReference[Tracker.Impl] = _
 
     private[reflow] def start$(): Scheduler.Impl = {
       var permit = false
@@ -87,13 +85,13 @@ object Scheduler {
         val tracker = new Tracker.Impl(reflow, traitIn, inputTrans, state, feedback, Option(outer))
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
-        delegatorRef = new ref.WeakReference[Scheduler](tracker)
+        delegatorRef = new ref.WeakReference[Tracker.Impl](tracker)
         tracker.start()
         this
       } else null
     }
 
-    private def getDelegator: Option[Scheduler] = Assist.getRef(delegatorRef)
+    private[reflow] def getDelegator: Option[Tracker.Impl] = Assist.getRef(delegatorRef)
 
     override def sync(): Out = {
       try {
@@ -127,7 +125,7 @@ object Scheduler {
     override def isDone: Boolean = {
       val state = this.state.get
       state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) {
-        !_.as[Tracker].isReinforceRequired
+        !_.isReinforceRequired
       } || state == FAILED || state == ABORTED || state == UPDATED
     }
   }

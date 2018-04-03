@@ -30,11 +30,10 @@ import scala.collection.{mutable, _}
   * <p>
   * 注意: 实例不应保留状态。
   *
-  * @tparam T
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 12/04/2015
   */
-trait Trait[T <: Task] extends Equals {
+trait Trait extends Equals {
   /**
     * 任务名称。
     */
@@ -43,7 +42,7 @@ trait Trait[T <: Task] extends Equals {
   /**
     * 创建任务。
     */
-  /*protected*/ def newTask(): T
+  /*protected*/ def newTask(): Task
 
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。
@@ -95,24 +94,24 @@ trait Trait[T <: Task] extends Equals {
 object Trait {
   private final val sCount = new AtomicInteger(0)
 
-  private[reflow] final class Parallel private[reflow](trats: Seq[Trait[_ <: Task]]) extends Trait[Task] {
+  private[reflow] final class Parallel private[reflow](trats: Seq[Trait]) extends Trait {
     // 提交调度器之后具有不变性
-    private val _traits = new mutable.ListBuffer[Trait[_ <: Task]]
+    private val _traits = new mutable.ListBuffer[Trait]
 
     _traits ++= trats
 
-    private[reflow] def this(t: Trait[_ <: Task]) = this(Seq(t))
+    private[reflow] def this(t: Trait) = this(Seq(t))
 
     private[reflow] def traits() = _traits
 
-    private[reflow] def add(t: Trait[_ <: Task]): Unit = {
+    private[reflow] def add(t: Trait): Unit = {
       assertf(!t.isInstanceOf[Parallel])
       _traits += t
     }
 
-    private[reflow] def first(): Trait[_ <: Task] = _traits.head
+    private[reflow] def first(): Trait = _traits.head
 
-    private[reflow] def last(): Trait[_ <: Task] = _traits.last
+    private[reflow] def last(): Trait = _traits.last
 
     override protected def name() = {
       // 由于不允许同一个队列里面有相同的名字，所以取第一个的名字即可区分。
@@ -132,7 +131,7 @@ object Trait {
     override protected def desc() = ???
   }
 
-  trait Adapter extends Trait[Task] {
+  trait Adapter extends Trait {
     override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
 
     override protected def requires() = Helper.Kces.empty()
@@ -158,7 +157,7 @@ object Trait {
     override protected def period() = Period.TRANSIENT
   }
 
-  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback) extends Trait[SubReflowTask] {
+  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback) extends Trait {
     override final def newTask() = new SubReflowTask()
 
     override final def priority() = reflow.basis.first(child = true).get.priority$

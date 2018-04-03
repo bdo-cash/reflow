@@ -25,7 +25,7 @@ import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
   * @version 1.0, 31/01/2018
   */
 private[reflow] trait Env extends TAG.ClassName {
-  private[reflow] val trat: Trait[_ <: Task]
+  private[reflow] val trat: Trait
   private[reflow] val tracker: Tracker
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
@@ -57,17 +57,18 @@ private[reflow] trait Env extends TAG.ClassName {
     *
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
-  final def requireReinforce(t: Trait[_ <: Task] = trat): Boolean = tracker.requireReinforce(t)
+  final def requireReinforce(t: Trait = trat): Boolean = tracker.requireReinforce(t)
 
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
 
   final def isReinforcing: Boolean = tracker.isReinforcing
 
-  final def isSubReflow: Boolean = tracker.isSubReflow
+  // 本`Env`的存在就说明是subReflow。
+  // final def isSubReflow: Boolean = tracker.isSubReflow
 }
 
 private[reflow] object Env {
-  def apply(_trat: Trait[_ <: Task], _tracker: Tracker): Env = new Env {
+  def apply(_trat: Trait, _tracker: Tracker): Env = new Env {
     override private[reflow] val trat = _trat
     override private[reflow] val tracker = _tracker
   }

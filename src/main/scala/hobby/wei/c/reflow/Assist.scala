@@ -59,7 +59,7 @@ object Assist extends TAG.ClassName {
     col
   }
 
-  def requireTaskNameDiff(trat: Trait[_], names: mutable.Set[String]): Unit = if (debugMode) {
+  def requireTaskNameDiff(trat: Trait, names: mutable.Set[String]): Unit = if (debugMode) {
     val name = trat.name$
     if (names.contains(name)) Throws.sameName(name)
     names.add(name)
@@ -109,7 +109,7 @@ object Assist extends TAG.ClassName {
   private[reflow] object Throws {
     def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`$name`的Task已存在, 请确认或尝试重写其name()方法。")
 
-    def sameOutKeyParallel(key: Kce[_ <: AnyRef], trat: Trait[_]) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
+    def sameOutKeyParallel(key: Kce[_ <: AnyRef], trat: Trait) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
 
     def sameCacheKey(key: Kce[_ <: AnyRef]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
 

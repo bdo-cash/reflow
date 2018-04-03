@@ -192,7 +192,7 @@ object Worker extends TAG.ClassName {
     }
   }
 
-  class Runner(val trat: Trait[_ <: Task], runnable: Runnable) extends Runnable with Comparable[Runner] {
+  class Runner(val trat: Trait, runnable: Runnable) extends Runnable with Comparable[Runner] {
     override def compareTo(o: Runner) = Integer.compare(trat.priority$, o.trat.priority$)
 
     override def run(): Unit = runnable.run()

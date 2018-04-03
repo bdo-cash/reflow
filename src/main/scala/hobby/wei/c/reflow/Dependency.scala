@@ -49,7 +49,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param trans 转换器列表。
     * @return 当前依赖组装器。
     */
-  def and(trat: Trait[_ <: Task], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
+  def and(trat: Trait, trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
     Assist.requireTaskNameDiff(trat, names)
     if (basis.traits.isEmpty) {
@@ -57,7 +57,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     } else {
       (basis.last(false).get match {
         case tt: Trait.Parallel => tt.traits()
-        case last: Trait[_] =>
+        case last: Trait =>
           val parallel = new Trait.Parallel(last)
           // 注意：必须用 remove 和 +=，只有这俩是 ListBuffer 的方法，其他 Seq 方法会出现意想不到的状况。
           basis.traits.remove(basis.traits.length - 1)
@@ -75,7 +75,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @param trat 新增的任务具有的特性。
     * @return 当前依赖组装器。
     */
-  def next(trat: Trait[_ <: Task]): Dependency = {
+  def next(trat: Trait): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
     Assist.requireTaskNameDiff(trat, names)
     basis.last(false).foreach(Dependency.genIOPrev(_, null, basis, inputRequired, useless))
@@ -130,12 +130,12 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @return 当前依赖组装器。
     * @see Transformer
     */
-  private def trans$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], child: Trait[_] = basis.last(true).get): Dependency = {
+  private def trans$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], child: Trait = basis.last(true).get): Dependency = {
     if (tranSet.nonNull && tranSet.nonEmpty) basis.transformers.put(child.name$, Assist.requireTransInTpeSame$OutKDiff(Assist.requireElemNonNull(tranSet)))
     this
   }
 
-  private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], top: Trait[_] = basis.last(false).get): Dependency = {
+  private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], top: Trait = basis.last(false).get): Dependency = {
     if (tranSet.nonNull && tranSet.nonEmpty) basis.transGlobal.put(top.name$, Assist.requireTransInTpeSame$OutKDiff(Assist.requireElemNonNull(tranSet)).to[mutable.Set])
     this
   }
@@ -183,7 +183,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
 
 object Dependency {
   trait Basis {
-    val traits: Seq[Trait[_ <: Task]]
+    val traits: Seq[Trait]
     /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`top trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, Kce[_ <: AnyRef]]]
     /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`top trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
@@ -199,7 +199,7 @@ object Dependency {
 
     def steps() = traits.size
 
-    def stepOf(trat: Trait[_]): Int = {
+    def stepOf(trat: Trait): Int = {
       var step = traits.indexOf(trat)
       if (step < 0) breakable {
         for (tt <- traits)
@@ -211,8 +211,8 @@ object Dependency {
       step.ensuring(_ >= 0)
     }
 
-    def traitOf(name: String): Trait[_ <: Task] = {
-      var result: Trait[_ <: Task] = null
+    def traitOf(name: String): Trait = {
+      var result: Trait = null
       breakable {
         for (tt <- traits)
           if (tt.name$ == name) {
@@ -226,10 +226,10 @@ object Dependency {
       result.ensuring(_.nonNull)
     }
 
-    def topOf(name: String): Trait[_ <: Task] = topOf(traitOf(name))
+    def topOf(name: String): Trait = topOf(traitOf(name))
 
-    def topOf(trat: Trait[_ <: Task]): Trait[_ <: Task] = if (trat.isPar) trat else {
-      var result: Trait[_ <: Task] = null
+    def topOf(trat: Trait): Trait = if (trat.isPar) trat else {
+      var result: Trait = null
       breakable {
         for (tt <- traits)
           if (tt == trat) {
@@ -243,11 +243,11 @@ object Dependency {
       result.ensuring(_.nonNull)
     }
 
-    def first(child: Boolean): Option[Trait[_]] = first$last(first$last = true, child)
+    def first(child: Boolean): Option[Trait] = first$last(first$last = true, child)
 
-    def last(child: Boolean): Option[Trait[_]] = first$last(first$last = false, child)
+    def last(child: Boolean): Option[Trait] = first$last(first$last = false, child)
 
-    private def first$last(first$last: Boolean, child: Boolean): Option[Trait[_ <: Task]] = Option(
+    private def first$last(first$last: Boolean, child: Boolean): Option[Trait] = Option(
       if (traits.isEmpty) null
       else {
         val trat = traits.splitAt(if (first$last) 0 else traits.size - 1)._2.head
@@ -256,21 +256,21 @@ object Dependency {
         } else trat
       })
 
-    def minPeriod(ts: Seq[Trait[_ <: Task]] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+    def minPeriod(ts: Seq[Trait] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
       import l.mkOrderingOps
       l min (if (r.isPar) minPeriod(r.asPar.traits()) else r.period$)
     }
 
-    def maxPeriod(ts: Seq[Trait[_ <: Task]] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+    def maxPeriod(ts: Seq[Trait] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
       import l.mkOrderingOps
       l max (if (r.isPar) maxPeriod(r.asPar.traits()) else r.period$)
     }
 
-    def lowestPriority(ts: Seq[Trait[_ <: Task]] = traits): Int = (P_HIGH /: ts) { (l, r) =>
+    def lowestPriority(ts: Seq[Trait] = traits): Int = (P_HIGH /: ts) { (l, r) =>
       l max (if (r.isPar) lowestPriority(r.asPar.traits()) else r.priority$)
     }
 
-    def highestPriority(ts: Seq[Trait[_ <: Task]] = traits): Int = (P_LOW /: ts) { (l, r) =>
+    def highestPriority(ts: Seq[Trait] = traits): Int = (P_LOW /: ts) { (l, r) =>
       l min (if (r.isPar) highestPriority(r.asPar.traits()) else r.priority$)
     }
   }
@@ -280,7 +280,7 @@ object Dependency {
 
     if (basis.nonNull) copyFrom(basis)
 
-    override lazy val traits: mutable.ListBuffer[Trait[_ <: Task]] = new mutable.ListBuffer[Trait[_ <: Task]]
+    override lazy val traits: mutable.ListBuffer[Trait] = new mutable.ListBuffer[Trait]
     override lazy val dependencies: mutable.AnyRefMap[String, mutable.Map[String, Kce[_ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Map[String, Kce[_ <: AnyRef]]]
     override lazy val transformers: mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     override lazy val transGlobal: mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
@@ -306,7 +306,7 @@ object Dependency {
     def mutable = new scala.collection.mutable.HashSet[T] ++= set
   }
 
-  implicit class IsPar(trat: Trait[_]) {
+  implicit class IsPar(trat: Trait) {
     def isPar: Boolean = trat.isInstanceOf[Trait.Parallel]
 
     def asPar: Trait.Parallel = trat.as[Trait.Parallel]
@@ -320,7 +320,7 @@ object Dependency {
     * <p>
     * 注意：本方法会让并行的各任务先执行`transition(Set)`进行输出转换，以免在事件b中检查出相同的输出。
     */
-  private def genIOPrev(last: Trait[_], mapParallelOuts: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable,
+  private def genIOPrev(last: Trait, mapParallelOuts: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable,
                         inputRequired: mutable.Map[String, Kce[_ <: AnyRef]], mapUseless: mutable.Map[String, Map[String, Kce[_ <: AnyRef]]])
                        (implicit logTag: LogTag) {
     if (last.isPar) {
@@ -353,7 +353,7 @@ object Dependency {
   /**
     * 根据最终的输出需求，向前生成依赖。同`genIOPrev()`。
     */
-  private def genDeps(req: Set[Kce[_ <: AnyRef]], seq: Seq[Trait[_]], basis: BasisMutable, inputRequired: mutable.Map[String, Kce[_ <: AnyRef]],
+  private def genDeps(req: Set[Kce[_ <: AnyRef]], seq: Seq[Trait], basis: BasisMutable, inputRequired: mutable.Map[String, Kce[_ <: AnyRef]],
                       mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]])(implicit logTag: LogTag): mutable.Map[String, Kce[_ <: AnyRef]] = {
     val requires = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
     putAll(requires, req)
@@ -388,7 +388,7 @@ object Dependency {
   /**
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行`trim`。
     */
-  private def trimOutsFlow(trat: Trait[_], basis: BasisMutable, outsFlow: mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]],
+  private def trimOutsFlow(trat: Trait, basis: BasisMutable, outsFlow: mutable.AnyRefMap[String, Set[Kce[_ <: AnyRef]]],
                            trimmed: mutable.Map[String, Kce[_ <: AnyRef]], mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]])(implicit logTag: LogTag) {
     consumeRequiresOnTransGlobal(trat, trimmed, basis, mapUseless(trat.name$), check = false, trim = true)
     // 注意：放在这里，存储的是globalTrans`前`的结果。
@@ -421,7 +421,7 @@ object Dependency {
     * @param check 是否进行类型匹配检查（在最后`trim`的时候，不需要再检查一遍）。
     * @param trim  是否删除多余的全局转换（仅在`trim`阶段进行）。
     */
-  private def consumeRequiresOnTransGlobal(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable,
+  private def consumeRequiresOnTransGlobal(prev: Trait, requires: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable,
                                            prevOuts: Map[String, Kce[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false)(implicit logTag: LogTag) {
     val transSet = basis.transGlobal.getOrElse(prev.name$, mutable.Set.empty)
     if (transSet.nonEmpty) {
@@ -486,7 +486,7 @@ object Dependency {
     * <p>
     * 背景上下文：前面已经执行过消化的`trait`不可能因为后面的任务而取消或减少消化，只会不变或增多，因此本逻辑合理且运算量小。
     */
-  private def consumeRequires(prev: Trait[_], parent: Trait.Parallel, requires: mutable.Map[String, Kce[_ <: AnyRef]],
+  private def consumeRequires(prev: Trait, parent: Trait.Parallel, requires: mutable.Map[String, Kce[_ <: AnyRef]],
                               basis: BasisMutable, mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]]) {
     if (prev.isPar) {
       breakable {
@@ -507,7 +507,7 @@ object Dependency {
   /**
     * 注意：由于是从`useless`里面去拿，而`useless`都是已经转换过的，这符合`dependencies`的定义。
     */
-  private def consumeRequires(prev: Trait[_], requires: mutable.Map[String, Kce[_ <: AnyRef]],
+  private def consumeRequires(prev: Trait, requires: mutable.Map[String, Kce[_ <: AnyRef]],
                               outs: mutable.Map[String, Kce[_ <: AnyRef]], useless: Map[String, Kce[_ <: AnyRef]]) {
     if (prev.outs$.isEmpty) return // 根本就没有输出，就不浪费时间了。
     if (requires.isEmpty) return
@@ -533,7 +533,7 @@ object Dependency {
   private def requireTypeMatch4Consume(require: Kce[_ <: AnyRef], out: Kce[_ <: AnyRef]): Unit = if (debugMode &&
     !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
-  private def genOuts(trat: Trait[_], mapPal: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable)
+  private def genOuts(trat: Trait, mapPal: mutable.Map[String, Kce[_ <: AnyRef]], basis: BasisMutable)
                      (implicit logTag: LogTag): mutable.Map[String, Kce[_ <: AnyRef]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
     else {
