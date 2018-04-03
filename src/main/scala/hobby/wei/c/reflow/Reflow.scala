@@ -217,20 +217,28 @@ object Reflow {
 
   object GlobalTrack {
     private[reflow] lazy val globalTrackMap = new TrieMap[Feedback, GlobalTrack]
-    private lazy val obtainer = getAllItems _
+    private[reflow] lazy val obtainer = getAllItems _
 
     def getAllItems = globalTrackMap.values
 
     @volatile
     private var obs: Seq[GlobalTrackObserver] = Nil
 
-    // 由于有此需求的比较少，最终存`Seq`可提高反馈的效率。
+    // 由于有此需求的比较少，最终存储为`Seq`可提高框架的效率。
     def registerGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull)).toSeq
 
     def unregisterGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull)).toSeq
 
     trait GlobalTrackObserver {
-      def onUpdate(current: GlobalTrack, items: obtainer.type): Unit
+      type All = obtainer.type
+
+      /**
+        * 当任何任务流有更新时，会回调本方法。
+        *
+        * @param current 当前变化的`全局跟踪器`。
+        * @param items   用于获得当前全部的跟踪器。用法示例：{{{items().foreach(println(_))}}}。
+        */
+      def onUpdate(current: GlobalTrack, items: All): Unit
     }
 
     private[reflow] class Feedback4GlobalTrack extends Feedback {
@@ -325,4 +333,6 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
   def torat(period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null): ReflowTrait
+
+  override def toString = s"[Reflow]name:$name, desc:$desc."
 }

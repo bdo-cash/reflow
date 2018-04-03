@@ -19,7 +19,7 @@ package hobby.wei.c.reflow
 import hobby.wei.c.reflow.Feedback.Progress
 
 /**
-  * 跟踪当前正在运行的任务。以便构建全局`任务管理器`。
+  * 全局跟踪器。跟踪当前正在运行的任务流。可用于构建全局`任务管理器`。
   *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 03/04/2018
@@ -44,4 +44,6 @@ class GlobalTrack(val reflow: Reflow, val scheduler: Scheduler, val isSubReflow:
   }
 
   override def canEqual(that: Any) = that.isInstanceOf[GlobalTrack]
+
+  override def toString = s"[GlobalTrack]reflow:$reflow, scheduler:$scheduler, isSubReflow:$isSubReflow, progress:$progress."
 }
