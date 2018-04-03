@@ -18,6 +18,7 @@ package reflow.test
 
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
+import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
 
 /**
@@ -28,6 +29,14 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(false)
     // Reflow.setConfig(SINGLE_THREAD) // 线程数设为1，便是单线程模式。
+
+    Reflow.GlobalTrack.registerGlobalTrack(new GlobalTrackObserver {
+      override def onUpdate(current: GlobalTrack, items: All): Unit = {
+        println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
+        items().foreach(println(_))
+        println("----------]]]")
+      }
+    })
   }
 
   info("------------------------- 简介 -------------------------")
@@ -139,6 +148,8 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val reflow = Reflow.create(trats.int2str0).submit("reflow test 3", kces.str)
       Then("启动它")
       reflow.start((kces.str, "12345") + trans.str2int, implicitly)
+
+      // TODO: 从这里继续
 
 
       info("Reflow 是异步调用的，但也支持同步。不过`不推荐`这样写，仅为了方便测试。")
