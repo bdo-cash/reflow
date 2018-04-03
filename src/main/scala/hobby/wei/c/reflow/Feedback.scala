@@ -28,7 +28,12 @@ import scala.collection._
   */
 trait Feedback extends Equals {
   /**
-    * 开始执行。
+    * 任务已提交到线程池，等待被执行。
+    */
+  def onPending(): Unit
+
+  /**
+    * 第一个任务开始执行。
     */
   def onStart(): Unit
 
@@ -113,11 +118,11 @@ object Feedback {
       require(feedback.nonNull)
       require(poster.nonNull)
 
+      override def onPending(): Unit = poster.post(feedback.onPending())
+
       override def onStart(): Unit = poster.post(feedback.onStart())
 
-      override def onProgress(progress: Progress, out: Out): Unit = poster.post(
-        feedback.onProgress(progress, out)
-      )
+      override def onProgress(progress: Progress, out: Out): Unit = poster.post(feedback.onProgress(progress, out))
 
       override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
 
@@ -130,6 +135,8 @@ object Feedback {
   }
 
   class Adapter extends Feedback {
+    override def onPending(): Unit = {}
+
     override def onStart(): Unit = {}
 
     override def onProgress(progress: Progress, out: Out): Unit = {}
@@ -153,6 +160,8 @@ object Feedback {
 
     def removeObservers(fbs: Feedback*): Unit = obs = (obs.to[mutable.LinkedHashSet] --= fbs.map(_.ensuring(_.nonNull))).toSeq
 
+    override def onPending(): Unit = obs.foreach { fb => eatExceptions(fb.onPending()) }
+
     override def onStart(): Unit = obs.foreach { fb => eatExceptions(fb.onStart()) }
 
     override def onProgress(progress: Progress, out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out)) }
@@ -168,6 +177,8 @@ object Feedback {
 
   implicit object Log extends Feedback with TAG.ClassName {
     import Reflow.{logger => log}
+
+    override def onPending(): Unit = log.i("[onPending]")
 
     override def onStart(): Unit = log.i("[onStart]")
 

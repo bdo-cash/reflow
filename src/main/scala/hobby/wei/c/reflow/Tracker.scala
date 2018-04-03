@@ -177,6 +177,7 @@ private[reflow] object Tracker {
       } else {
         timeStart = System.currentTimeMillis
         assert(state.get == PENDING)
+        snatcher.queueAction(reporter.reportOnPending())
         // prevOutFlow = new Out() // 不用赋值
         outFlowTrimmed = new Out(traitIn.outs$)
         tryScheduleNext(traitIn)
@@ -672,6 +673,8 @@ private[reflow] object Tracker {
   }
 
   private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: => Unit) extends Feedback with TAG.ClassName {
+    override def onPending(): Unit = {}
+
     override def onStart(): Unit = {
       if (debugMode) log.i("[onStart]maybe call repeat, but no side effect:")
       runner.onStart()
@@ -709,6 +712,8 @@ private[reflow] object Tracker {
     * 注意：事件到达本类，已经是单线程操作了。
     */
   private class Reporter(reflow: Reflow, feedback: Feedback)(implicit logTag: LogTag) {
+    private[Tracker] def reportOnPending(): Unit = eatExceptions(feedback.onPending())
+
     private[Tracker] def reportOnStart(): Unit = eatExceptions(feedback.onStart())
 
     private[Tracker] def reportOnProgress(progress: Progress, out: Out): Unit = eatExceptions(feedback.onProgress(progress, out))

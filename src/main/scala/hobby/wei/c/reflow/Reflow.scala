@@ -242,9 +242,11 @@ object Reflow {
     }
 
     private[reflow] class Feedback4GlobalTrack extends Feedback {
-      private[reflow] def reportOnUpdate(gt: GlobalTrack = globalTrack): Unit = obs.foreach { o => eatExceptions(o.onUpdate(gt, obtainer)) }
-
       private lazy val globalTrack = globalTrackMap(this)
+
+      private def reportOnUpdate(gt: GlobalTrack = globalTrack): Unit = obs.foreach { o => eatExceptions(o.onUpdate(gt, obtainer)) }
+
+      override def onPending(): Unit = reportOnUpdate()
 
       override def onStart(): Unit = reportOnUpdate()
 
@@ -294,7 +296,6 @@ object Reflow {
       Reflow.submit {
         GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
         scheduler.start$()
-        feedback4track.reportOnUpdate()
       }(Period.TRANSIENT, P_HIGH)
       scheduler
     }
