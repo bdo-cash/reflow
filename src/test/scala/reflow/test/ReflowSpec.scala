@@ -27,10 +27,10 @@ import org.scalatest._
   */
 class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
-    Reflow.setDebugMode(false)
+    // Reflow.setDebugMode(false)
     // Reflow.setConfig(SINGLE_THREAD) // 线程数设为1，便是单线程模式。
 
-    Reflow.GlobalTrack.registerGlobalTrack(new GlobalTrackObserver {
+    Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
         println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
         items().foreach(println(_))
@@ -124,8 +124,16 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   info("【进阶】高级用法")
   info("在一个大型系统中，往往有大量业务逻辑，这些业务包含着数以百计的事件需要处理，那么可以把这些事件构造为任务。")
-  info("这些任务之间有的有依赖关系，有的没有，xxx")
+  info("这些任务之间有的有依赖关系，有的没有，在错综复杂。，有的依赖关系非常复杂。")
   info("对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
+
+  Feature("") {
+    Scenario("") {
+      Given("")
+
+      assert(true)
+    }
+  }
 
   Feature("便捷的[同/异]步调用切换") {
     Scenario("异步执行任务") {
