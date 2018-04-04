@@ -225,9 +225,9 @@ object Reflow {
     private var obs: Seq[GlobalTrackObserver] = Nil
 
     // 由于有此需求的比较少，最终存储为`Seq`可提高框架的效率。
-    def registerGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull)).toSeq
+    def registerObserver(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull)).toSeq
 
-    def unregisterGlobalTrack(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull)).toSeq
+    def unregisterObserver(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull)).toSeq
 
     trait GlobalTrackObserver {
       type All = obtainer.type
