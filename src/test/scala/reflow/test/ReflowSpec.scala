@@ -112,7 +112,8 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       info("`特征`的作用是向客户代码展示该任务的输入、输出、优先级和大概耗时等信息")
       Then("为任务创建依赖`Dependency`")
       val dependency = Reflow.create(trat).next(new Trait.Adapter {
-      override protected def period() = SHORT
+        override protected def period() = SHORT
+
         override def newTask() = new Task {
           override protected def doWork(): Unit = {
             // do sth ...
@@ -125,6 +126,18 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val scheduler = reflow.start(In.empty(), implicitly)
       info("代码被异步执行")
       Then("等待执行结果")
+      info("输出：" + scheduler.sync())
+      val as = assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
+      info("输出符合预期，Done。")
+      as
+    }
+
+    Scenario("Trait 定义也可以简写") {
+      val trat = Trait(SHORT, new Kce[String]("outputstr") {}) { ctx =>
+        ctx.output(kces.outputstr.key, outputStr)
+      }
+      val scheduler = Reflow.create(trat).next(Trait(SHORT) { _ => }).submit("简写", kces.outputstr)
+        .start(none, implicitly)
       info("输出：" + scheduler.sync())
       val as = assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
       info("输出符合预期，Done。")
