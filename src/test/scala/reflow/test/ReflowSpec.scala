@@ -93,22 +93,32 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     Scenario("【概览】框架标准用法") {
       Given("一个任务`Task`")
       val task = new Task {
-        override protected def doWork(): Unit = output(kces.outputstr.key, outputStr)
+        override protected def doWork(): Unit = {
+          output(kces.outputstr.key, outputStr)
+          output(kces.int.key, 66666)
+        }
       }
       info("任务的作用是获得`输入`并产生`输出`")
       Then("用特征`Trait`来包装这个任务")
       val trat = new Trait.Adapter {
         override protected def name() = "test4outputstr"
 
-        override protected def period() = TRANSIENT
+        override protected def period() = TRANSIENT // Period.TRANSIENT
 
-        override protected def outs() = kces.outputstr
+        override protected def outs() = kces.str + new Kce[String]("outputstr") {} + kces.int
 
         override def newTask() = task
       }
       info("`特征`的作用是向客户代码展示该任务的输入、输出、优先级和大概耗时等信息")
       Then("为任务创建依赖`Dependency`")
-      val dependency = Reflow.create(trat)
+      val dependency = Reflow.create(trat).next(new Trait.Adapter {
+      override protected def period() = SHORT
+        override def newTask() = new Task {
+          override protected def doWork(): Unit = {
+            // do sth ...
+          }
+        }
+      })
       Then("提交这个依赖，获得任务流对象`Reflow`")
       val reflow = dependency.submit("reflow test 1", kces.outputstr)
       When("启动运行任务流")
