@@ -43,12 +43,12 @@ abstract class Task protected() {
   /**
     * @return 与本任务相关的执行环境对象。
     */
-  protected final def getEnv = env
+  final def getEnv = env
 
   /**
     * @return 与本任务相关的接口及调度参数信息对象。
     */
-  protected final def trat: Trait = env.trat
+  final def trat: Trait = env.trat
 
   /**
     * 取得输入的value。
@@ -57,9 +57,9 @@ abstract class Task protected() {
     * @tparam T value的类型参数。
     * @return `Option[T]`.
     */
-  protected final def input[T >: Null](key: String): Option[T] = env.input.get(key)
+  final def input[T >: Null](key: String): Option[T] = env.input.get(key)
 
-  protected final def input[T >: Null <: AnyRef](kce: Kce[T]): Option[T] = input(kce.key)
+  final def input[T >: Null <: AnyRef](kce: Kce[T]): Option[T] = input(kce.key)
 
   /**
     * 输出结果。
@@ -68,11 +68,11 @@ abstract class Task protected() {
     * @param value
     * @tparam T
     */
-  protected final def output[T](key: String, value: T): Unit = env.out.put(key, value)
+  final def output[T](key: String, value: T): Unit = env.out.put(key, value)
 
-  protected final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = output(kce.key, value)
+  final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = output(kce.key, value)
 
-  protected final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
+  final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
 
   /**
     * 如果 {@link #isReinforceRequired()}为true, 则缓存一些参数用于再次执行时使用。
@@ -82,20 +82,20 @@ abstract class Task protected() {
     * @param key
     * @param value
     */
-  protected final def cache[T](key: String, value: T): Unit = {
+  final def cache[T](key: String, value: T): Unit = {
     require(env.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
     env.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
     env.cache(key, value)
   }
 
-  protected final def cache[T <: AnyRef](kce: Kce[T], value: T): Unit = cache(kce.key, value)
+  final def cache[T <: AnyRef](kce: Kce[T], value: T): Unit = cache(kce.key, value)
 
   /**
     * 发送一个进度。
     *
     * @param _progress 进度百分百，取值区间[0, 1]，必须是递增的。
     */
-  protected final def progress(_progress: Float): Unit = {
+  final def progress(_progress: Float): Unit = {
     val s = String.valueOf(_progress)
     val unit = math.pow(10, s.length - (s.indexOf('.') + 1)).toInt
     progress((_progress * unit).round, unit)
@@ -107,7 +107,7 @@ abstract class Task protected() {
     * @param step 进度的分子。必须是递增的。
     * @param sum  进度的分母。必须大于`step`且不可变。
     */
-  protected final def progress(step: Int, sum: Int): Unit = env.tracker.onTaskProgress(
+  final def progress(step: Int, sum: Int): Unit = env.tracker.onTaskProgress(
     trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env.out)
 
   /**
@@ -115,24 +115,24 @@ abstract class Task protected() {
     *
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
-  protected final def requireReinforce() = env.requireReinforce()
+  final def requireReinforce() = env.requireReinforce()
 
   /**
     * @return 当前是否已经请求过强化运行。
     */
-  protected final def isReinforceRequired: Boolean = env.isReinforceRequired
+  final def isReinforceRequired: Boolean = env.isReinforceRequired
 
   /**
     * @return 当前是否处于强化运行阶段。
     */
-  protected final def isReinforcing: Boolean = env.isReinforcing
+  final def isReinforcing: Boolean = env.isReinforcing
 
   /**
     * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（即：被包装在一个`Trait`里面被再次组装运行）。
     */
-  protected final def isSubReflow: Boolean = env.tracker.isSubReflow
+  final def isSubReflow: Boolean = env.tracker.isSubReflow
 
-  protected final def isAborted: Boolean = aborted
+  final def isAborted: Boolean = aborted
 
   /**
     * 如果认为任务失败, 则应该主动调用本方法来强制结束任务。
@@ -140,7 +140,7 @@ abstract class Task protected() {
     *
     * @param e 自定义异常，可以为`null`。
     */
-  protected final def failed(e: Exception = null) = {
+  final def failed(e: Exception = null) = {
     // 简单粗暴的抛出去, 由Runner统一处理。
     // 这里不抛出Exception的子类, 是为了防止被客户代码错误的给catch住。
     // 但是exec()方法catch了本Error并转换为正常的Assist.FailedException。
@@ -151,7 +151,7 @@ abstract class Task protected() {
     * 如果子类在{@link #doWork()}中检测到了中断请求(如: 在循环里判断{@link #isAborted()}),
     * 应该在处理好了当前事宜、准备好中断的时候调用本方法以中断整个任务。
     */
-  protected final def abortDone() = throw new AbortError()
+  final def abortDone() = throw new AbortError()
 
   @throws[CodeException]
   @throws[AbortException]
@@ -220,11 +220,11 @@ abstract class Task protected() {
     * @tparam T 返回值类型。
     * @return {Locker.CodeZ#exec()}的返回值。
     */
-  protected final def sync[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
+  final def sync[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
     override def exec() = codes
   }, scope)
 
-  protected final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): Option[T] = {
+  final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): Option[T] = {
     try {
       Locker.sync(codes, scope.ensuring(_.nonNull))
     } catch {
@@ -233,4 +233,8 @@ abstract class Task protected() {
         throw new AbortError(e)
     }
   }
+}
+
+object Task {
+  abstract class Context private[reflow]() extends Task
 }

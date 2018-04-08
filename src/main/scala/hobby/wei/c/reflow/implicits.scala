@@ -37,6 +37,10 @@ object implicits {
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
+  def none[A]: immutable.Set[Kce[_ <: AnyRef]] = Helper.Kces.empty()
+
+  def none: In = In.empty()
+
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val + = kce2Bdr _
   implicit lazy val - = trans2Bdr _

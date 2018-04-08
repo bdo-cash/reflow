@@ -21,6 +21,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Reflow.{Period, _}
 import hobby.wei.c.reflow.Tracker.SubReflowTask
+import hobby.wei.c.reflow.implicits.none
 
 import scala.collection.{mutable, _}
 
@@ -92,6 +93,30 @@ trait Trait extends Equals {
 }
 
 object Trait {
+  def apply(_period: Period.Tpe,
+            _outs: immutable.Set[Kce[_ <: AnyRef]] = none,
+            _requires: immutable.Set[Kce[_ <: AnyRef]] = none,
+            _name: String = Trait.getClass.getName + "#" + sCount.getAndIncrement(),
+            _desc: String = null,
+            _priority: Int = Reflow.P_NORMAL)(
+             _dosth: Task.Context => Unit): Trait = new Trait {
+    override protected def name() = _name
+
+    override protected def requires() = _requires
+
+    override protected def outs() = _outs
+
+    override protected def priority() = _priority
+
+    override protected def period() = _period
+
+    override protected def desc() = if (_desc.isNull) name$ else _desc
+
+    override def newTask() = new Task.Context {
+      override protected def doWork(): Unit = _dosth(this)
+    }
+  }
+
   private final val sCount = new AtomicInteger(0)
 
   private[reflow] final class Parallel private[reflow](trats: Seq[Trait]) extends Trait {
@@ -120,9 +145,9 @@ object Trait {
 
     override def newTask() = ???
 
-    override protected def requires() = Helper.Kces.empty()
+    override protected def requires() = none
 
-    override protected def outs() = Helper.Kces.empty()
+    override protected def outs() = none
 
     override protected def priority() = Reflow.P_NORMAL
 
@@ -134,9 +159,9 @@ object Trait {
   trait Adapter extends Trait {
     override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
 
-    override protected def requires() = Helper.Kces.empty()
+    override protected def requires() = none
 
-    override protected def outs() = Helper.Kces.empty()
+    override protected def outs() = none
 
     override protected def priority() = Reflow.P_NORMAL
 
