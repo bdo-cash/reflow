@@ -419,7 +419,11 @@ private[reflow] object Tracker {
             }
           }
           val state = getState
-          if (state == COMPLETED || state == UPDATED) outFlowTrimmed else null
+          if (reinforce) {
+            if (state == UPDATED) outFlowTrimmed else null
+          } else {
+            if (state == COMPLETED || state.group > COMPLETED.group) outFlowTrimmed else null
+          }
         }
       }, lockSync, interruptable = false)
     }.orNull
@@ -771,6 +775,11 @@ private[reflow] object Tracker {
         assert(_stateResetted && _step == sum - 1 && _sub == 0)
       }
       super.reportOnComplete(out)
+    }
+
+    override private[Tracker] def reportOnUpdate(out: Out): Unit = {
+      if (debugMode) log.i("[reportOnUpdate]reflow:%s, out:%s.", reflow.name.s, out)
+      super.reportOnUpdate(out)
     }
   }
 }
