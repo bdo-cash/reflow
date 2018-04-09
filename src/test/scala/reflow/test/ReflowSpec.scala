@@ -132,11 +132,11 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       as
     }
 
-    Scenario("Trait 定义也可以简写") {
-      val trat = Trait(SHORT, new Kce[String]("outputstr") {}) { ctx =>
+    Scenario("[Trait 定义]也可以简写") {
+      val trat = Trait("t0", SHORT, new Kce[String]("outputstr") {}) { ctx =>
         ctx.output(kces.outputstr.key, outputStr)
       }
-      val scheduler = Reflow.create(trat).next(Trait(SHORT) { _ => }).submit("简写", kces.outputstr)
+      val scheduler = Reflow.create(trat).next(Trait("t1", SHORT) { _ => }).submit("简写", kces.outputstr)
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
       val as = assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
@@ -146,70 +146,146 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   }
 
   info("【进阶】高级用法")
-  info("在一个大型系统中，往往有大量业务逻辑，这些业务包含着数以百计的事件需要处理，那么可以把这些事件构造为任务。")
-  info("这些任务之间有的有依赖关系，有的没有，在错综复杂。，有的依赖关系非常复杂。")
-  info("对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
+  info("在一个大型系统中，往往存在大量的业务逻辑，这些业务包含着数以百计的`工作`需要处理，那么可以把这些工作构造为任务。")
+  info("这些任务之间通常具有顺序性，即：`依赖`关系。从整体上看，往往错综复杂。")
+  info("但可以将两两之间的关系归纳为两类：有依赖和无依赖，即：`串行`和`并行`。本框架的设计便是围绕这两种关系而展开。")
+  info("在`Reflow`里，对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
 
-  Feature("") {
-    Scenario("") {
+  Feature("组装复杂业务逻辑") {
+    val token4JobA = new Kce[Integer]("token4JobA") {}
+    val token4JobB = new Kce[Integer]("token4JobB") {}
+    val key4JobADone = new Kce[Integer]("key4JobADone") {}
+    val key4JobBDone = new Kce[Integer]("key4JobBDone") {}
+    val outkeyA = new Kce[Integer]("outkeyA") {}
+    val outkeyB = new Kce[Integer]("outkeyB") {}
+
+    info("首先应该将复杂业务拆分为多个[功能单一]的没有[阻塞]等待的[单线程]结构的任务。")
+    Given("一个业务需求：")
+    info("Master 给 slave A 分派一件工作，并等待工作结果。")
+    Then("将该业务拆分为3个任务：")
+    info("任务1：master 发出指令；")
+    val trat4MasterBegin = Trait("MasterBegin", TRANSIENT, token4JobA + token4JobB) { ctx =>
+      ctx.output(token4JobA.key, 555)
+      ctx.output(token4JobB.key, 999)
+    }
+    info("任务2：slave 接受指令并执行；")
+    val trat4SlaveAsJob = Trait("SlaveAsJob", SHORT, key4JobADone, token4JobA) { ctx =>
+      // 1. 接受指令
+      val input = ctx.input(token4JobA).get
+      // 2. 执行指令
+      Thread.sleep(1000)
+      // 3. 输出
+      ctx.output(key4JobADone, input)
+    }
+    info("任务3：Master 发出指令；")
+    val trat4MasterEnd = Trait("MasterEnd", TRANSIENT, outkeyA, key4JobADone) { ctx =>
+      val jobADone = ctx.input(key4JobADone).get
+      assertResult(555)(jobADone)
+      ctx.output(outkeyA, jobADone)
+    }
+
+    Scenario("串行任务") {
+      Then("组装任务")
+      val reflow = Reflow.create(trat4MasterBegin).next(trat4SlaveAsJob).next(trat4MasterEnd)
+        .submit("master&slave", outkeyA)
+      Then("启动执行")
+      val scheduler = reflow.start(none, implicitly)
+      info("输出：" + scheduler.sync())
+      val as = assertResult(555)(scheduler.sync()(outkeyA))
+      info("输出符合预期，Done。")
+      as
+    }
+    Scenario("并行任务") {
+      Given("业务需求变更：")
+      info("Master 分别给 slave A 和 slave B 各分派一件工作，并等待工作结果。")
+      Then("新增任务")
+      info("任务2B：slave B 接受指令并执行；")
+      val trat4SlaveBsJob = Trait("SlaveBsJob", SHORT, key4JobBDone, token4JobB) { ctx =>
+        // 1. 接受指令
+        val input = ctx.input(token4JobB).get
+        // 2. 执行指令
+        // do something ...
+        // 3. 输出
+        ctx.output(key4JobBDone, input)
+      }
+      val trat4MasterEndx = Trait("MasterEnd", TRANSIENT, outkeyA + outkeyB, key4JobADone + key4JobBDone) { ctx =>
+        val jobADone = ctx.input(key4JobADone).get
+        val jobBDone = ctx.input(key4JobBDone).get
+        assertResult(555)(jobADone)
+        assertResult(999)(jobBDone)
+        ctx.output(outkeyA, jobADone)
+        ctx.output(outkeyB, jobBDone)
+      }
+      Then("组装任务")
+      val reflow = Reflow.create(trat4MasterBegin).next(trat4SlaveAsJob).and(trat4SlaveBsJob).next(trat4MasterEndx)
+        .submit("master&slave", outkeyA + outkeyB)
+      Then("启动执行")
+      val scheduler = reflow.start(none, implicitly)
+      info("输出：" + scheduler.sync())
+      assertResult(555)(scheduler.sync()(outkeyA))
+      val as = assertResult(999)(scheduler.sync()(outkeyB))
+      info("输出符合预期，Done。")
+      as
+    }
+    Scenario("混合及嵌套") {
       Given("")
 
       assert(true)
     }
   }
 
-  Feature("便捷的[同/异]步调用切换") {
-    Scenario("异步执行任务") {
-      Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
-      Given("一个反馈接口")
-      val feedback = new Feedback.Adapter {
-        override def onComplete(out: Out): Unit = info(s"反馈接口输出`out`对象：onComplete->out:$out")
-      }
-      Then("启动它")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback)
-      info("现在它就在异步执行了")
+  //  Feature("便捷的[同/异]步调用切换") {
+  //    Scenario("异步执行任务") {
+  //      Given("一个Reflow")
+  //      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
+  //      Given("一个反馈接口")
+  //      val feedback = new Feedback.Adapter {
+  //        override def onComplete(out: Out): Unit = info(s"反馈接口输出`out`对象：onComplete->out:$out")
+  //      }
+  //      Then("启动它")
+  //      reflow.start((kces.str, "66666") + trans.str2int, feedback)
+  //      info("现在它就在异步执行了")
+  //
+  //      assert(true)
+  //    }
+  //
+  //    Scenario("将异步转换为同步") {
+  //      info("通常情况下，等待反馈接口的回调及")
+  //      Given("一个Reflow")
+  //      val reflow = Reflow.create(trats.int2str0).submit("reflow test 3", kces.str)
+  //      Then("启动它")
+  //      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
+  //
+  //      // TODO: 从这里继续
+  //
+  //
+  //      info("Reflow 是异步调用的，但也支持同步。不过`不推荐`这样写，仅为了方便测试。")
+  //      assert(true)
+  //    }
 
-      assert(true)
-    }
+  //    Scenario("异步将异步转换为同步") {
+  //      info("通常情况下，等待反馈接口的回调及")
+  //      Given("一个Reflow")
+  //      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+  //      Then("启动它")
+  //      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
+  //
+  //
+  //      info("Reflow 是异步调用的，但也支持同步。但`不推荐`这样写，仅为了方便测试。")
+  //      assert(true)
+  //    }
 
-    Scenario("将异步转换为同步") {
-      info("通常情况下，等待反馈接口的回调及")
-      Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit("reflow test 3", kces.str)
-      Then("启动它")
-      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
-
-      // TODO: 从这里继续
-
-
-      info("Reflow 是异步调用的，但也支持同步。不过`不推荐`这样写，仅为了方便测试。")
-      assert(true)
-    }
-
-    //    Scenario("异步将异步转换为同步") {
-    //      info("通常情况下，等待反馈接口的回调及")
-    //      Given("一个Reflow")
-    //      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
-    //      Then("启动它")
-    //      reflow.start((kces.str, "12345") + trans.str2int, implicitly)
-    //
-    //
-    //      info("Reflow 是异步调用的，但也支持同步。但`不推荐`这样写，仅为了方便测试。")
-    //      assert(true)
-    //    }
-
-    //    Scenario("简写") {
-    //      val reflow1 = Reflow.create(reflow.torat, trans.str2int).and(trats.int2str0).submit(kces.outputstr)
-    //      val scheduler1 = Reflow.create(reflow1.torat(TRANSIENT, P_NORMAL, "", "外层")).and(trats.int2str1, trans.str2int).submit(kces.int + kces.outputstr)
-    //        .start((kces.str, "567") + trans.str2int, implicitly)
-    //      Then("代码被异步执行")
-    //      And("输出：" + scheduler1.sync(reinforce = true))
-    //      //      assertResult("567")(scheduler1.sync()(kces.str))
-    //      //      assertResult(outputStr)(scheduler1.sync()(kces.outputstr))
-    //      assert(true)
-    //    }
-  }
+  //    Scenario("简写") {
+  //      val reflow1 = Reflow.create(reflow.torat, trans.str2int).and(trats.int2str0).submit(kces.outputstr)
+  //      val scheduler1 = Reflow.create(reflow1.torat(TRANSIENT, P_NORMAL, "", "外层")).and(trats.int2str1, trans.str2int).submit(kces.int + kces.outputstr)
+  //        .start((kces.str, "567") + trans.str2int, implicitly)
+  //      Then("代码被异步执行")
+  //      And("输出：" + scheduler1.sync(reinforce = true))
+  //      //      assertResult("567")(scheduler1.sync()(kces.str))
+  //      //      assertResult(outputStr)(scheduler1.sync()(kces.outputstr))
+  //      assert(true)
+  //    }
+  //  }
 
   //  {
   //    //    def `execute runnable` {
