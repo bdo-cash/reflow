@@ -311,38 +311,6 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
   }
 
-  Feature("跨线程回调反馈") {
-    Scenario("使用`Poster`令`Feedback`在指定线程被调用") {
-      Given("一个`Reflow`")
-      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
-      Given("一个反馈接口")
-      @volatile var threadA: Thread = null
-      @volatile var threadB: Thread = null
-      val feedback = new Feedback.Adapter {
-        override def onPending(): Unit = super.onPending()
-
-        override def onProgress(progress: Feedback.Progress, out: Out): Unit = super.onProgress(progress, out)
-
-        override def onComplete(out: Out): Unit = {
-          // do something with `out`.
-          // threadB = Thread.currentThread
-        }
-      }
-      Given("一个`Poster`")
-      // threadA = 目标线程
-      val poster = new Poster {
-        override def post(run: Runnable): Unit = {
-          // 将`runnable`发送到指定线程的任务队列。适用于移动端，如：`Android`平台。
-        }
-      }
-      Then("在启动执行时传入`poster`参数")
-      info("这样，所有`feedback`的回调将在指定线程执行。")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback)(poster).sync()
-      Then("等待异步执行结束")
-      assertResult(threadA)(threadB)
-    }
-  }
-
   Feature("`Transformer`输出转换器") {
     Given("一个`Integer -> String`的转换器")
     val transformer = new Transformer[Integer, String](kces.int, kces.str) {
@@ -399,6 +367,63 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       info(s"强化运行后的最终输出。out:${scheduler.sync(/*reinforce = true*/)}")
       assertResult(12345)(scheduler.sync(reinforce = true)(kces.int))
     }
+  }
+
+  Feature("跨线程回调反馈") {
+    Scenario("使用`Poster`令`Feedback`在指定线程被调用") {
+      Given("一个`Reflow`")
+      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
+      Given("一个反馈接口")
+      @volatile var threadA: Thread = null
+      @volatile var threadB: Thread = null
+      val feedback = new Feedback.Adapter {
+        override def onPending(): Unit = super.onPending()
+
+        override def onProgress(progress: Feedback.Progress, out: Out): Unit = super.onProgress(progress, out)
+
+        override def onComplete(out: Out): Unit = {
+          // do something with `out`.
+          // threadB = Thread.currentThread
+        }
+      }
+      Given("一个`Poster`")
+      // threadA = 目标线程
+      val poster = new Poster {
+        override def post(run: Runnable): Unit = {
+          // 将`runnable`发送到指定线程的任务队列。适用于移动端，如：`Android`平台。
+        }
+      }
+      Then("在启动执行时传入`poster`参数")
+      info("这样，所有`feedback`的回调将在指定线程执行。")
+      reflow.start((kces.str, "66666") + trans.str2int, feedback)(poster).sync()
+      Then("等待异步执行结束")
+      assertResult(threadA)(threadB)
+    }
+  }
+
+  Feature("`Poster`策略") {
+    info("有三种策略（Policy）")
+    Scenario("1.丢弃拥挤的消息") {
+      // TODO:
+      assert(true)
+    }
+    Scenario("2.基于子进度的深度") {
+      // TODO:
+      assert(true)
+    }
+    Scenario("3.基于反馈时间间隔（构建于策略1之上）") {
+      // TODO:
+      assert(true)
+    }
+  }
+
+  Feature("全局任务管理器——状态跟踪") {
+    Reflow.GlobalTrack.getAllItems
+    Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
+      override def onUpdate(current: GlobalTrack, items: All): Unit = {
+        items().foreach(_.progress)
+      }
+    })
   }
 
   Feature("线程状态重置") {
