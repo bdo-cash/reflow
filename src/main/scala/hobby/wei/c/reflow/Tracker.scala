@@ -418,10 +418,11 @@ private[reflow] object Tracker {
               if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 1.")
             }
           }
-          outFlowTrimmed
+          val state = getState
+          if (state == COMPLETED || state == UPDATED) outFlowTrimmed else null
         }
       }, lockSync, interruptable = false)
-    }.get
+    }.orNull
 
     private def interruptSync(reinforce: Boolean) {
       Monitor.duration(this, reflow.name, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)

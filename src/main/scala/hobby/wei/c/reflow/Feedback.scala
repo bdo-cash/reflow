@@ -88,7 +88,7 @@ object Feedback {
     *
     * @param sum  当前进度的总步数。
     * @param step 当前进度走到了第几步。
-    * @param trat 当前`step`对应的`Trait`。可能为`None`，表示某`Task.progress(step, sum)`出来的进度。
+    * @param trat 当前`step`对应的 top level `Trait`。可能为`None`，表示某`Task.progress(step, sum)`出来的进度；也可能为并行（`_.isPar`）。
     * @param subs 子任务。可以是并行的，所以用了`Seq`。
     */
   case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, subs: Option[Seq[Progress]] = None) {

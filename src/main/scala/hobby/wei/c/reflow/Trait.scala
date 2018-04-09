@@ -93,12 +93,12 @@ trait Trait extends Equals {
 }
 
 object Trait {
-  def apply(_period: Period.Tpe,
+  def apply(_name: String,
+            _period: Period.Tpe,
             _outs: immutable.Set[Kce[_ <: AnyRef]] = none,
             _requires: immutable.Set[Kce[_ <: AnyRef]] = none,
-            _name: String = Trait.getClass.getName + "#" + sCount.getAndIncrement(),
-            _desc: String = null,
-            _priority: Int = Reflow.P_NORMAL)(
+            _priority: Int = Reflow.P_NORMAL,
+            _desc: String = null)(
              _dosth: Task.Context => Unit): Trait = new Trait {
     override protected def name() = _name
 
@@ -153,7 +153,7 @@ object Trait {
 
     override protected def period() = ???
 
-    override protected def desc() = ???
+    override protected def desc() = name$
   }
 
   trait Adapter extends Trait {
