@@ -63,6 +63,25 @@ object trats {
       }
     }
   }
+  lazy val str2int = new Trait.Adapter {
+    override protected def period() = TRANSIENT
+
+    override protected def requires() = str
+
+    override protected def outs() = int
+
+    override protected def name() = "str2int"
+
+    override def newTask() = new Task() {
+      override protected def doWork(): Unit = {
+        requireReinforce()
+        cache[Integer](int, 987654321)
+        if (isReinforcing) {
+          output(int, input(int).orNull)
+        } else output(int, Integer.valueOf(input(str).getOrElse("-1")))
+      }
+    }
+  }
 
   lazy val int2str1 = new Trait.Adapter {
     override protected def period() = TRANSIENT

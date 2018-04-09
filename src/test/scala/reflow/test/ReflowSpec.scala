@@ -71,9 +71,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       }(SHORT)
       Then("框架将自动`异步`执行这段代码")
       info("输出：" + future.get)
-      val as = assertResult(outputStr)(future.get)
-      info("输出符合预期，Done。")
-      as
+      assertResult(outputStr)(future.get)
     }
 
     Scenario("也可以这样写") {
@@ -87,9 +85,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val future = Reflow.submit(someCodes())(SHORT)
       Then("代码被异步执行")
       info("输出：" + future.get)
-      val as = assertResult(outputStr)(future.get)
-      info("输出符合预期，Done。")
-      as
+      assertResult(outputStr)(future.get)
     }
 
     Scenario("【概览】框架标准用法") {
@@ -129,9 +125,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       info("代码被异步执行")
       Then("等待执行结果")
       info("输出：" + scheduler.sync())
-      val as = assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
-      info("输出符合预期，Done。")
-      as
+      assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
     }
 
     Scenario("[Trait 定义]也可以简写") {
@@ -141,9 +135,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val scheduler = Reflow.create(trat).next(Trait("t1", SHORT) { _ => }).submit("简写", kces.outputstr)
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
-      val as = assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
-      info("输出符合预期，Done。")
-      as
+      assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
     }
   }
 
@@ -193,9 +185,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       Then("启动执行")
       val scheduler = reflow.start(none, implicitly)
       info("输出：" + scheduler.sync())
-      val as = assertResult(555)(scheduler.sync()(outkeyA))
-      info("输出符合预期，Done。")
-      as
+      assertResult(555)(scheduler.sync()(outkeyA))
     }
 
     Given("业务需求变更：")
@@ -226,9 +216,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val scheduler = reflow.start(none, implicitly)
       info("输出：" + scheduler.sync())
       assertResult(555)(scheduler.sync()(outkeyA))
-      val as = assertResult(999)(scheduler.sync()(outkeyB))
-      info("输出符合预期，Done。")
-      as
+      assertResult(999)(scheduler.sync()(outkeyB))
     }
     Scenario("混合及嵌套") {
       Given("一个已经提交的reflow对象")
@@ -243,9 +231,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val scheduler = reflow.start(none, implicitly)
       info("输出：" + scheduler.sync())
       assertResult(555)(scheduler.sync()(outkeyA))
-      val as = assertResult(999)(scheduler.sync()(outkeyB))
-      info("输出符合预期，Done。")
-      as
+      assertResult(999)(scheduler.sync()(outkeyB))
     }
   }
 
@@ -268,9 +254,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       Then("启动执行")
       reflow.start((kces.str, "66666") + trans.str2int, feedback)
       info("现在它就在异步执行了")
-      val as = future map { out => assertResult("66666")(out(kces.str)) }
-      info("输出符合预期，Done。")
-      as
+      future map { out => assertResult("66666")(out(kces.str)) }
     }
 
     Scenario("将异步转换为同步") {
@@ -290,18 +274,133 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       reflow.start((kces.str, "66666") + trans.str2int, feedback).sync()
       info(s"出现本行内容时已经同步执行完毕。syncOut:$syncOut。")
       val as = assertResult("66666")(syncOut(kces.str))
-      info("输出符合预期，Done。")
       info("不过`不推荐`这样写，仅为了方便测试。")
       info("如果真有此需求，请考虑使用本框架的`顺序依赖`结构进行重构。")
       as
     }
   }
 
-  override protected def afterAll(): Unit = Reflow.shutdown()
+  Feature("跨线程回调反馈") {
+    Scenario("使用`Poster`令`Feedback`在指定线程被调用") {
+      Given("一个`Reflow`")
+      val reflow = Reflow.create(trats.int2str0).submit("reflow test 2", kces.str)
+      Given("一个反馈接口")
+      @volatile var threadA: Thread = null
+      @volatile var threadB: Thread = null
+      val feedback = new Feedback.Adapter {
+        override def onPending(): Unit = super.onPending()
 
-  before {}
+        override def onProgress(progress: Feedback.Progress, out: Out): Unit = super.onProgress(progress, out)
+
+        override def onComplete(out: Out): Unit = {
+          // do something with `out`.
+          // threadB = Thread.currentThread
+        }
+      }
+      Given("一个`Poster`")
+      // threadA = 目标线程
+      val poster = new Poster {
+        override def post(run: Runnable): Unit = {
+          // 将`runnable`发送到指定线程的任务队列。适用于移动端，如：`Android`平台。
+        }
+      }
+      Then("在启动执行时传入`poster`参数")
+      info("这样，所有`feedback`的回调将在指定线程执行。")
+      reflow.start((kces.str, "66666") + trans.str2int, feedback)(poster).sync()
+      Then("等待异步执行结束")
+      assertResult(threadA)(threadB)
+    }
+  }
+
+  Feature("`Transformer`输出转换器") {
+    Given("一个`Integer -> String`的转换器")
+    val transformer = new Transformer[Integer, String](kces.int, kces.str) {
+      override def transform(in: Option[Integer]) = in.map(String.valueOf)
+    }
+    Scenario("局部转换") {
+      val scheduler = Reflow.create(
+        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
+          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
+        }, transformer)
+        .submit("reflow test", kces.str)
+        .start(kces.str -> "11111", implicitly)
+      assertResult("11111")(scheduler.sync()(kces.str))
+    }
+    Scenario("全局转换") {
+      val scheduler = Reflow.create(
+        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
+          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
+        }).next(transformer)
+        .submit("reflow test", kces.str)
+        .start(kces.str -> "11111", implicitly)
+      assertResult("11111")(scheduler.sync()(kces.str))
+    }
+  }
+
+  Feature("`Reinforce`强化运行模式") {
+    Scenario("申请运行强化模式") {
+      info("申请强化模式后，会分为两个阶段：`浏览`和`强化`。")
+      info("也会分别有两次反馈：`onComplete()`和`onUpdate()`，结果根据实际情况而不同。")
+      val feedback = new Feedback.Adapter {
+        override def onComplete(out: Out): Unit = {
+          // assertResult(11111)(out(kces.int))
+        }
+
+        override def onUpdate(out: Out): Unit = {
+          // assertResult(12345)(out(kces.int))
+        }
+      }
+      val scheduler = Reflow.create(
+        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
+          if (ctx.isReinforcing) {
+            // do something ...
+            Thread.sleep(1000)
+            ctx.output[Integer](kces.int, ctx.input(kces.int).orNull)
+          } else {
+            ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
+            // 申请强化运行
+            ctx.requireReinforce()
+            ctx.cache[Integer](kces.int, 12345)
+          }
+        })
+        .submit("reflow test 4 reinforce", kces.int)
+        .start(kces.str -> "11111", feedback)
+      info(s"强化运行后的最终输出。out:${scheduler.sync(/*reinforce = true*/)}")
+      assertResult(12345)(scheduler.sync(reinforce = true)(kces.int))
+    }
+  }
+
+  Feature("线程状态重置") {
+    Reflow.setThreadResetor(new ThreadResetor {
+      override def reset(thread: Thread): Unit = {
+        // 对于`Android`平台，线程的优先级是通过`Process`来调用的。
+      }
+    })
+  }
+
+  Feature("可配置的线程池") {
+    Reflow.setConfig(Config.DEF)
+  }
+
+  Feature("DebugMode") {
+    info("在需要调试依赖构建错误时，应将`DebugMode`打开；release时关闭。")
+    Reflow.setDebugMode(true)
+  }
+
+  Feature("可配置的`Logger`日志输出") {
+    // Reflow.setLogger() // 可适应`Android`平台的`Log`工具。
+  }
+
+  override protected def afterAll(): Unit = {
+    info("All test done!!!~")
+    Reflow.shutdown()
+  }
+
+  before {
+    info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+  }
 
   after {
-    info("All test done!!!~")
+    info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
   }
 }
