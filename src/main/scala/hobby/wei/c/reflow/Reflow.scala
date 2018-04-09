@@ -162,6 +162,7 @@ object Reflow {
 
   def debugMode = _debugMode
 
+  @deprecated(message = "仅用于结束应用：关闭之后不可以再重启。", since = "0.0.1")
   def shutdown(): Unit = Worker.sThreadPoolExecutor.shutdown()
 
   /**
