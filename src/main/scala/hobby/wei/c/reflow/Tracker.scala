@@ -165,7 +165,6 @@ private[reflow] object Tracker {
           state.forward(REINFORCE_PENDING)
         } else assert(state.get == REINFORCE_PENDING)
         val cache = getCache
-        // TODO: 这是一个没有申请reinforce的嵌套子任务，不应该走到这里。
         assert(cache.begins.nonEmpty)
         assert(cache.inputs.nonNull, s"${cache.inputs} 应该缓存有输入参数。")
         // 切换到reinforce的开始位置
