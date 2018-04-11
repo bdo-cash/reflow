@@ -134,6 +134,8 @@ object Snatcher {
     def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
       def hasMore = !queue.isEmpty
 
+      def updateTimePrev(): Unit = if (interval > 0) timePrev = System.currentTimeMillis
+
       queue offer Action(() => necessity, action, canAbandon)
       var checked = true
       snatcher.tryOn {
@@ -152,12 +154,12 @@ object Snatcher {
               } else if (hasMore) { // 可以抛弃
                 checked = true
               } else {
-                timePrev = System.currentTimeMillis
+                updateTimePrev()
                 elem.execA(p)
                 break
               }
             } else {
-              timePrev = System.currentTimeMillis
+              updateTimePrev()
               elem.execA(p)
               checked = false
             }
