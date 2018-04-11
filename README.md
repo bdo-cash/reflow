@@ -25,7 +25,7 @@
 
 
 #### 二、Reflow 运行原理
-![1](https://gitee.com/uploads/images/2017/1026/011707_d676dc97_104618.jpeg "1")
+![Reflow 运行原理示意图](https://github.com/WeiChou/Reflow/blob/master/Reflow%20%E8%BF%90%E8%A1%8C%E5%8E%9F%E7%90%86%E7%A4%BA%E6%84%8F%E5%9B%BE.png "Reflow 运行原理示意图")
 
 
 #### 三、开始使用 Reflow
@@ -55,6 +55,7 @@ import java.util.concurrent.{Callable, FutureTask}
 import hobby.chenai.nakam.lang.J2S.toScala
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
+import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
 
@@ -64,14 +65,14 @@ import org.scalatest._
   */
 class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
-    // Reflow.setDebugMode(false)
+    Reflow.setDebugMode(false)
     // Reflow.setConfig(SINGLE_THREAD) // 线程数设为1，便是单线程模式。
 
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
-        println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
-        items().foreach(println(_))
-        println("----------]]]")
+        // println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
+        // items().foreach(println(_))
+        // println("----------]]]")
       }
     })
   }
@@ -92,6 +93,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   info("-------------------- Features & 测试 --------------------")
 
   lazy val outputStr = "<<<这是输出>>>，Done。"
+  implicit lazy val policy: Policy = Policy.Fluent
   implicit lazy val poster: Poster = null
 
   info("【入门】基本功能")
@@ -346,11 +348,11 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       info("也会分别有两次反馈：`onComplete()`和`onUpdate()`，结果根据实际情况而不同。")
       val feedback = new Feedback.Adapter {
         override def onComplete(out: Out): Unit = {
-          // assertResult(11111)(out(kces.int))
+          assertResult(11111)(out(kces.int))
         }
 
         override def onUpdate(out: Out): Unit = {
-          // assertResult(12345)(out(kces.int))
+          assertResult(12345)(out(kces.int))
         }
       }
       val scheduler = Reflow.create(
@@ -383,7 +385,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val feedback = new Feedback.Adapter {
         override def onPending(): Unit = super.onPending()
 
-        override def onProgress(progress: Feedback.Progress, out: Out): Unit = super.onProgress(progress, out)
+        override def onProgress(progress: Feedback.Progress, out: Out, fromDepth: Int): Unit = super.onProgress(progress, out, fromDepth)
 
         override def onComplete(out: Out): Unit = {
           // do something with `out`.
@@ -392,31 +394,111 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       }
       Given("一个`Poster`")
       // threadA = 目标线程
-      val poster = new Poster {
+      implicit val poster = new Poster {
         override def post(run: Runnable): Unit = {
           // 将`runnable`发送到指定线程的任务队列。适用于移动端，如：`Android`平台。
         }
       }
       Then("在启动执行时传入`poster`参数")
       info("这样，所有`feedback`的回调将在指定线程执行。")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback)(poster).sync()
+      reflow.start((kces.str, "66666") + trans.str2int, feedback)(implicitly, poster).sync()
       Then("等待异步执行结束")
       assertResult(threadA)(threadB)
     }
   }
 
   Feature("`Poster`策略") {
-    info("有三种策略（Policy）")
-    Scenario("1.丢弃拥挤的消息") {
-      // TODO:
+    info("有四种策略（Policy）")
+    val trat4Progress = Trait("trat 4 progress", TRANSIENT) { ctx =>
+      ctx.progress(1, 10)
+      ctx.progress(2, 10)
+      ctx.progress(3, 10)
+      ctx.progress(4, 10)
+      ctx.progress(5, 10)
+      ctx.progress(6, 10)
+      ctx.progress(7, 10)
+      ctx.progress(8, 10)
+      ctx.progress(9, 10)
+    }
+    val interval = Policy.Interval(600)
+
+    val reflow0 = Reflow.create(trat4Progress).submit("reflow0", none)
+    val reflow1 = Reflow.create(trat4Progress).next(reflow0.torat(TRANSIENT, null)(interval)).submit("reflow1", none)
+    val reflow2 = Reflow.create(trat4Progress).next(reflow1.torat(TRANSIENT, null)(interval)).submit("reflow2", none)
+    val reflow3 = Reflow.create(trat4Progress).next(reflow2.torat(TRANSIENT, null)(interval)).submit("reflow3", none)
+    val reflow4 = Reflow.create(trat4Progress).next(reflow3.torat(TRANSIENT, null)(interval)).submit("reflow4", none)
+    val reflow5 = Reflow.create(trat4Progress).next(reflow4.torat(TRANSIENT, null)(interval)).submit("reflow5", none)
+    val reflow6 = Reflow.create(trat4Progress).next(reflow5.torat(TRANSIENT, null)(interval)).submit("reflow6", none)
+    val reflow7 = Reflow.create(trat4Progress).next(reflow6.torat(TRANSIENT, null)(interval)).submit("reflow7", none)
+    val reflow8 = Reflow.create(trat4Progress).next(reflow7.torat(TRANSIENT, null)(interval)).submit("reflow8", none)
+    val reflow9 = Reflow.create(trat4Progress).next(reflow8.torat(TRANSIENT, null)(interval)).submit("reflow9", none)
+    info("串行任务进度测试")
+    Scenario("1.全量（串行）") {
+      Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9.start(none, implicitly)(Policy.FullDose, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
       assert(true)
     }
-    Scenario("2.基于子进度的深度") {
-      // TODO:
+    Scenario("2.丢弃拥挤的消息（串行）") {
+      Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9.start(none, implicitly)(Policy.Fluent, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
       assert(true)
     }
-    Scenario("3.基于反馈时间间隔（构建于策略1之上）") {
-      // TODO:
+    Scenario("3.基于子进度的深度（串行）") {
+      Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9.start(none, implicitly)(Policy.Depth(2), poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("4.基于反馈时间间隔（串行）") {
+      Given("传入参数`interval`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9.start(none, implicitly)(interval, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+
+    val reflow0x = Reflow.create(trat4Progress).submit("reflow0x", none)
+    val reflow1x = Reflow.create(trat4Progress).and(reflow0x.torat(TRANSIENT, null)(interval)).submit("reflow1x", none)
+    val reflow2x = Reflow.create(trat4Progress).and(reflow1x.torat(TRANSIENT, null)(interval)).submit("reflow2x", none)
+    val reflow3x = Reflow.create(trat4Progress).and(reflow2x.torat(TRANSIENT, null)(interval)).submit("reflow3x", none)
+    val reflow4x = Reflow.create(trat4Progress).and(reflow3x.torat(TRANSIENT, null)(interval)).submit("reflow4x", none)
+    val reflow5x = Reflow.create(trat4Progress).and(reflow4x.torat(TRANSIENT, null)(interval)).submit("reflow5x", none)
+    val reflow6x = Reflow.create(trat4Progress).and(reflow5x.torat(TRANSIENT, null)(interval)).submit("reflow6x", none)
+    val reflow7x = Reflow.create(trat4Progress).and(reflow6x.torat(TRANSIENT, null)(interval)).submit("reflow7x", none)
+    val reflow8x = Reflow.create(trat4Progress).and(reflow7x.torat(TRANSIENT, null)(interval)).submit("reflow8x", none)
+    val reflow9x = Reflow.create(trat4Progress).and(reflow8x.torat(TRANSIENT, null)(interval)).submit("reflow9x", none)
+    info("并行任务进度测试")
+    Scenario("1.全量（并行）") {
+      Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9x.start(none, implicitly)(Policy.FullDose, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("2.丢弃拥挤的消息（并行）") {
+      Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9x.start(none, implicitly)(Policy.Fluent, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("3.基于子进度的深度（并行）") {
+      Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9x.start(none, implicitly)(Policy.Depth(2), poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("4.基于反馈时间间隔（并行）") {
+      Given("传入参数`interval`，启动多层嵌套的 Reflow：")
+      val scheduler = reflow9x.start(none, implicitly)(interval, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
       assert(true)
     }
   }
@@ -455,14 +537,5 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     info("All test done!!!~")
     Reflow.shutdown()
   }
-
-  before {
-    info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-  }
-
-  after {
-    info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-  }
 }
 ```
-
