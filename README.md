@@ -24,7 +24,11 @@
 * 特别说明：本框架没有采用 `java.util.concurrent.Future<V>` 工具来处理并行任务，因为它是基于 **线程阻塞** 模型实现的，不符合本框架的设计目标。
 
 
-#### 二、开始使用 Reflow
+#### 二、Reflow 运行原理
+![1](https://gitee.com/uploads/images/2017/1026/011707_d676dc97_104618.jpeg "1")
+
+
+#### 三、开始使用 Reflow
 
 **应用示例** 见 _下文_ 或 特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
 
