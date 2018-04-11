@@ -17,7 +17,7 @@
 package hobby.wei.c.reflow
 
 /**
-  * 用于将{Feedback}传送到目标线程(如UI线程)去运行的时光机。
+  * 用于将`Feedback`传送到目标线程（如：UI 线程）去运行的时光机。
   *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 23/07/2016
@@ -27,9 +27,5 @@ trait Poster {
     override def run(): Unit = f
   })
 
-  def post(run: Runnable): Unit
-
-  // TODO: 16/7/24 增加三种策略（Policy）：1. 丢弃拥挤的消息（默认。参见 EasyCache 项目）；2. 基于子进度的深度；3. 基于反馈时间间隔（这个构建于策略1之上）。
-  // 但应该仅针对于 feedback.onProgress(name, out, step, sum, subProgress, desc) 的 subProgress。
-  // 写在哪里，怎么写？
+  def post(runner: Runnable): Unit // 可这样作默认实现 = runner.run()
 }

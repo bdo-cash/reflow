@@ -16,10 +16,10 @@
 
 package hobby.wei.c.tool
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.ReentrantLock
+import hobby.chenai.nakam.basis.TAG
 
-import scala.collection.mutable.ListBuffer
 import scala.util.control.Breaks._
 
 /**
@@ -102,17 +102,68 @@ class Snatcher {
 }
 
 object Snatcher {
-  class ActionQueue()(implicit lock: ReentrantLock = Locker.getLockr(this)) {
+  /**
+    * 为避免多线程的阻塞，提高效率，可使用本组件将`action`队列化。
+    *
+    * @param fluentMode 流畅模式。启用后，在拥挤（队列不空）的情况下，设置了`flag`的`action`将会被丢弃而不执行（除非是最后一个）。默认`不启用`。
+    * @param interval   在`fluent`基础上，增加最低时间间隔。
+    */
+  class ActionQueue(val fluentMode: Boolean = false, val interval: Int = 0) extends TAG.ClassName {
     // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
-    private lazy val buffer = new ListBuffer[() => Unit]
+    private lazy val queue = new ConcurrentLinkedQueue[Action[_]]
     private lazy val snatcher = new Snatcher
+    @volatile private var timePrev = 0L
 
-    def queueAction(action: => Unit): Unit = {
-      Locker.syncr(buffer += (() => action))
+    private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean) {
+      type A = T
+
+      def execN(): A = necessity()
+
+      def execA(args: A): Unit = action(args)
+    }
+
+    def queueAction(action: => Unit): Unit = queueAction()((() => action) ()) { _ => }
+
+    /**
+      * 执行`action`或将其放进队列。
+      *
+      * @param canAbandon 是否可以被丢弃。默认为`false`。
+      * @param necessity  必须要做不可以`abandon`的。
+      * @param action     要执行的代码。
+      */
+    def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
+      def hasMore = !queue.isEmpty
+
+      queue offer Action(() => necessity, action, canAbandon)
+      var checked = true
       snatcher.tryOn {
-        while (Locker.syncr(buffer.nonEmpty).get) {
-          Locker.syncr(buffer.remove(0)).foreach(_ ())
+        breakable {
+          while (checked || hasMore) {
+            val elem = queue.remove()
+            val p: elem.A = elem.execN()
+            if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
+              if (interval > 0) {
+                val curr = System.currentTimeMillis
+                if (curr - timePrev >= interval) {
+                  timePrev = curr
+                  elem.execA(p)
+                }
+                checked = false
+              } else if (hasMore) { // 可以抛弃
+                checked = true
+              } else {
+                timePrev = System.currentTimeMillis
+                elem.execA(p)
+                break
+              }
+            } else {
+              timePrev = System.currentTimeMillis
+              elem.execA(p)
+              checked = false
+            }
+          }
         }
+        checked = false // `glance()`成功之后的再次运行必须要检测`hasMore`。
       }
     }
   }

@@ -22,6 +22,7 @@ import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Reflow.{Period, _}
 import hobby.wei.c.reflow.Tracker.SubReflowTask
 import hobby.wei.c.reflow.implicits.none
+import hobby.wei.c.reflow.Feedback.Progress.Policy
 
 import scala.collection.{mutable, _}
 
@@ -182,7 +183,7 @@ object Trait {
     override protected def period() = Period.TRANSIENT
   }
 
-  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback) extends Trait {
+  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback, val policy: Policy) extends Trait {
     override final def newTask() = new SubReflowTask()
 
     override final def priority() = reflow.basis.first(child = true).get.priority$

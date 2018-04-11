@@ -23,6 +23,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
+import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.Period
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
 import hobby.wei.c.reflow.Trait.ReflowTrait
@@ -226,9 +227,13 @@ object Reflow {
     private var obs: Seq[GlobalTrackObserver] = Nil
 
     // 由于有此需求的比较少，最终存储为`Seq`可提高框架的效率。
-    def registerObserver(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull)).toSeq
+    def registerObserver(observer: GlobalTrackObserver)(implicit poster: Poster): Unit = {
+      obs = (obs.to[mutable.LinkedHashSet] += observer.ensuring(_.nonNull).wizh(poster)).toSeq
+    }
 
-    def unregisterObserver(observer: GlobalTrackObserver): Unit = obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull)).toSeq
+    def unregisterObserver(observer: GlobalTrackObserver)(implicit poster: Poster): Unit = {
+      obs = (obs.to[mutable.LinkedHashSet] -= observer.ensuring(_.nonNull).wizh(poster)).toSeq
+    }
 
     trait GlobalTrackObserver {
       type All = obtainer.type
@@ -242,6 +247,17 @@ object Reflow {
       def onUpdate(current: GlobalTrack, items: All): Unit
     }
 
+    object GlobalTrackObserver {
+      implicit class WithPoster(observer: GlobalTrackObserver) {
+        def wizh(poster: Poster): GlobalTrackObserver = if (poster.isNull) observer else if (observer.isNull) observer else new GlobalTrackObserver {
+          require(observer.nonNull)
+          require(poster.nonNull)
+
+          override def onUpdate(current: GlobalTrack, items: All): Unit = poster.post(observer.onUpdate(current, items))
+        }
+      }
+    }
+
     private[reflow] class Feedback4GlobalTrack extends Feedback {
       private lazy val globalTrack = globalTrackMap(this)
 
@@ -251,7 +267,7 @@ object Reflow {
 
       override def onStart(): Unit = reportOnUpdate()
 
-      override def onProgress(progress: Feedback.Progress, out: Out): Unit = reportOnUpdate(globalTrack.progress(progress))
+      override def onProgress(progress: Feedback.Progress, out: Out, fromDepth: Int): Unit = reportOnUpdate(globalTrack.progress(progress))
 
       override def onComplete(out: Out): Unit = {
         reportOnUpdate()
@@ -280,7 +296,8 @@ object Reflow {
 
   private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
     Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
-    override private[reflow] def start(inputs: In, feedback: Feedback = new Feedback.Adapter, poster: Poster = null, outer: Env = null): Scheduler.Impl = {
+    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl = {
+      require(policy.nonNull)
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
       val tranSet = inputs.trans.mutable
@@ -292,17 +309,18 @@ object Reflow {
       val traitIn = new Trait.Input(this, inputs, reqSet)
       // 全局记录跟踪
       val feedback4track = new Feedback4GlobalTrack
-      val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster).join(feedback4track), outer)
+      val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet, feedback.wizh(poster).join(feedback4track), policy, outer)
+      // 放在异步启动的外面，以防止后面调用sync()出现问题。
+      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
       // 异步反馈新增任务到全局跟踪器
       Reflow.submit {
-        GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
         scheduler.start$()
       }(Period.TRANSIENT, P_HIGH)
       scheduler
     }
 
-    override def torat(_period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null) =
-      new ReflowTrait(this, feedback.wizh(poster)) {
+    override def torat(_period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit policy: Policy = Policy.Fluent, poster: Poster = null) =
+      new ReflowTrait(this, feedback.wizh(poster), policy.ensuring(_.nonNull)) {
         override protected def name() = reflow.name
 
         override protected def requires() = inputRequired.values.toSet
@@ -324,17 +342,18 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
     *
     * @param inputs   输入内容的加载器。
     * @param feedback 事件反馈回调接口。
-    * @param poster   转移<code>feedback</code>的调用线程, 可为null.
-    * @return true 启动成功, false 正在运行。
+    * @param policy   进度反馈的优化策略。
+    * @param poster   转移`feedback`的调用线程, 可为`null`。
+    * @return `true`启动成功，`false`正在运行。
     */
-  final def start(inputs: In, feedback: Feedback)(implicit poster: Poster): Scheduler = start(inputs, feedback, poster, null)
+  final def start(inputs: In, feedback: Feedback)(implicit policy: Policy, poster: Poster): Scheduler = start(inputs, feedback, policy, poster, null)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, poster: Poster, outer: Env = null): Scheduler.Impl
+  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
-  def torat(period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit poster: Poster = null): ReflowTrait
+  def torat(period: Period.Tpe = basis.maxPeriod(), feedback: Feedback = null)(implicit policy: Policy = Policy.Fluent, poster: Poster = null): ReflowTrait
 
   override def toString = s"[Reflow]name:$name, desc:$desc."
 }

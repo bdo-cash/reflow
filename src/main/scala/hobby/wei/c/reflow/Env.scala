@@ -52,6 +52,8 @@ private[reflow] trait Env extends TAG.ClassName {
 
   private[reflow] final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
 
+  final def subDepth: Int = tracker.subDepth
+
   /**
     * 请求强化运行。
     *

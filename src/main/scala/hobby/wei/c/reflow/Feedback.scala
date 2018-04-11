@@ -17,8 +17,10 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG
+import hobby.chenai.nakam.basis.TAG.ShortMsg
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Feedback.Progress.Policy.{Depth, Fluent, Interval}
 
 import scala.collection._
 
@@ -43,7 +45,7 @@ trait Feedback extends Equals {
     * @param progress 进度对象。
     * @param out      进度的时刻已经获得的输出。
     */
-  def onProgress(progress: Progress, out: Out): Unit
+  def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit
 
   /**
     * 任务流执行完成。
@@ -101,7 +103,66 @@ object Feedback {
 
     @inline def apply(): Float = progress
 
-    override def toString = s"sum:$sum, step:$step, p-main:$progress, p-sub:$subProgress${trat.fold("") { t => s", name:${t.name$}, desc:${t.desc$}" }}."
+    override def toString = s"sum:$sum, step:$step, p-main:$progress, p-sub:$subProgress${trat.fold("") { t => s", name:${t.name$.tag}" }}."
+  }
+
+  object Progress {
+    /** 进度反馈的优化策略。 */
+    trait Policy extends Ordering[Policy] {
+      val priority: Int
+
+      final def isFluentMode: Boolean = this <= Fluent
+
+      final def isMind(level: Int) = this match {
+        case Depth(l) if l <= level => false
+        case _ => true
+      }
+
+      final def interval: Int = this match {
+        case i: Interval => i.minGap
+        case _ => -1
+      }
+
+      final def revise(policy: Policy): Policy = if (policy equiv this) { // 如果相等，其中一个必然是`Depth`。
+        policy match {
+          case _: Depth => policy
+          case _ => this
+        }
+      } else policy max this
+
+      // 优先级越高，数值越小。
+      override def compare(x: Policy, y: Policy) = if (x.priority > y.priority) -1 else if (x.priority < y.priority) 1 else 0
+    }
+
+    object Policy {
+      /** 全量。不错过任何进度细节。 */
+      object FullDose extends Policy {
+        override val priority = 0
+      }
+
+      /** 流畅的。即：丢弃拥挤的消息。（注意：仅适用于`Poster`之类有队列的）。 */
+      object Fluent extends Policy {
+        override val priority = 1
+      }
+
+      /**
+        * 基于子进度的深度。
+        *
+        * @param level 子进度的深度水平。`0`表示放弃顶层进度；`1`表示放弃子层进度；`2`表示放弃次子层进度。以此类推。
+        */
+      case class Depth(level: Int) extends Policy {
+        override val priority = Fluent.priority - (level max 0)
+      }
+
+      /**
+        * 基于反馈时间间隔（构建于`Fluent`之上）。
+        *
+        * @param minGap 最小时间间隔，单位：毫秒。
+        */
+      case class Interval(minGap: Int) extends Policy {
+        override val priority = 2
+      }
+    }
   }
 
   implicit class Join(fb: Feedback = null) {
@@ -122,7 +183,7 @@ object Feedback {
 
       override def onStart(): Unit = poster.post(feedback.onStart())
 
-      override def onProgress(progress: Progress, out: Out): Unit = poster.post(feedback.onProgress(progress, out))
+      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(feedback.onProgress(progress, out, fromDepth))
 
       override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
 
@@ -139,7 +200,7 @@ object Feedback {
 
     override def onStart(): Unit = {}
 
-    override def onProgress(progress: Progress, out: Out): Unit = {}
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {}
 
     override def onComplete(out: Out): Unit = {}
 
@@ -164,7 +225,7 @@ object Feedback {
 
     override def onStart(): Unit = obs.foreach { fb => eatExceptions(fb.onStart()) }
 
-    override def onProgress(progress: Progress, out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out)) }
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, depth)) }
 
     override def onComplete(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
 
@@ -182,7 +243,7 @@ object Feedback {
 
     override def onStart(): Unit = log.i("[onStart]")
 
-    override def onProgress(progress: Progress, out: Out): Unit = log.i("[onProgress]progress:%s, out:%s.", progress, out)
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, out:%s.", depth, progress, out)
 
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
 
