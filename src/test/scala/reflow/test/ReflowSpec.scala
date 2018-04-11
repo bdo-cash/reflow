@@ -372,7 +372,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
   }
 
-  Feature("`Poster`策略") {
+  Feature("`Progress`进度反馈策略") {
     info("有四种策略（Policy）")
     val trat4Progress = Trait("trat 4 progress", TRANSIENT) { ctx =>
       ctx.progress(1, 10)
