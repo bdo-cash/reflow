@@ -22,7 +22,6 @@ import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Reflow.{Period, _}
 import hobby.wei.c.reflow.Tracker.SubReflowTask
 import hobby.wei.c.reflow.implicits.none
-import hobby.wei.c.reflow.Feedback.Progress.Policy
 
 import scala.collection.{mutable, _}
 
@@ -36,6 +35,8 @@ import scala.collection.{mutable, _}
   * @version 1.0, 12/04/2015
   */
 trait Trait extends Equals {
+  val is4Reflow: Boolean = false
+
   /**
     * 任务名称。
     */
@@ -71,17 +72,17 @@ trait Trait extends Equals {
     */
   protected def desc(): String
 
-  private[reflow] lazy val name$: String = requireNonEmpty(name())
+  lazy val name$: String = requireNonEmpty(name())
 
-  private[reflow] lazy val requires$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
+  lazy val requires$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
 
-  private[reflow] lazy val outs$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
+  lazy val outs$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
 
-  private[reflow] lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
+  lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
 
-  private[reflow] lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
+  lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
 
-  private[reflow] lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
+  lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
 
   override def equals(any: scala.Any) = super.equals(any)
 
@@ -183,7 +184,9 @@ object Trait {
     override protected def period() = Period.TRANSIENT
   }
 
-  private[reflow] abstract class ReflowTrait(val reflow: Reflow, val feedback: Feedback, val policy: Policy) extends Trait {
+  private[reflow] abstract class ReflowTrait(val reflow: Reflow) extends Trait {
+    override final val is4Reflow = true
+
     override final def newTask() = new SubReflowTask()
 
     override final def priority() = reflow.basis.first(child = true).get.priority$

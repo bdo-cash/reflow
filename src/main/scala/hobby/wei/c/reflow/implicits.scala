@@ -37,15 +37,17 @@ object implicits {
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
+  lazy val Policy = Feedback.Progress.Policy
+
   def none[A]: immutable.Set[Kce[_ <: AnyRef]] = Helper.Kces.empty()
 
   def none: In = In.empty()
 
   // def方法不能直接起作用，这里转换为函数值。
-  implicit lazy val + = kce2Bdr _
-  implicit lazy val - = trans2Bdr _
-  implicit lazy val * = kceKv2Bdr _
-  implicit lazy val / = strKv2Bdr _
+  implicit lazy val f0 = kce2Bdr _
+  implicit lazy val f1 = trans2Bdr _
+  implicit lazy val f2 = kceKv2Bdr _
+  implicit lazy val f3 = strKv2Bdr _
 
   implicit def kce2Bdr(kce: Kce[_ <: AnyRef]): Helper.Kces.Builder = Helper.Kces + kce
 

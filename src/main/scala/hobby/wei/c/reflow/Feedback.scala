@@ -16,11 +16,14 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.ShortMsg
-import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.lang.J2S.{NonNull, Obiter}
 import hobby.wei.c.reflow.Feedback.Progress
-import hobby.wei.c.reflow.Feedback.Progress.Policy.{Depth, Fluent, Interval}
+import hobby.wei.c.reflow.Feedback.Progress.Policy.{Depth, Fluent}
+import hobby.wei.c.reflow.Reflow.{logger => log, _}
+import hobby.wei.c.tool.Locker
 
 import scala.collection._
 
@@ -44,8 +47,9 @@ trait Feedback extends Equals {
     *
     * @param progress 进度对象。
     * @param out      进度的时刻已经获得的输出。
+    * @param depth    触发当前进度反馈的子任务深度。
     */
-  def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit
+  def onProgress(progress: Progress, out: Out, depth: Int): Unit
 
   /**
     * 任务流执行完成。
@@ -64,9 +68,9 @@ trait Feedback extends Equals {
   /**
     * 任务流中断。
     *
-    * @param trigger 触发失败的`Trait`。
+    * @param trigger 触发失败的`Trait`，为`None`表示客户代码通过`scheduler`主动触发。
     */
-  def onAbort(trigger: Trait): Unit
+  def onAbort(trigger: Option[Trait]): Unit
 
   /**
     * 任务失败。
@@ -97,41 +101,54 @@ object Feedback {
     require(step < sum || (step == sum && subs.isEmpty))
     require(subs.fold(true)(_.forall(_.nonNull)))
 
-    @inline def progress: Float = (step + subProgress) / sum
+    lazy val main: Float = (step + sub) / sum
 
-    def subProgress: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
+    lazy val sub: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
 
-    @inline def apply(): Float = progress
+    @inline def apply(): Float = main
 
-    override def toString = s"sum:$sum, step:$step, p-main:$progress, p-sub:$subProgress${trat.fold("") { t => s", name:${t.name$.tag}" }}."
+    override def toString = s"sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$.tag}" }}."
   }
 
   object Progress {
     /** 进度反馈的优化策略。 */
     trait Policy extends Ordering[Policy] {
+      outer =>
       val priority: Int
+
+      def genDelegator(feedback: Feedback): Feedback = feedback
+
+      def ->(policy: Policy): Policy = new Multiply(this, policy)
 
       final def isFluentMode: Boolean = this <= Fluent
 
-      final def isMind(level: Int) = this match {
-        case Depth(l) if l <= level => false
-        case _ => true
+      def base = this
+
+      /** 生成用于传递到`SubReflow`的`Policy`。 */
+      def toSub = this match {
+        case Depth(level) => Depth(level - 1) // 每加深一层即递减
+        case p => p
       }
 
-      final def interval: Int = this match {
-        case i: Interval => i.minGap
-        case _ => -1
-      }
-
-      final def revise(policy: Policy): Policy = if (policy equiv this) { // 如果相等，其中一个必然是`Depth`。
+      final def revise(policy: Policy): Policy = if (policy.base equiv this.base) { // 如果相等，其中一个必然是`Depth`。
         policy match {
           case _: Depth => policy
           case _ => this
         }
-      } else policy max this
+      } else if (policy.base > this.base) policy else this
 
       // 优先级越高，数值越小。
       override def compare(x: Policy, y: Policy) = if (x.priority > y.priority) -1 else if (x.priority < y.priority) 1 else 0
+    }
+
+    class Multiply(val before: Policy, val after: Policy) extends Policy {
+      override val priority = (before min after).priority
+
+      override def base = before.base
+
+      override def toSub = base.toSub
+
+      override def genDelegator(feedback: Feedback) = before.genDelegator(after.genDelegator(feedback))
     }
 
     object Policy {
@@ -143,6 +160,20 @@ object Feedback {
       /** 流畅的。即：丢弃拥挤的消息。（注意：仅适用于`Poster`之类有队列的）。 */
       object Fluent extends Policy {
         override val priority = 1
+
+        // 虽然`Tracker`内部已经实现，但仍需增强。
+        override def genDelegator(feedback: Feedback) = new Delegator(feedback) with TAG.ClassName {
+          @volatile private var main = -1f
+
+          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+            if (debugMode) log.i("~~~~~~~~~~~~~~~~~~~~~~~~[Fluent]depth:%s, progress:%s.", depth, progress)
+            if ((progress.main > main).obiter {
+              main = progress.main
+            }) {
+              super.onProgress(progress, out, depth)
+            }
+          }
+        }
       }
 
       /**
@@ -152,6 +183,25 @@ object Feedback {
         */
       case class Depth(level: Int) extends Policy {
         override val priority = Fluent.priority - (level max 0)
+
+        final def isMind(level: Int) = this.level > level
+
+        override def genDelegator(feedback: Feedback) = if (isFluentMode) Fluent.genDelegator(feedback)
+        else new Delegator(feedback) with TAG.ClassName {
+          @volatile private var step: Int = -1
+
+          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+            if (debugMode) log.i("[Depth(%s)]progress:%s, out:%s, depth:%s.", level, progress, out, depth)
+            if (isMind(0)) { // 关注当前层
+              if (isMind(1) /*关注子层*/
+                || (progress.step > step).obiter {
+                step = progress.step
+              }) {
+                super.onProgress(progress, out, depth)
+              }
+            }
+          }
+        }
       }
 
       /**
@@ -161,6 +211,26 @@ object Feedback {
         */
       case class Interval(minGap: Int) extends Policy {
         override val priority = 2
+
+        override def genDelegator(feedback: Feedback) = if (minGap <= 0) super.genDelegator(feedback)
+        else new Delegator(feedback) {
+          @volatile private var time = 0L
+
+          override def onStart(): Unit = {
+            super.onStart()
+            time = System.currentTimeMillis
+          }
+
+          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+            if (minGap > 0) {
+              val curr = System.currentTimeMillis
+              if (curr - time >= minGap) {
+                time = curr
+                super.onProgress(progress, out, depth)
+              }
+            } else super.onProgress(progress, out, depth)
+          }
+        }
       }
     }
   }
@@ -175,24 +245,41 @@ object Feedback {
   }
 
   implicit class WithPoster(feedback: Feedback) {
-    def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
-      require(feedback.nonNull)
+    def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Delegator(feedback) {
       require(poster.nonNull)
 
-      override def onPending(): Unit = poster.post(feedback.onPending())
+      override def onPending(): Unit = poster.post(super.onPending())
 
-      override def onStart(): Unit = poster.post(feedback.onStart())
+      override def onStart(): Unit = poster.post(super.onStart())
 
-      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(feedback.onProgress(progress, out, fromDepth))
+      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = poster.post(super.onProgress(progress, out, depth))
 
-      override def onComplete(out: Out): Unit = poster.post(feedback.onComplete(out))
+      override def onComplete(out: Out): Unit = poster.post(super.onComplete(out))
 
-      override def onUpdate(out: Out): Unit = poster.post(feedback.onUpdate(out))
+      override def onUpdate(out: Out): Unit = poster.post(super.onUpdate(out))
 
-      override def onAbort(trigger: Trait): Unit = poster.post(feedback.onAbort(trigger))
+      override def onAbort(trigger: Option[Trait]): Unit = poster.post(super.onAbort(trigger))
 
-      override def onFailed(trat: Trait, e: Exception): Unit = poster.post(feedback.onFailed(trat, e))
+      override def onFailed(trat: Trait, e: Exception): Unit = poster.post(super.onFailed(trat, e))
     }
+  }
+
+  private[reflow] class Delegator(feedback: Feedback) extends Feedback {
+    require(feedback.nonNull)
+
+    override def onPending(): Unit = feedback.onPending()
+
+    override def onStart(): Unit = feedback.onStart()
+
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = feedback.onProgress(progress, out, depth)
+
+    override def onComplete(out: Out): Unit = feedback.onComplete(out)
+
+    override def onUpdate(out: Out): Unit = feedback.onUpdate(out)
+
+    override def onAbort(trigger: Option[Trait]): Unit = feedback.onAbort(trigger)
+
+    override def onFailed(trat: Trait, e: Exception): Unit = feedback.onFailed(trat, e)
   }
 
   class Adapter extends Feedback {
@@ -200,26 +287,31 @@ object Feedback {
 
     override def onStart(): Unit = {}
 
-    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {}
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {}
 
     override def onComplete(out: Out): Unit = {}
 
     override def onUpdate(out: Out): Unit = {}
 
-    override def onAbort(trigger: Trait): Unit = {}
+    override def onAbort(trigger: Option[Trait]): Unit = {}
 
     override def onFailed(trat: Trait, e: Exception): Unit = {}
   }
 
   class Observable extends Adapter {
     import Assist.eatExceptions
+    implicit private lazy val lock: ReentrantLock = Locker.getLockr(this)
 
     @volatile
     private var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
 
-    def addObservers(fbs: Feedback*): Unit = obs = (obs.to[mutable.LinkedHashSet] ++= fbs.map(_.ensuring(_.nonNull))).toSeq
+    def addObservers(fbs: Feedback*): Unit = Locker.syncr {
+      obs = (obs.to[mutable.LinkedHashSet] ++= fbs.map(_.ensuring(_.nonNull))).toSeq
+    }
 
-    def removeObservers(fbs: Feedback*): Unit = obs = (obs.to[mutable.LinkedHashSet] --= fbs.map(_.ensuring(_.nonNull))).toSeq
+    def removeObservers(fbs: Feedback*): Unit = Locker.syncr {
+      obs = (obs.to[mutable.LinkedHashSet] --= fbs.map(_.ensuring(_.nonNull))).toSeq
+    }
 
     override def onPending(): Unit = obs.foreach { fb => eatExceptions(fb.onPending()) }
 
@@ -231,7 +323,7 @@ object Feedback {
 
     override def onUpdate(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onUpdate(out)) }
 
-    override def onAbort(trigger: Trait): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger)) }
+    override def onAbort(trigger: Option[Trait]): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger)) }
 
     override def onFailed(trat: Trait, e: Exception): Unit = obs.foreach { fb => eatExceptions(fb.onFailed(trat, e)) }
   }
@@ -243,13 +335,13 @@ object Feedback {
 
     override def onStart(): Unit = log.i("[onStart]")
 
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, out:%s.", depth, progress, out)
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, out:%s.", depth, progress, out)
 
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
 
     override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
 
-    override def onAbort(trigger: Trait): Unit = log.w("[onAbort]trigger:%s.", trigger)
+    override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
 
     override def onFailed(trat: Trait, e: Exception): Unit = log.e(e, "[onFailed]trat:%s.", trat)
   }

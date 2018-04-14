@@ -106,13 +106,11 @@ object Snatcher {
     * 为避免多线程的阻塞，提高效率，可使用本组件将`action`队列化。
     *
     * @param fluentMode 流畅模式。启用后，在拥挤（队列不空）的情况下，设置了`flag`的`action`将会被丢弃而不执行（除非是最后一个）。默认`不启用`。
-    * @param interval   在`fluent`基础上，增加最低时间间隔。
     */
-  class ActionQueue(val fluentMode: Boolean = false, val interval: Int = 0) extends TAG.ClassName {
+  class ActionQueue(val fluentMode: Boolean = false) extends TAG.ClassName {
     // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
     private lazy val queue = new ConcurrentLinkedQueue[Action[_]]
     private lazy val snatcher = new Snatcher
-    @volatile private var timePrev = 0L
 
     private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean) {
       type A = T
@@ -134,8 +132,6 @@ object Snatcher {
     def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
       def hasMore = !queue.isEmpty
 
-      def updateTimePrev(): Unit = if (interval > 0) timePrev = System.currentTimeMillis
-
       queue offer Action(() => necessity, action, canAbandon)
       var checked = true
       snatcher.tryOn {
@@ -144,22 +140,13 @@ object Snatcher {
             val elem = queue.remove()
             val p: elem.A = elem.execN()
             if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
-              if (interval > 0) {
-                val curr = System.currentTimeMillis
-                if (curr - timePrev >= interval) {
-                  timePrev = curr
-                  elem.execA(p)
-                }
-                checked = false
-              } else if (hasMore) { // 可以抛弃
+              if (hasMore) { // 可以抛弃
                 checked = true
               } else {
-                updateTimePrev()
                 elem.execA(p)
                 break
               }
             } else {
-              updateTimePrev()
               elem.execA(p)
               checked = false
             }

@@ -28,7 +28,6 @@ import hobby.wei.c.reflow.Assist.{eatExceptions, AbortException, FailedException
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Policy
-import hobby.wei.c.reflow.Feedback.Progress.Policy.Depth
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.Reflow.Period._
 import hobby.wei.c.reflow.State._
@@ -43,6 +42,7 @@ import scala.util.control.Breaks._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018.
+  * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数。
   */
 private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, val outer: Option[Env]) extends TAG.ClassName {
   require(policy.nonNull)
@@ -57,13 +57,6 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
 
   @deprecated(message = "不要直接调用本属性，特别是对于`SubReflow`，根本不需要使用它，否则会导致状态错误。", since = "0.0.1")
   private final lazy val reinforceRequired = new AtomicBoolean(false)
-
-  final lazy val policyRevised: Policy = outer.fold(policy) { env =>
-    (env.tracker.policyRevised match {
-      case Depth(level) => Depth(level - 1) // 每加深一层即递减
-      case p => p
-    }) revise policy
-  }
 
   final lazy val subDepth: Int = outer.fold(0)(_.subDepth + 1)
 
@@ -117,7 +110,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
 
   private[reflow] def onTaskStart(trat: Trait): Unit
 
-  private[reflow] def onTaskProgress(trat: Trait, progress: Progress, out: Out, fromDepth: Int): Unit
+  private[reflow] def onTaskProgress(trat: Trait, progress: Progress, out: Out, depth: Int): Unit
 
   private[reflow] def onTaskComplete(trat: Trait, out: Out, flow: Out): Unit
 
@@ -127,7 +120,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
     * @param forError
     * @param e
     */
-  private[reflow] def performAbort(trigger: Trait, trat: Trait, forError: Boolean, e: Exception): Unit
+  private[reflow] def performAbort(trigger: Option[Trait], trat: Trait, forError: Boolean, e: Exception): Unit
 
   /** 先于`endRunner(Runner)`执行。 */
   private[reflow] def innerError(runner: Runner, e: Exception): Unit
@@ -157,17 +150,16 @@ private[reflow] object Tracker {
                                    state: Scheduler.State$, feedback: Feedback, policy: Policy, outer: Option[Env])
     extends Tracker(reflow: Reflow, policy: Policy, outer: Option[Env]) with Scheduler with TAG.ClassName {
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
-    private lazy val snatcher = new Snatcher.ActionQueue(policyRevised.isFluentMode, policyRevised.interval)
+    private lazy val snatcher = new Snatcher.ActionQueue(policy.isFluentMode)
 
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
-    private lazy val reporter = if (debugMode && policyRevised == Policy.FullDose) new Reporter4Debug(reflow, feedback, sum) else new Reporter(reflow, feedback)
+    private lazy val reporter = if (debugMode && !policy.isFluentMode) new Reporter4Debug(reflow, feedback, sum) else new Reporter(reflow, feedback)
     @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
     @volatile private var timeStart = 0L
-    @volatile private var stepPrev = -1
 
     private[reflow] def start(): Unit = {
       if (debugMode) log.w("[start]reinforcing:%s, subReflow:%s, subDepth:%s.=====>>>>>", isReinforcing, isSubReflow, subDepth)
@@ -318,7 +310,7 @@ private[reflow] object Tracker {
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
       if (debugMode) log.e("[innerError]trait:%s.", runner.trat.name$.s)
       // 正常情况下是不会走的，仅用于测试。
-      performAbort(runner.trat, runner.trat, forError = true, e)
+      performAbort(Some(runner.trat), runner.trat, forError = true, e)
     }
 
     override private[reflow] def getPrevOutFlow = prevOutFlow
@@ -390,15 +382,15 @@ private[reflow] object Tracker {
 
     private def verifyOutFlow(): Unit = if (debugMode) outFlowTrimmed.verify()
 
-    override private[reflow] def performAbort(trigger: Trait, trat: Trait, forError: Boolean, e: Exception): Unit = {
+    override private[reflow] def performAbort(trigger: Option[Trait], trat: Trait, forError: Boolean, e: Exception): Unit = {
       if (state.forward(if (forError) FAILED else ABORTED)) {
         // 如果能走到这里，那么总是先于endRunner之前执行，也就意味着runnersParallel不可能为empty。
         // 但是也有可能由外部scheduler触发，runnersParallel还是会empty。
-        Monitor.abortion(if (trigger.isNull) null else trigger.name$, if (trat.isNull) null else trat.name$, forError)
+        Monitor.abortion(trigger.fold[String](null)(_.name$), trat.name$, forError)
         runnersParallel.foreach(_._1.abort())
         snatcher.queueAction {
-          if (forError) reporter.reportOnFailed(trigger /*为null时不会走到这里*/ , e)
-          else reporter.reportOnAbort(trigger)
+          if (forError) reporter.reportOnFailed(trigger.get /*为null时不会走到这里*/ , e)
+          else reporter.reportOnAbort(trigger /*为null时说明是外部scheduler主动触发*/)
         }
       } else if (state.abort()) {
         // 已经到达COMPLETED/REINFORCE阶段了
@@ -459,7 +451,7 @@ private[reflow] object Tracker {
       }
     }
 
-    override def abort(): Unit = performAbort(outer.fold[Trait](null)(_.trat), outer.fold[Trait](null)(_.trat), forError = false, null)
+    override def abort(): Unit = performAbort(outer.map(_.trat), outer.fold(remaining.head)(_.trat), forError = false, null)
 
     override def getState = state.get
 
@@ -486,26 +478,16 @@ private[reflow] object Tracker {
       }
     }
 
-    override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, fromDepth: Int): Unit = {
-      if (!isInput(trat) && policyRevised.isMind(0)) {
+    override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, depth: Int): Unit = {
+      if (!isInput(trat)) {
         // 跟上面onTaskStart()保持一致（包在外面），否则会出现顺序问题。
         snatcher.queueAction(canAbandon = true) {
           subProgress(trat, sub) // 在abandon之前必须要做的
         } { p =>
           // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
           if (state.get == EXECUTING) {
-            // 这个放在队列里执行和外面执行结果是一样的：在本step的进度全部走完之前，是不可能进入到下一个step的，
-            // 因为任何执行snatcher action的线程必然是某一个正在处理当前Task的线程，但只有把当前队列全部结束
-            // 才有可能随后再完成Task，然后进入到下一个step。
             val top = remaining.head
-            val step = reflow.basis.stepOf(top)
-            if (policyRevised.isMind(1) || (
-              if (step > stepPrev) {
-                stepPrev = step
-                true
-              } else false)) {
-              reporter.reportOnProgress(Progress(sum, step, Option(top), Option(p)), out, fromDepth)
-            }
+            reporter.reportOnProgress(Progress(sum, reflow.basis.stepOf(top), Option(top), Option(p)), out, depth)
           }
         }
       }
@@ -589,7 +571,7 @@ private[reflow] object Tracker {
           if (working) {
             e match {
               case _: AbortException => // 框架抛出的, 表示成功中断。
-                onAbort(trat)
+                onAbort(Some(trat))
               case e: FailedException =>
                 onFailed(e.getCause.as[Exception])
               case e: CodeException => // 客户代码问题
@@ -641,7 +623,6 @@ private[reflow] object Tracker {
       endMe()
     }
 
-    // 这是可靠的，详见 VolatileTest。
     def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
 
     def onStart() {
@@ -659,21 +640,21 @@ private[reflow] object Tracker {
     // 人为触发，表示任务失败
     def onFailed(e: Exception, trat: Trait = trat) {
       if (debugMode) log.e(e, "[onFailed]trait:%s.", trat.name$.s)
-      withAbort(trat, e)
+      withAbort(Some(trat), e)
     }
 
     // 客户代码异常
     def onException(e: CodeException) {
       if (debugMode) log.e(e, "[onException].")
-      withAbort(trat, e)
+      withAbort(Some(trat), e)
     }
 
-    def onAbort(trigger: Trait) {
+    def onAbort(trigger: Option[Trait]) {
       if (debugMode) log.e("[onAbort]")
       env.tracker.performAbort(trigger, trat, forError = false, null)
     }
 
-    def withAbort(trigger: Trait, e: Exception) {
+    def withAbort(trigger: Option[Trait], e: Exception) {
       if (!aborted) aborted = true
       env.tracker.performAbort(trigger, trat, forError = true, e)
     }
@@ -690,7 +671,7 @@ private[reflow] object Tracker {
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
       progress(0)
       val trat = env.trat.as[ReflowTrait]
-      scheduler = trat.reflow.start(In.from(env.input), trat.feedback.join(new SubReflowFeedback(env, runner, progress(1))), trat.policy, null, env)
+      scheduler = trat.reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(1)), env.tracker.policy.toSub, null, env)
       false // 异步。
     }
 
@@ -710,9 +691,9 @@ private[reflow] object Tracker {
       runner.onStart()
     }
 
-    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
       // if (out ne env.out) env.out.fillWith(out, fullVerify = false) // 暂不要，以提高效率。
-      env.tracker.onTaskProgress(env.trat, progress, out, fromDepth)
+      env.tracker.onTaskProgress(env.trat, progress, out, depth)
     }
 
     override def onComplete(out: Out): Unit = {
@@ -723,7 +704,7 @@ private[reflow] object Tracker {
 
     override def onUpdate(out: Out): Unit = onComplete(out)
 
-    override def onAbort(trigger: Trait): Unit = {
+    override def onAbort(trigger: Option[Trait]): Unit = {
       runner.onAbort(trigger)
       runner.onWorkEnd()
     }
@@ -741,7 +722,7 @@ private[reflow] object Tracker {
     * 该结构的目标是保证进度反馈的递增性。同时保留关键点，丢弃密集冗余。
     * 注意：事件到达本类，已经是单线程操作了。
     */
-  private class Reporter(reflow: Reflow, feedback: Feedback)(implicit logTag: LogTag) {
+  private class Reporter(reflow: Reflow, feedback: Feedback) {
     private[Tracker] def reportOnPending(): Unit = eatExceptions(feedback.onPending())
 
     private[Tracker] def reportOnStart(): Unit = eatExceptions(feedback.onStart())
@@ -752,48 +733,46 @@ private[reflow] object Tracker {
 
     private[Tracker] def reportOnUpdate(out: Out): Unit = eatExceptions(feedback.onUpdate(out))
 
-    private[Tracker] def reportOnAbort(trigger: Trait): Unit = eatExceptions(feedback.onAbort(trigger))
+    private[Tracker] def reportOnAbort(trigger: Option[Trait]): Unit = eatExceptions(feedback.onAbort(trigger))
 
     private[Tracker] def reportOnFailed(trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(trat, e))
   }
 
-  private class Reporter4Debug(reflow: Reflow, feedback: Feedback, sum: Int)(implicit logTag: LogTag)
-    extends Reporter(reflow: Reflow, feedback: Feedback)(logTag: LogTag) {
-    private var _step: Int = _
-    private var _sub: Float = _
-    private var _stateResetted = true
+  private class Reporter4Debug(reflow: Reflow, feedback: Feedback, sum: Int)(implicit logTag: LogTag) extends Reporter(reflow: Reflow, feedback: Feedback) {
+    @volatile private var step: Int = _
+    @volatile private var sub: Float = _
+    @volatile private var beenReset = true
 
     override private[Tracker] def reportOnStart(): Unit = {
-      log.i("[reportOnStart]_stateResetted:%b.", _stateResetted)
-      assert(_stateResetted)
-      _step = -1
-      _sub = 0
+      log.i("[reportOnStart]beenReset:%b.", beenReset)
+      assert(beenReset)
+      step = -1
+      sub = 0
       super.reportOnStart()
     }
 
-    override private[Tracker] def reportOnProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
-      log.i("[reportOnProgress]progress:%s, out:%s, fromDepth:%s.", progress, out, fromDepth)
-      val sub = progress.subProgress
-      assert(sub >= _sub, s"调用没有同步？`${progress.trat.get.name$}`。")
-      if (_stateResetted && sub == 0) {
-        assert(progress.step == _step + 1)
-        _step = progress.step
-        _stateResetted = false
-      } else assert(progress.step == _step)
-      if (sub > _sub) {
-        _sub = sub
+    override private[Tracker] def reportOnProgress(progress: Progress, out: Out, depth: Int): Unit = {
+      log.i("[reportOnProgress]progress:%s, out:%s, depth:%s.", progress, out, depth)
+      assert(progress.sub >= sub, s"调用没有同步？`${progress.trat.get.name$}`。")
+      if (beenReset && progress.sub == 0) {
+        assert(progress.step == step + 1)
+        step = progress.step
+        beenReset = false
+      } else assert(progress.step == step)
+      if (progress.sub > sub) {
+        sub = progress.sub
         // 一定会有1的, Task#exec()里有progress(1), 会使单/并行任务到达1.
-        if (sub == 1) {
-          _sub = 0
-          _stateResetted = true
+        if (progress.sub == 1) {
+          sub = 0
+          beenReset = true
         }
       }
-      super.reportOnProgress(progress, out, fromDepth)
+      super.reportOnProgress(progress, out, depth)
     }
 
     override private[Tracker] def reportOnComplete(out: Out): Unit = {
-      log.i("[reportOnComplete]reflow:%s, step:%d, sub:%f, sum:%d, _stateResetted:%b, out:%s.", reflow.name.s, _step, _sub, sum, _stateResetted, out)
-      assert(_stateResetted && _step == sum - 1 && _sub == 0)
+      log.i("[reportOnComplete]reflow:%s, step:%d, sub:%f, sum:%d, _stateResetted:%b, out:%s.", reflow.name.s, step, sub, sum, beenReset, out)
+      assert(beenReset && step == sum - 1 && sub == 0)
       super.reportOnComplete(out)
     }
 
