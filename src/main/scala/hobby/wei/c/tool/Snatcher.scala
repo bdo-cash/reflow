@@ -132,27 +132,19 @@ object Snatcher {
     def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
       def hasMore = !queue.isEmpty
 
-      queue offer Action(() => necessity, action, canAbandon)
-      var checked = true
+      val elem = Action(() => necessity, action, canAbandon)
+      while (!(queue offer elem)) Thread.`yield`()
+
       snatcher.tryOn {
-        breakable {
-          while (checked || hasMore) {
-            val elem = queue.remove()
-            val p: elem.A = elem.execN()
-            if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
-              if (hasMore) { // 可以抛弃
-                checked = true
-              } else {
-                elem.execA(p)
-                break
-              }
-            } else {
-              elem.execA(p)
-              checked = false
-            }
-          }
+        // 第一次也要检查，虽然前面入队了。因为很可能在当前线程抢占到的时候，自己入队的已经被前一个线程消化掉而退出了。
+        while (hasMore) {
+          val elem = queue.remove()
+          val p: elem.A = elem.execN()
+          if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
+            if (hasMore) { // 可以抛弃
+            } else elem.execA(p)
+          } else elem.execA(p)
         }
-        checked = false // `glance()`成功之后的再次运行必须要检测`hasMore`。
       }
     }
   }
