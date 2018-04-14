@@ -18,7 +18,7 @@ package reflow.test
 
 import java.util
 import java.util.concurrent.{LinkedBlockingQueue => _, _}
-import hobby.chenai.nakam.lang.J2S.Run
+import hobby.chenai.nakam.lang.J2S.{Obiter, Run}
 import hobby.wei.c.tool
 import org.scalatest._
 
@@ -27,24 +27,52 @@ import org.scalatest._
   * @version 1.0, 13/03/2018
   */
 class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
-  @volatile var count = -1
 
-  Feature("Snatcher 并发测试") {
-    Scenario("测试") {
-      val snatcher = new tool.Snatcher.ActionQueue
-      val future = new FutureTask[Int](new Callable[Int] {
+  Feature("Snatcher 测试") {
+    /*Scenario("并发不同步测试") { // 并不会发生
+      @volatile var count = -1L
+      val queue = new ConcurrentLinkedQueue[Option[Any]]
+      while (true) {
+        println(s"----------------------count:${count += 1; count}-------------------------------------")
+        while (!queue.offer(None)) Thread.`yield`()
+        try {
+          queue.remove()
+        } catch {
+          case t: Throwable => t.printStackTrace()
+            throw t
+        }
+      }
+      assert(true)
+    }*/
+
+    Scenario("测试 Snatcher.ActionQueue 并发问题") {
+      @volatile var count = -1L
+      @volatile var stop = false
+
+      val snatcher = new tool.Snatcher.ActionQueue(true)
+      val future = new FutureTask[Long](new Callable[Long] {
         override def call() = count
       })
-      (0 until 300).foreach { _ =>
+      (0 until 3).foreach { i =>
         sThreadPoolExecutor.submit(new Runnable {
-          override def run(): Unit = while (true) {
+          override def run(): Unit = while (!stop) {
+            println(s"------------ $i ----------------submit snatcher queueAction, active:${sThreadPoolExecutor.getActiveCount}, queue:${sThreadPoolExecutor.getQueue.size}")
             sThreadPoolExecutor.submit {
-              snatcher.queueAction {
-                count += 1
-                println(s"Snatcher第${count}次计算~~~~~")
+              {
+                try {
+                  snatcher.queueAction(canAbandon = (Math.random() >= 0.6).obiter {
+                    println("-----------------------------------------------------------")
+                  }) {} { _ =>
+                    count += 1
+                    println(s"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~thread:${Thread.currentThread.getId}~~~~~~~~~~~~~~~~~~~~~~~~~Snatcher第${count}次计算~~~~~")
+                  }
+                } catch {
+                  case t: Throwable => t.printStackTrace()
+                    stop = true
+                    println(s"Throwable<<<<<<thread:${Thread.currentThread.getId}>>>>>>第${count}次计算")
+                }
               }.run$
             }
-            future.run()
           }
         })
       }
@@ -53,7 +81,7 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
     }
   }
 
-  private lazy val sPoolWorkQueue: BlockingQueue[Runnable] = new util.concurrent.LinkedBlockingQueue[Runnable](2048000) {
+  private lazy val sPoolWorkQueue: BlockingQueue[Runnable] = new util.concurrent.LinkedBlockingQueue[Runnable](2048) {
     override def offer(r: Runnable) = {
       /* 如果不放入队列并返回false，会迫使增加线程。但是这样又会导致总是增加线程，而空闲线程得不到重用。
       因此在有空闲线程的情况下就直接放入队列。若大量长任务致使线程数增加到上限，
@@ -64,7 +92,7 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
     }
   }
 
-  lazy val sThreadPoolExecutor: ThreadPoolExecutor = new ThreadPoolExecutor(8, 500,
+  lazy val sThreadPoolExecutor: ThreadPoolExecutor = new ThreadPoolExecutor(8, 24,
     10, TimeUnit.SECONDS, sPoolWorkQueue, new ThreadFactory {
       override def newThread(r: Runnable) = new Thread(r)
     }, new RejectedExecutionHandler {
