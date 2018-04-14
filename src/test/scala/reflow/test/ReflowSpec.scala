@@ -35,11 +35,13 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
-        // println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
-        // items().foreach(println(_))
-        // println("----------]]]")
+        if (!current.isSubReflow && current.scheduler.getState == State.EXECUTING) {
+          println(s"++++++++++[[[current.state:${current.scheduler.getState}, ${current.reflow.name}")
+          items().foreach(println)
+          println("----------]]]")
+        }
       }
-    })
+    })(Policy.Interval(600), null)
   }
 
   info("------------------------- 简介 -------------------------")
@@ -350,7 +352,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val feedback = new Feedback.Adapter {
         override def onPending(): Unit = super.onPending()
 
-        override def onProgress(progress: Feedback.Progress, out: Out, fromDepth: Int): Unit = super.onProgress(progress, out, fromDepth)
+        override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = super.onProgress(progress, out, depth)
 
         override def onComplete(out: Out): Unit = {
           // do something with `out`.
@@ -388,15 +390,15 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     val interval = Policy.Interval(6)
 
     val reflow0 = Reflow.create(trat4Progress).submit("reflow0", none)
-    val reflow1 = Reflow.create(trat4Progress).next(reflow0.torat(TRANSIENT, null)(interval)).submit("reflow1", none)
-    val reflow2 = Reflow.create(trat4Progress).next(reflow1.torat(TRANSIENT, null)(interval)).submit("reflow2", none)
-    val reflow3 = Reflow.create(trat4Progress).next(reflow2.torat(TRANSIENT, null)(interval)).submit("reflow3", none)
-    val reflow4 = Reflow.create(trat4Progress).next(reflow3.torat(TRANSIENT, null)(interval)).submit("reflow4", none)
-    val reflow5 = Reflow.create(trat4Progress).next(reflow4.torat(TRANSIENT, null)(interval)).submit("reflow5", none)
-    val reflow6 = Reflow.create(trat4Progress).next(reflow5.torat(TRANSIENT, null)(interval)).submit("reflow6", none)
-    val reflow7 = Reflow.create(trat4Progress).next(reflow6.torat(TRANSIENT, null)(interval)).submit("reflow7", none)
-    val reflow8 = Reflow.create(trat4Progress).next(reflow7.torat(TRANSIENT, null)(interval)).submit("reflow8", none)
-    val reflow9 = Reflow.create(trat4Progress).next(reflow8.torat(TRANSIENT, null)(interval)).submit("reflow9", none)
+    val reflow1 = Reflow.create(trat4Progress).next(reflow0.torat()).submit("reflow1", none)
+    val reflow2 = Reflow.create(trat4Progress).next(reflow1.torat()).submit("reflow2", none)
+    val reflow3 = Reflow.create(trat4Progress).next(reflow2.torat()).submit("reflow3", none)
+    val reflow4 = Reflow.create(trat4Progress).next(reflow3.torat()).submit("reflow4", none)
+    val reflow5 = Reflow.create(trat4Progress).next(reflow4.torat()).submit("reflow5", none)
+    val reflow6 = Reflow.create(trat4Progress).next(reflow5.torat()).submit("reflow6", none)
+    val reflow7 = Reflow.create(trat4Progress).next(reflow6.torat()).submit("reflow7", none)
+    val reflow8 = Reflow.create(trat4Progress).next(reflow7.torat()).submit("reflow8", none)
+    val reflow9 = Reflow.create(trat4Progress).next(reflow8.torat()).submit("reflow9", none)
     info("串行任务进度测试")
     Scenario("1.全量（串行）") {
       Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
@@ -428,15 +430,15 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
 
     val reflow0x = Reflow.create(trat4Progress).submit("reflow0x", none)
-    val reflow1x = Reflow.create(trat4Progress).and(reflow0x.torat(TRANSIENT, null)(interval)).submit("reflow1x", none)
-    val reflow2x = Reflow.create(trat4Progress).and(reflow1x.torat(TRANSIENT, null)(interval)).submit("reflow2x", none)
-    val reflow3x = Reflow.create(trat4Progress).and(reflow2x.torat(TRANSIENT, null)(interval)).submit("reflow3x", none)
-    val reflow4x = Reflow.create(trat4Progress).and(reflow3x.torat(TRANSIENT, null)(interval)).submit("reflow4x", none)
-    val reflow5x = Reflow.create(trat4Progress).and(reflow4x.torat(TRANSIENT, null)(interval)).submit("reflow5x", none)
-    val reflow6x = Reflow.create(trat4Progress).and(reflow5x.torat(TRANSIENT, null)(interval)).submit("reflow6x", none)
-    val reflow7x = Reflow.create(trat4Progress).and(reflow6x.torat(TRANSIENT, null)(interval)).submit("reflow7x", none)
-    val reflow8x = Reflow.create(trat4Progress).and(reflow7x.torat(TRANSIENT, null)(interval)).submit("reflow8x", none)
-    val reflow9x = Reflow.create(trat4Progress).and(reflow8x.torat(TRANSIENT, null)(interval)).submit("reflow9x", none)
+    val reflow1x = Reflow.create(trat4Progress).and(reflow0x.torat()).submit("reflow1x", none)
+    val reflow2x = Reflow.create(trat4Progress).and(reflow1x.torat()).submit("reflow2x", none)
+    val reflow3x = Reflow.create(trat4Progress).and(reflow2x.torat()).submit("reflow3x", none)
+    val reflow4x = Reflow.create(trat4Progress).and(reflow3x.torat()).submit("reflow4x", none)
+    val reflow5x = Reflow.create(trat4Progress).and(reflow4x.torat()).submit("reflow5x", none)
+    val reflow6x = Reflow.create(trat4Progress).and(reflow5x.torat()).submit("reflow6x", none)
+    val reflow7x = Reflow.create(trat4Progress).and(reflow6x.torat()).submit("reflow7x", none)
+    val reflow8x = Reflow.create(trat4Progress).and(reflow7x.torat()).submit("reflow8x", none)
+    val reflow9x = Reflow.create(trat4Progress).and(reflow8x.torat()).submit("reflow9x", none)
     info("并行任务进度测试")
     Scenario("1.全量（并行）") {
       Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
@@ -462,6 +464,35 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     Scenario("4.基于反馈时间间隔（并行）") {
       Given("传入参数`interval`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9x.start(none, implicitly)(interval, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    info("还可以进行多Policy叠加")
+    Scenario("1. 叠加方案: Policy.Fluent -> Policy.Depth(2)") {
+      val policy = Policy.Fluent -> Policy.Depth(2)
+      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("2. 叠加方案: Policy.Depth(2) -> Policy.Fluent") {
+      val policy = Policy.Depth(2) -> Policy.Fluent
+      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("3. 叠加方案: Policy.Interval(6) -> Policy.Fluent") {
+      val policy = Policy.Interval(6) -> Policy.Fluent
+      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+      Then("观察输出的`Progress`日志")
+      scheduler.sync()
+      assert(true)
+    }
+    Scenario("3. 叠加方案: Policy.Depth(3) -> Policy.Interval(6)") {
+      val policy = Policy.Depth(3) -> Policy.Interval(6)
+      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
