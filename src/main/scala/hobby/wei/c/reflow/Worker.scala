@@ -16,12 +16,13 @@
 
 package hobby.wei.c.reflow
 
+import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicInteger
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.tool.Snatcher
-import java.util.concurrent._
-import java.util.concurrent.atomic.AtomicInteger
+
 import scala.util.control.Breaks._
 
 /**
@@ -36,22 +37,22 @@ object Worker extends TAG.ClassName {
 
     def newThread(runnable: Runnable): Thread = {
       val thread = new Thread(runnable, "pool-thread-" + Worker.getClass.getName + "#" + mIndex.getAndIncrement)
-      resetThread(thread)
+      resetThread(thread, runOnCurrentThread = false)
       thread
     }
   }
 
   @volatile
   private var sThreadResetor = new ThreadResetor() {
-    override def reset(thread: Thread): Unit = {
+    override def reset(thread: Thread, runOnCurrentThread: Boolean): Unit = {
       if (thread.getPriority != Thread.NORM_PRIORITY) {
         thread.setPriority(Thread.NORM_PRIORITY)
       }
     }
   }
 
-  private def resetThread(thread: Thread) {
-    sThreadResetor.reset(thread)
+  private def resetThread(thread: Thread, runOnCurrentThread: Boolean) {
+    sThreadResetor.reset(thread, runOnCurrentThread)
     Thread.interrupted()
     if (thread.isDaemon) thread.setDaemon(false)
   }
@@ -181,7 +182,7 @@ object Worker extends TAG.ClassName {
                 } finally {
                   // runner.run()里的endMe()会触发本调度方法，但发生在本句递减计数之前，因此调度几乎无效，已删。
                   sExecuting.sCounters(index).decrementAndGet
-                  resetThread(Thread.currentThread)
+                  resetThread(Thread.currentThread, runOnCurrentThread = true)
                   scheduleBuckets()
                 }
               }

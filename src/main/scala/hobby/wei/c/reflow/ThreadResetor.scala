@@ -26,5 +26,9 @@ package hobby.wei.c.reflow
   * @version 1.0, 05/01/2018
   */
 trait ThreadResetor {
-  def reset(thread: Thread)
+  /**
+    * @param thread             需要被重置的线程。
+    * @param runOnCurrentThread 都是本调用在`thread`指定的线程内。
+    */
+  def reset(thread: Thread, runOnCurrentThread: Boolean)
 }
