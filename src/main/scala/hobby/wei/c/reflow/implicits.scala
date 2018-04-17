@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.reflow.Reflow.Period
 
 import scala.collection.immutable
@@ -25,6 +26,8 @@ import scala.language.implicitConversions
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 28/03/2018
   */
+@KeepVp$
+@KeepMp$
 object implicits {
   lazy val P_HIGH = Reflow.P_HIGH
   lazy val P_NORMAL = Reflow.P_NORMAL
@@ -38,6 +41,10 @@ object implicits {
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
   lazy val Policy = Feedback.Progress.Policy
+  lazy val FullDose = Policy.FullDose
+  lazy val Fluent = Policy.Fluent
+  lazy val Depth = Policy.Depth
+  lazy val Interval = Policy.Interval
 
   def none[A]: immutable.Set[Kce[_ <: AnyRef]] = Helper.Kces.empty()
 

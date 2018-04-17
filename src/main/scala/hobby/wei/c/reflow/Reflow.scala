@@ -21,6 +21,7 @@ import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.tool
+import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
@@ -91,6 +92,8 @@ object Reflow {
   /**
     * 任务大概时长。
     */
+  @KeepVp$
+  @KeepMp$
   object Period extends Enumeration {
     type Tpe = Period
     /**
