@@ -30,9 +30,16 @@
 
 #### 三、开始使用 Reflow
 
-**应用示例** 见 _下文_ 或 特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
+##### _3.1 配置依赖_
 
-* 如果在 Android 平台上使用，请先作如下设置：
+请戳这里 [![](https://jitpack.io/v/dedge-space/reflow.svg)](https://jitpack.io/#dedge-space/reflow)
+
+
+##### _3.2 应用示例_
+
+见 _下文_ 或 特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
+
+* 如果在 Android 平台上使用，请先作如下设置。
 
 ```Scala
 class App extends AbsApp {
@@ -62,8 +69,6 @@ object App {
 }
 
 ```
-依赖配置参见：https://jitpack.io/#dedge-space/reflow/4cc9bc7cd3
-
 
 * 以下为 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala) 原文。
 ```Scala
