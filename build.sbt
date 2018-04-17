@@ -8,6 +8,9 @@ scalaVersion := "2.11.7"
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 
+// 解决生成文档报错导致 jitpack.io 出错的问题。
+publishArtifact in packageDoc := false
+
 // TODO: 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
 //  scalaVersion := "2.11.7"
@@ -28,8 +31,8 @@ resolvers += "jitpack" at "https://jitpack.io"
 libraryDependencies ++= Seq(
   // TODO: 独立使用本库的话，应该启用本依赖。
   // 如果要用 jitpack 打包的话就加上，打完了再注掉。
-  //"com.github.dedge-space" % "Annoguard" % "1.0.3-beta",
-  //"com.github.dedge-space" % "scala-lang" % "a32314076b",
+  "com.github.dedge-space" % "Annoguard" % "1.0.3-beta",
+  "com.github.dedge-space" % "scala-lang" % "a32314076b",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % "test",
