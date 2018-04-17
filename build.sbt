@@ -4,6 +4,8 @@ organization := "hobby.wei.c"
 
 version := "0.0.1-SNAPSHOT"
 
+scalaVersion := "2.11.7"
+
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 
 // TODO: 独立使用本库的话，应该启用下面的设置。
@@ -25,8 +27,9 @@ resolvers += "jitpack" at "https://jitpack.io"
 
 libraryDependencies ++= Seq(
   // TODO: 独立使用本库的话，应该启用本依赖。
-  //"com.github.dedge-space" % "Annoguard" % "1.0.3-beta",
-  //"com.github.dedge-space" % "scala-lang" % "a32314076b",
+  // 如果要用 jitpack 打包的话就加上，打完了再注掉。
+  "com.github.dedge-space" % "Annoguard" % "1.0.3-beta",
+  "com.github.dedge-space" % "scala-lang" % "a32314076b",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % "test",

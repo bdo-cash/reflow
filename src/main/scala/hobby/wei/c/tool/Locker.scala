@@ -116,7 +116,6 @@ object Locker {
     * @param lock   同步锁。
     * @tparam T 返回值类型。
     * @return 需要加载的内容, 是否为null取决于create结果。
-    * @throws InterruptedException 被中断。
     */
   @throws[InterruptedException]
   def lazyGet[T](get: => T)(create: => T)(implicit lock: ReentrantLock): Option[T] = lazyGet(
