@@ -32,7 +32,7 @@
 
 **应用示例** 见 _下文_ 或 特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
 
-如果在 Android 平台上使用，请先作如下设置：
+* 如果在 Android 平台上使用，请先作如下设置：
 
 ```Scala
 class App extends AbsApp {
@@ -63,6 +63,7 @@ object App {
 
 ```
 
+* 以下为 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala) 原文。
 ```Scala
 /*
  * Copyright (C) 2018-present, Chenai Nakam(chenai.nakam@gmail.com)
