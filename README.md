@@ -62,6 +62,8 @@ object App {
 }
 
 ```
+依赖配置参见：https://jitpack.io/#dedge-space/reflow/4cc9bc7cd3
+
 
 * 以下为 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala) 原文。
 ```Scala
