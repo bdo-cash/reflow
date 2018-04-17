@@ -32,6 +32,37 @@
 
 **应用示例** 见 _下文_ 或 特性测试 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala)。
 
+如果在 Android 平台上使用，请先作如下设置：
+
+```Scala
+class App extends AbsApp {
+  override def onCreate(): Unit = {
+    App.reflow.init()
+    super.onCreate()
+  }
+}
+
+object App {
+  object implicits {
+    implicit lazy val policy: Policy = Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)
+    implicit lazy val poster: Poster = new Poster {
+      override def post(runner: Runnable): Unit = getApp.mainHandler.post(runner)
+    }
+  }
+
+  object reflow {
+    private[App] def init(): Unit = {
+      Reflow.setThreadResetor(new ThreadResetor {
+        override def reset(thread: Thread, runOnCurrentThread: Boolean): Unit = {
+          if (runOnCurrentThread) Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+        }
+      })
+    }
+  }
+}
+
+```
+
 ```Scala
 /*
  * Copyright (C) 2018-present, Chenai Nakam(chenai.nakam@gmail.com)
