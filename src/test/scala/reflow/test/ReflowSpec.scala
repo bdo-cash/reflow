@@ -16,13 +16,13 @@
 
 package reflow.test
 
-import java.util.concurrent.{Callable, FutureTask}
 import hobby.chenai.nakam.lang.J2S.toScala
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
+import java.util.concurrent.{Callable, FutureTask}
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -510,8 +510,9 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   Feature("线程状态重置") {
     Reflow.setThreadResetor(new ThreadResetor {
-      override def reset(thread: Thread): Unit = {
+      override def reset(thread: Thread, runOnCurrentThread: Boolean): Unit = {
         // 对于`Android`平台，线程的优先级是通过`Process`来调用的。
+        if (runOnCurrentThread) {}
       }
     })
   }
