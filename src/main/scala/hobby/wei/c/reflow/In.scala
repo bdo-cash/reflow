@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import hobby.chenai.nakam.lang.J2S
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.tool.Locker
@@ -79,7 +80,7 @@ object In {
     override protected def loadValue(key: String) = map.get(key)
   }
 
-  def empty(): In = Locker.lazyGetr(getRef(emptyRef).orNull) {
+  def empty(): In = Locker.lazyGetr(J2S.getRef(emptyRef).orNull) {
     val in = new In(Helper.Kces.empty()) {
       override private[reflow] def fillValues(out: Out): Unit = {}
 
@@ -87,7 +88,7 @@ object In {
     }
     emptyRef = new WeakReference(in)
     in
-  }(Locker.getLockr(this)).get
+  }(Locker.getLockr(this))
 
   private var emptyRef: WeakReference[In] = _
 }

@@ -220,11 +220,11 @@ abstract class Task protected() {
     * @tparam T 返回值类型。
     * @return {Locker.CodeZ#exec()}的返回值。
     */
-  final def sync[T](scope: Class[_ <: Task])(codes: => T): Option[T] = sync(new CodeZ[T] {
+  final def sync[T](scope: Class[_ <: Task])(codes: => T): T = sync(new CodeZ[T] {
     override def exec() = codes
   }, scope)
 
-  final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): Option[T] = {
+  final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): T = {
     try {
       Locker.sync(codes, scope.ensuring(_.nonNull))
     } catch {

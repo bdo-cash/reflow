@@ -17,6 +17,7 @@
 package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
+import hobby.chenai.nakam.lang.J2S
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
@@ -92,7 +93,7 @@ object Scheduler {
       } else null
     }
 
-    private[reflow] def getDelegator: Option[Tracker.Impl] = Assist.getRef(delegatorRef)
+    private[reflow] def getDelegator: Option[Tracker.Impl] = J2S.getRef(delegatorRef)
 
     override def sync(): Out = {
       try {
@@ -145,7 +146,7 @@ object Scheduler {
         if (!overrided) overrided = true
         true
       } else false
-    }.get
+    }
 
     /**
       * 更新中断后的状态。
@@ -161,7 +162,7 @@ object Scheduler {
         case State.COMPLETED | State.UPDATED => true
         case _ => false
       }
-    }.get
+    }
 
     def get: Tpe = state
 

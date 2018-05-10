@@ -431,7 +431,7 @@ private[reflow] object Tracker {
           }
         }
       }, lockSync, interruptable = false)
-    }.orNull
+    }
 
     private def interruptSync(reinforce: Boolean) {
       Monitor.duration(this, reflow.name, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)

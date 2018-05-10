@@ -116,7 +116,7 @@ object Reflow {
           }
         }
         average
-      }.get
+      }
     }
     /**
       * 任务执行时间：瞬间。
