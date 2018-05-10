@@ -32,7 +32,7 @@
 
 ##### _3.1 配置依赖_
 
-请戳这里 [![](https://jitpack.io/v/dedge-space/reflow.svg)](https://jitpack.io/#dedge-space/reflow/bcab2d691b)
+请戳这里 [![](https://jitpack.io/v/dedge-space/reflow.svg)](https://jitpack.io/#dedge-space/reflow/677f80ed3e)
 
 ##### _3.2 应用示例_
 
