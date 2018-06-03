@@ -16,10 +16,9 @@
 
 package hobby.wei.c.tool
 
+import hobby.chenai.nakam.basis.TAG
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
-import hobby.chenai.nakam.basis.TAG
-
 import scala.util.control.Breaks._
 
 /**
@@ -103,12 +102,20 @@ class Snatcher {
 
 object Snatcher {
   /**
-    * 为避免多线程的阻塞，提高效率，可使用本组件将`action`队列化。
+    * 为避免多线程的阻塞，提高运行效率，可使用本组件将`action`队列化（非`顺序化`）。
+    * <p>
+    * 如果没有`顺序化`需求，可略过后面的说明。但如果有，务必请注意：<br>
+    * 本组件并不能保证入队后的[`action`s]的顺序与入队前想要的一致，这不是本组件的缺陷，而是同步锁固有的性质导致了
+    * 必然存在这样的问题：`任何同步锁的互斥范围都不可能超过其能够包裹的代码块的范围`。即使本组件的入队操作使用了`公平锁`，也
+    * 无法保证外层的顺序需求。要实现顺序性，客户代码有两个选择：<br>
+    * 1. 外层代码必须根据具体的业务逻辑另行实现能够保证顺序的`互斥同步`逻辑，并在同步块内执行`queueAction()`操作；
+    * 2. 在`queueAction()`的参数`action`所表示的函数体内实现[让输出具有`顺序性`]逻辑。
+    * <p>
+    * 重申：本组件`能且只能`实现：`避免多线程阻塞，提高执行效率`。
     *
     * @param fluentMode 流畅模式。启用后，在拥挤（队列不空）的情况下，设置了`flag`的`action`将会被丢弃而不执行（除非是最后一个）。默认`不启用`。
     */
   class ActionQueue(val fluentMode: Boolean = false) extends TAG.ClassName {
-    // 本数据结构总是在同步区域内执行。因为需要顺序性，所以这里`不`采用`并发`数据结构。
     private lazy val queue = new ConcurrentLinkedQueue[Action[_]]
     private lazy val snatcher = new Snatcher
 
@@ -125,8 +132,8 @@ object Snatcher {
     /**
       * 执行`action`或将其放进队列。
       *
-      * @param canAbandon 是否可以被丢弃。默认为`false`。
-      * @param necessity  必须要做不可以`abandon`的。
+      * @param canAbandon 是否可以被丢弃（需配合`fluentMode`使用）。默认为`false`。
+      * @param necessity  必须要执行的，不可以`abandon`的。本函数的返回值将作为`action`的输入。
       * @param action     要执行的代码。
       */
     def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
