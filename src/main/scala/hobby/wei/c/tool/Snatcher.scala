@@ -16,9 +16,10 @@
 
 package hobby.wei.c.tool
 
-import hobby.chenai.nakam.basis.TAG
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import hobby.chenai.nakam.basis.TAG
+
 import scala.util.control.Breaks._
 
 /**
@@ -127,7 +128,7 @@ object Snatcher {
       def execA(args: A): Unit = action(args)
     }
 
-    def queueAction(action: => Unit): Unit = queueAction()((() => action) ()) { _ => }
+    def queueAction(action: => Unit): Unit = queueAction()(action) { _ => }
 
     /**
       * 执行`action`或将其放进队列。

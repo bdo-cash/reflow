@@ -18,7 +18,7 @@ package reflow.test
 
 import java.util
 import java.util.concurrent.{LinkedBlockingQueue => _, _}
-import hobby.chenai.nakam.lang.J2S.{Obiter, Run}
+import hobby.chenai.nakam.lang.J2S.{toScala, Obiter, Run}
 import hobby.wei.c.tool
 import org.scalatest._
 
@@ -44,6 +44,32 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
       }
       assert(true)
     }*/
+
+    Scenario("传名参数") {
+      val snatcher = new tool.Snatcher.ActionQueue(false)
+      val future = new FutureTask[Int](new Callable[Int] {
+        override def call() = 0
+      })
+      sThreadPoolExecutor.execute({
+        snatcher.queueAction {
+          println("抢占 | Holding...")
+          Thread.sleep(5000)
+          println("抢占 | Done.")
+        }
+      }.run$)
+      Thread.sleep(2000)
+      snatcher.queueAction {
+        println("在 snatcher 调度器内部执行")
+      }
+      snatcher.queueAction {
+        println("在 snatcher 调度器内部执行")
+        println("在 queueAction Done 之后输出，即为正确。")
+        future.run()
+      }
+      println("queueAction Done.")
+
+      future.map(_ => assert(true))
+    }
 
     Scenario("测试 Snatcher.ActionQueue 并发问题") {
       @volatile var count = -1L
