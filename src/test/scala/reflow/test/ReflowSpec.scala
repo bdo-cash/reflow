@@ -16,13 +16,13 @@
 
 package reflow.test
 
-import hobby.chenai.nakam.lang.J2S.toScala
+import java.util.concurrent.{Callable, FutureTask}
+import hobby.chenai.nakam.lang.J2S.future2Scala
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
-import java.util.concurrent.{Callable, FutureTask}
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
