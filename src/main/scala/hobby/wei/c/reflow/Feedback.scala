@@ -20,6 +20,7 @@ import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.ShortMsg
 import hobby.chenai.nakam.lang.J2S.{NonNull, Obiter}
+import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Policy.{Depth, Fluent}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
@@ -237,10 +238,23 @@ object Feedback {
 
   implicit class Join(fb: Feedback = null) {
     def join(that: Feedback): Feedback = {
-      val feedback = new Feedback.Observable
-      feedback.addObservers(that)
-      if (fb.nonNull) feedback.addObservers(fb)
-      feedback
+      // 把 that 放在最前面
+      if (fb.nonNull && fb.isInstanceOf[Feedback.Observable]) {
+        val obs = fb.as[Feedback.Observable]
+        val old = obs.obs.toList
+        obs.removeAll()
+        obs.addObservers(that :: old: _*)
+        obs
+      } else {
+        val obs = new Feedback.Observable
+        obs.addObservers(that :: (if (fb.nonNull) fb :: Nil else Nil): _*)
+        obs
+      }
+    }
+
+    @inline def reverse(): Feedback = {
+      if (fb.nonNull && fb.isInstanceOf[Feedback.Observable]) fb.as[Feedback.Observable].reverse()
+      fb
     }
   }
 
@@ -298,12 +312,61 @@ object Feedback {
     override def onFailed(trat: Trait, e: Exception): Unit = {}
   }
 
+  /**
+    * 仅关注需要的值的`Feedback`，以方便客户代码的编写。
+    * 用法示例：{{{
+    * val buttStr = new Feedback.Butt(new Kce[String]("str") {}, watchProgressDepth = 1) {
+    *   override def onValueGotOnProgress(value: Option[String], progress: Progress): Unit = ???
+    *   override def onValueGot(value: Option[String]): Unit = ???
+    *   override def onValueGotOnUpdate(value: Option[String]): Unit = ???
+    *   override def onFailed(trat: Trait, e: Exception): Unit = ???
+    * }
+    * val buttInt = new Feedback.Butt[Integer](new Kce[Integer]("int") {}) {
+    *   override def onValueGot(value: Option[Integer]): Unit = ???
+    * }
+    * // 可将多个值用`join`连接，将返回的`Feedback`传给`Reflow.start()`。
+    * val feedback = buttStr.join(buttInt)
+    * }}}
+    * 注意：如果需要监听`Feedback`的更多事件，只需要在 join 的第一个`butt`下重写需要的回调即可（第一个`butt`在排序上是放在最后的）。
+    *
+    * @param kce                所关注值的`Kce[T]`信息。
+    * @param watchProgressDepth 如果同时关注进度中的反馈值的话，会涉及到 Reflow 嵌套深度的问题。
+    *                           本参数表示关注第几层的进度（即：是第几层的哪个任务会输出`kce`值，Reflow 要求不同层任务的`kce`可以相同）。
+    **/
+  abstract class Butt[T >: Null <: AnyRef](kce: Kce[T], watchProgressDepth: Int = 0) extends Adapter {
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+      super.onProgress(progress, out, depth)
+      if (depth == watchProgressDepth && out.keysDef().contains(kce))
+        onValueGotOnProgress(out.get(kce), progress)
+    }
+
+    override def onComplete(out: Out): Unit = {
+      super.onComplete(out)
+      onValueGot(out.get(kce))
+    }
+
+    override def onUpdate(out: Out): Unit = {
+      super.onUpdate(out)
+      onValueGotOnUpdate(out.get(kce))
+    }
+
+    def onValueGotOnProgress(value: Option[T], progress: Progress): Unit = {}
+
+    def onValueGot(value: Option[T]): Unit
+
+    def onValueGotOnUpdate(value: Option[T]): Unit = {}
+  }
+
   class Observable extends Adapter {
     import Assist.eatExceptions
     implicit private lazy val lock: ReentrantLock = Locker.getLockr(this)
 
     @volatile
-    private var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
+    private[Feedback] var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
+
+    private[Feedback] def removeAll(): Unit = Locker.syncr(obs = Nil)
+
+    private[Feedback] def reverse(): Unit = Locker.syncr(obs = obs.reverse)
 
     def addObservers(fbs: Feedback*): Unit = Locker.syncr {
       obs = (obs.to[mutable.LinkedHashSet] ++= fbs.map(_.ensuring(_.nonNull))).toSeq
