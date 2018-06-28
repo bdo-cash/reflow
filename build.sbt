@@ -4,7 +4,7 @@ organization := "hobby.wei.c"
 
 version := "0.0.1-SNAPSHOT"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.12.6"
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 
@@ -13,7 +13,7 @@ publishArtifact in packageDoc := false
 
 // TODO: 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
-//  scalaVersion := "2.11.7"
+//  scalaVersion := "2.12.6"
 //)
 //
 //lazy val root = Project(id = "reflow", base = file("."))
