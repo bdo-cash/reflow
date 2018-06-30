@@ -4,7 +4,13 @@ organization := "hobby.wei.c"
 
 version := "0.0.1-SNAPSHOT"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.11.11"
+
+crossScalaVersions := Seq(
+  /*"2.11.7", 多余，不需要两个*/
+  "2.11.11",
+  /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
+  "2.12.6")
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 
@@ -13,7 +19,7 @@ publishArtifact in packageDoc := false
 
 // TODO: 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
-//  scalaVersion := "2.12.6"
+//  scalaVersion := "2.11.11"
 //)
 //
 //lazy val root = Project(id = "reflow", base = file("."))
@@ -36,6 +42,6 @@ libraryDependencies ++= Seq(
 //  "com.github.dedge-space" % "scala-lang" % "4db02cf2fd",
 
   // ScalaTest 的标准引用。
-  "junit" % "junit" % "[4.12,)" % "test",
-  "org.scalatest" %% "scalatest" % "[2.11,)" % "test"
+  "junit" % "junit" % "[4.12,)" % Test,
+  "org.scalatest" %% "scalatest" % "[2.11,)" % Test
 )
