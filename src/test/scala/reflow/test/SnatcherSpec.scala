@@ -72,37 +72,39 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
     }
 
     Scenario("测试 Snatcher.ActionQueue 并发问题") {
-      @volatile var count = -1L
-      @volatile var stop = false
+      if (false) {
+        @volatile var count = -1L
+        @volatile var stop = false
 
-      val snatcher = new tool.Snatcher.ActionQueue(true)
-      val future = new FutureTask[Long](new Callable[Long] {
-        override def call() = count
-      })
-      (0 until 3).foreach { i =>
-        sThreadPoolExecutor.submit(new Runnable {
-          override def run(): Unit = while (!stop) {
-            println(s"------------ $i ----------------submit snatcher queueAction, active:${sThreadPoolExecutor.getActiveCount}, queue:${sThreadPoolExecutor.getQueue.size}")
-            sThreadPoolExecutor.submit {
-              {
-                try {
-                  snatcher.queueAction(canAbandon = (Math.random() >= 0.6).obiter {
-                    println("-----------------------------------------------------------")
-                  }) {} { _ =>
-                    count += 1
-                    println(s"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~thread:${Thread.currentThread.getId}~~~~~~~~~~~~~~~~~~~~~~~~~Snatcher第${count}次计算~~~~~")
-                  }
-                } catch {
-                  case t: Throwable => t.printStackTrace()
-                    stop = true
-                    println(s"Throwable<<<<<<thread:${Thread.currentThread.getId}>>>>>>第${count}次计算")
-                }
-              }.run$
-            }
-          }
+        val snatcher = new tool.Snatcher.ActionQueue(true)
+        val future = new FutureTask[Long](new Callable[Long] {
+          override def call() = count
         })
+        (0 until 3).foreach { i =>
+          sThreadPoolExecutor.submit(new Runnable {
+            override def run(): Unit = while (!stop) {
+              println(s"------------ $i ----------------submit snatcher queueAction, active:${sThreadPoolExecutor.getActiveCount}, queue:${sThreadPoolExecutor.getQueue.size}")
+              sThreadPoolExecutor.submit {
+                {
+                  try {
+                    snatcher.queueAction(canAbandon = (Math.random() >= 0.6).obiter {
+                      println("-----------------------------------------------------------")
+                    }) {} { _ =>
+                      count += 1
+                      println(s"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~thread:${Thread.currentThread.getId}~~~~~~~~~~~~~~~~~~~~~~~~~Snatcher第${count}次计算~~~~~")
+                    }
+                  } catch {
+                    case t: Throwable => t.printStackTrace()
+                      stop = true
+                      println(s"Throwable<<<<<<thread:${Thread.currentThread.getId}>>>>>>第${count}次计算")
+                  }
+                }.run$
+              }
+            }
+          })
+        }
+        future.get()
       }
-      future.get()
       assert(true)
     }
   }
