@@ -18,7 +18,7 @@ package reflow.test
 
 import java.util
 import java.util.concurrent.{LinkedBlockingQueue => _, _}
-import hobby.chenai.nakam.lang.J2S.{toScala, Obiter, Run}
+import hobby.chenai.nakam.lang.J2S.{future2Scala, Obiter, Run}
 import hobby.wei.c.tool
 import org.scalatest._
 
