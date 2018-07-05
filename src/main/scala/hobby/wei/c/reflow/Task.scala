@@ -83,7 +83,7 @@ abstract class Task protected() {
     * @param value
     */
   final def cache[T](key: String, value: T): Unit = {
-    require(env.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
+    require(env.isPulseMode || env.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
     env.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
     env.cache(key, value)
   }

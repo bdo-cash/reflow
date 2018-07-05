@@ -202,7 +202,7 @@ object Reflow {
     val future = new FutureTask[V](new Callable[V] {
       override def call() = _runner
     })
-    Worker.sPreparedBuckets.queue4(_period).offer(new Worker.Runner(new Trait.Adapter() {
+    Worker.scheduleRunner(new Worker.Runner(new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
 
       override protected def priority() = _priority
@@ -213,7 +213,6 @@ object Reflow {
 
       override def newTask() = null
     }, future))
-    Worker.scheduleBuckets()
     future
   }
 
@@ -311,7 +310,7 @@ object Reflow {
 
   private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
     Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
-    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl = {
+    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl = {
       require(feedback.nonNull)
       require(policy.nonNull)
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
@@ -331,7 +330,7 @@ object Reflow {
       val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet,
         /*子Reflow还会再次走到这里，所以仅关注两层进度即可。*/
         trackPolicy.genDelegator(feedback4track).join(policy.genDelegator(feedback.wizh(poster))),
-        policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer)
+        policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
       // 异步反馈新增任务到全局跟踪器
@@ -369,7 +368,18 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
     */
   final def start(inputs: In, feedback: Feedback)(implicit policy: Policy, poster: Poster): Scheduler = start(inputs, feedback, policy, poster, null)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl
+  /**
+    * 启动一个流处理器`Pulse`。
+    *
+    * @return `Pulse`实例，可进行无数次的`input(In)`操作。
+    */
+  final def pulse(inputs: In = null, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster): Pulse = {
+    val pulse = new Pulse(this, feedback, abortIfError)
+    if (inputs.nonNull) pulse.input(inputs)
+    pulse
+  }
+
+  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。

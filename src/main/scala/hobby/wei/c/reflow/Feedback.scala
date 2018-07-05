@@ -48,7 +48,7 @@ trait Feedback extends Equals {
     *
     * @param progress 进度对象。
     * @param out      进度的时刻已经获得的输出。
-    * @param depth    触发当前进度反馈的子任务深度。
+    * @param depth    触发当前进度反馈的`子任务流（SubReflow）`的嵌套深度（顶层为`0`，并按照`SubReflow`的嵌套层级依次递增）。
     */
   def onProgress(progress: Progress, out: Out, depth: Int): Unit
 
@@ -95,7 +95,12 @@ object Feedback {
     *
     * @param sum  当前进度的总步数。
     * @param step 当前进度走到了第几步。
-    * @param trat 当前`step`对应的 top level `Trait`。可能为`None`，表示某`Task.progress(step, sum)`出来的进度；也可能为并行（`_.isPar`）。
+    * @param trat 当前`step`对应的 top level `Trait`。分为3种情况：
+    *             1. 若`subs`为`None`，则`trat`一定也为`None`，表示某`Task.progress(step, sum)`出来的进度；
+    *             2. 若当前是一个具体的（顺序依赖的）任务触发出的进度，则`trat`表示该任务，同时`subs`中会有唯一一个进度
+    *             与之对应，其性质同 1；
+    *             3. 若`trat`是并行的（`_.isPar == true`），则`subs`代表了所有当前正在并行执行的任务。
+    *             注意：`subs`中的进度同样分为以上3种情况。
     * @param subs 子任务。可以是并行的，所以用了`Seq`。
     */
   case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, subs: Option[Seq[Progress]] = None) {

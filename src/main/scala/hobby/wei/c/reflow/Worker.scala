@@ -122,6 +122,11 @@ object Worker extends TAG.ClassName {
 
   private val sSnatcher = new Snatcher
 
+  def scheduleRunner(runner: Runner, bucket: Boolean = true): Unit = {
+    sPreparedBuckets.queue4(runner.trat.period$).offer(runner)
+    if (bucket) scheduleBuckets()
+  }
+
   def scheduleBuckets() {
     if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>>")
     if (!sSnatcher.snatch()) {
