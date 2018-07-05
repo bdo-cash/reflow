@@ -41,10 +41,12 @@ import scala.util.control.Breaks._
 /**
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016;
-  *          1.1, 31/01/2018.
-  * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数。
+  *          1.1, 31/01/2018, 重启本项目直到完成；
+  *          1.2, 05/07/2018, 更新以便支持`Pulse`功能。
+  * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
+  * @param pulse  脉冲模式下的交互接口。
   */
-private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, val outer: Option[Env]) extends TAG.ClassName {
+private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, val outer: Option[Env], pulse: Pulse.Interact) extends TAG.ClassName {
   require(policy.nonNull)
   private lazy final val snatcher4Init = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
@@ -83,6 +85,8 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
 
   private[reflow] def isInput(trat: Trait): Boolean
 
+  final def isPulseMode: Boolean = pulse.nonNull
+
   final def isSubReflow: Boolean = outer.isDefined
 
   final def isReinforceRequired: Boolean = outer.fold(reinforceRequired.get)(_.isReinforceRequired)
@@ -106,7 +110,12 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   }
 
   /** 注意：对于并行任务，每次请求`reinforce`都会回调一次本方法。 */
-  protected def onRequireReinforce(trat: Trait, cache: ReinforceCache): Unit = {}
+  private[reflow] def onRequireReinforce(trat: Trait, cache: ReinforceCache): Unit = {}
+
+  /** `Runner`即将完全结束（可能成功或失败），本事件在。 */
+  private[reflow] def onRunnerEnd(trat: Trait, env: Env): Unit = if (isPulseMode) {
+    pulse.onRoadmap(subDepth, env.myCache(create = false))
+  }
 
   private[reflow] def onTaskStart(trat: Trait): Unit
 
@@ -125,6 +134,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   /** 先于`endRunner(Runner)`执行。 */
   private[reflow] def innerError(runner: Runner, e: Exception): Unit
 
+  /** `Task`完全运行完毕（意味着线程在执行本方法体之后，`Task`的代码即全部处理完毕，线程将会结束或者接着处理下一个执行体）。 */
   private[reflow] def endRunner(runner: Runner): Unit
 }
 
@@ -147,8 +157,8 @@ private[reflow] class ReinforceCache {
 
 private[reflow] object Tracker {
   private[reflow] final class Impl(reflow: Reflow, traitIn: Trait, transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
-                                   state: Scheduler.State$, feedback: Feedback, policy: Policy, outer: Option[Env])
-    extends Tracker(reflow: Reflow, policy: Policy, outer: Option[Env]) with Scheduler with TAG.ClassName {
+                                   state: Scheduler.State$, feedback: Feedback, policy: Policy, outer: Option[Env], pulse: Pulse.Interact)
+    extends Tracker(reflow: Reflow, policy: Policy, outer: Option[Env], pulse: Pulse.Interact) with Scheduler with TAG.ClassName {
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val snatcher = new Snatcher.ActionQueue(policy.isFluentMode)
 
@@ -195,6 +205,8 @@ private[reflow] object Tracker {
       val (tratGlobal, veryBeginning) = if (isInput(runner.trat)) (traitIn, true) else (remaining.head, false)
       // 断言`trat`与`remaining`的一致性。
       assert(runner.trat == tratGlobal || (tratGlobal.isPar && tratGlobal.asPar.traits().contains(runner.trat)))
+      // 处理对`pulse`的支持。
+      onRunnerEnd(runner.trat, runner.env)
       runnersParallel -= runner
       // 并行任务全部结束
       if (runnersParallel.isEmpty) snatcher.queueAction {
@@ -523,7 +535,7 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class Runner private(env: Env, trat: Trait) extends Worker.Runner(trat: Trait, null) with Equals with TAG.ClassName {
+  private[reflow] class Runner private(val env: Env, trat: Trait) extends Worker.Runner(trat, null) with Equals with TAG.ClassName {
     def this(env: Env) = this(env, env.trat)
 
     implicit lazy val logTag: LogTag = new LogTag(className + "/" + trat.name$.takeRight(8))
@@ -671,7 +683,7 @@ private[reflow] object Tracker {
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
       progress(0)
       val trat = env.trat.as[ReflowTrait]
-      scheduler = trat.reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(1)), env.tracker.policy.toSub, null, env)
+      scheduler = trat.reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(1)), env.tracker.policy.toSub, null, env, env.isPulseMode)
       false // 异步。
     }
 

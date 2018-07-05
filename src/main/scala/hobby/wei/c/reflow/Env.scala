@@ -45,12 +45,12 @@ private[reflow] trait Env extends TAG.ClassName {
     superCache.subs.get(trat.name$)
   }
 
-  /** `TasK`的当前缓存。 */
+  /** `Task`的当前缓存。 */
   private[reflow] final def myCache(create: Boolean = false): Out = if (create) {
     superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.Kces.empty()))
   } else superCache.caches.get(trat.name$).orNull
 
-  private[reflow] final def cache[V](key: String, value: V): Unit = myCache(true).cache(key, value)
+  private[reflow] final def cache[V](key: String, value: V): Unit = myCache(create = true).cache(key, value)
 
   final def subDepth: Int = tracker.subDepth
 
@@ -64,6 +64,8 @@ private[reflow] trait Env extends TAG.ClassName {
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
 
   final def isReinforcing: Boolean = tracker.isReinforcing
+
+  final def isPulseMode: Boolean = tracker.isPulseMode
 
   // 本`Env`的存在就说明是subReflow。
   // final def isSubReflow: Boolean = tracker.isSubReflow

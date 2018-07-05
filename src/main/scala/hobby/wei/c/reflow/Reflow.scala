@@ -311,7 +311,7 @@ object Reflow {
 
   private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
     Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
-    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl = {
+    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulseMode: Boolean = false): Scheduler.Impl = {
       require(feedback.nonNull)
       require(policy.nonNull)
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
@@ -331,7 +331,7 @@ object Reflow {
       val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet,
         /*子Reflow还会再次走到这里，所以仅关注两层进度即可。*/
         trackPolicy.genDelegator(feedback4track).join(policy.genDelegator(feedback.wizh(poster))),
-        policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer)
+        policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulseMode)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
       // 异步反馈新增任务到全局跟踪器
@@ -369,7 +369,7 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
     */
   final def start(inputs: In, feedback: Feedback)(implicit policy: Policy, poster: Poster): Scheduler = start(inputs, feedback, policy, poster, null)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null): Scheduler.Impl
+  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulseMode: Boolean = false): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
