@@ -57,7 +57,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
       if (isDone) state.reset()
       val pending = state.forward(PENDING)
       // 无论我是不是第一个，原子切换。
-      head = Option(new Tactic(head, this))
+      head = Option(new Tactic(head, this, counter.incrementAndGet))
       val tac = head
       Reflow.submit {
         if (pending) reporter.reportOnPending()
@@ -65,7 +65,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
       }(TRANSIENT, P_HIGH)
       ()
     }
-  }(SHORT)
+  }(SHORT, P_NORMAL)
 
   @deprecated
   override def sync() = head.get.scheduler.sync()
@@ -111,7 +111,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     abortHead(thd) // 尾递归
   }
 
-  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse) extends TAG.ClassName {
+  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, count: Long) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher.ActionQueue()
     private lazy val roadmap = new TrieMap[(Int, String), Out]
     private lazy val suspend = new TrieMap[(Int, String), () => Unit]
@@ -144,10 +144,17 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
         }
       }
 
+      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+        super.onProgress(progress, out, depth)
+        pulse.snatcher.queAc {
+          if (pulse.state.get == EXECUTING) pulse.reporter.reportOnEvolve(count, progress, out, depth)
+        }
+      }
+
       override def onComplete(out: Out): Unit = {
         super.onComplete(out)
         pulse.snatcher.queAc {
-          if (pulse.state.get == EXECUTING) pulse.reporter.reportOnOutput(pulse.counter.incrementAndGet, out)
+          if (pulse.state.get == EXECUTING) pulse.reporter.reportOnOutput(count, out)
         }
         // 释放`head`。由于总是会引用前一个，会造成内存泄露。
         head = None
@@ -208,6 +215,7 @@ object Pulse {
     override final def onComplete(out: Out): Unit = {}
     @deprecated
     override final def onUpdate(out: Out): Unit = {}
+    def onEvolve(count: Long, progress: hobby.wei.c.reflow.Feedback.Progress, out: Out, depth: Int): Unit
     def onOutput(count: Long, out: Out)
     override def onAbort(trigger: Option[Trait]): Unit
     override def onFailed(trat: Trait, e: Exception): Unit
@@ -217,6 +225,7 @@ object Pulse {
     trait Adapter extends Feedback {
       override def onPending(): Unit = {}
       override def onStart(): Unit = {}
+      override def onEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = {}
       override def onAbort(trigger: Option[Trait]): Unit = {}
       override def onFailed(trat: Trait, e: Exception): Unit = {}
     }
@@ -262,6 +271,8 @@ object Pulse {
 
       override def onStart(): Unit = poster.post(feedback.onStart())
 
+      override def onEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = poster.post(feedback.onEvolve(count, progress, out, depth))
+
       override def onOutput(count: Long, out: Out): Unit = poster.post(feedback.onOutput(count, out))
 
       override def onAbort(trigger: Option[Trait]): Unit = poster.post(feedback.onAbort(trigger))
@@ -279,6 +290,8 @@ object Pulse {
 
     @deprecated
     private[reflow] override final def reportOnUpdate(out: Out): Unit = ???
+
+    def reportOnEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onEvolve(count, progress, out, depth))
 
     def reportOnOutput(count: Long, out: Out): Unit = eatExceptions(feedback.onOutput(count, out))
   }
