@@ -1,5 +1,7 @@
-## Reflow: 任务 _`串/并联`_ 组合调度框架
+## Reflow:  任务 _`串/并联`_ 组合调度框架
 
+* 新增:  **[Pulse](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala#L46) 脉冲步进流式数据处理器**
+  - 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会排队进入各个任务，每个任务可保留前一个数据在处理时特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
 
 #### 一、概述
 
