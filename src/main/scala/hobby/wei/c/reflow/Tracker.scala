@@ -187,7 +187,7 @@ private[reflow] object Tracker {
       } else {
         timeStart = System.currentTimeMillis
         assert(state.get == PENDING)
-        snatcher.queueAction(reporter.reportOnPending())
+        snatcher.queAc(reporter.reportOnPending())
         // prevOutFlow = new Out() // 不用赋值
         outFlowTrimmed = new Out(traitIn.outs$)
         tryScheduleNext(traitIn)
@@ -201,10 +201,10 @@ private[reflow] object Tracker {
       // 断言`trat`与`remaining`的一致性。
       assert(runner.trat == tratGlobal || (tratGlobal.isPar && tratGlobal.asPar.traits().contains(runner.trat)))
       // 处理对`pulse`的支持。
-      if (!isInput(runner.trat)) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
+      if (isPulseMode && !isInput(runner.trat)) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
       runnersParallel -= runner
       // 并行任务全部结束
-      if (runnersParallel.isEmpty) snatcher.queueAction {
+      if (runnersParallel.isEmpty) snatcher.queAc {
         val state$ = state.get$
         // 判断放在里面，`snatcher`如果在执行完毕后发现了信号重来，可以再次执行本判断，避免重复。
         // 正常情况下，本函数提执行完毕，由于已经直接或间接执行了`tryScheduleNext()`，`runnersParallel`不可能再为`empty`，
@@ -247,7 +247,7 @@ private[reflow] object Tracker {
             }
           }
           val transGlobal = if (veryBeginning) Option(transIn) else reflow.basis.transGlobal.get(tratGlobal.name$)
-          val currIsLast = if (veryBeginning) remaining.isEmpty.ensuring(_ == false) else remaining.tail.isEmpty
+          val currIsLast = if (veryBeginning) remaining.isEmpty.ensuring(!_) else remaining.tail.isEmpty
           // 切换任务结果集
           outFlowNextStage(tratGlobal, if (currIsLast) null else if (veryBeginning) remaining.head else remaining.tail.head,
             transGlobal, (_, afterGlobalTrans) => {
@@ -396,7 +396,7 @@ private[reflow] object Tracker {
         // 但是也有可能由外部scheduler触发，runnersParallel还是会empty。
         Monitor.abortion(trigger.fold[String](null)(_.name$), trat.name$, forError)
         runnersParallel.foreach(_._1.abort())
-        snatcher.queueAction {
+        snatcher.queAc {
           if (forError) reporter.reportOnFailed(trigger.get /*为null时不会走到这里*/ , e)
           else reporter.reportOnAbort(trigger /*为null时说明是外部scheduler主动触发*/)
         }
@@ -459,7 +459,10 @@ private[reflow] object Tracker {
       }
     }
 
-    override def abort(): Unit = performAbort(outer.map(_.trat), outer.fold(remaining.head)(_.trat), forError = false, null)
+    override def abort(): Unit = {
+      val rem = remaining
+      if (rem.nonEmpty) performAbort(outer.map(_.trat), outer.fold(rem.head)(_.trat), forError = false, null)
+    }
 
     override def getState = state.get
 
@@ -475,7 +478,7 @@ private[reflow] object Tracker {
         // 必须放在外面：
         // 1. 以防止并行的任务发生reportOnProgress在reportOnStart之前的错误；
         // 2. 对于同步阻塞开销更小。
-        snatcher.queueAction {
+        snatcher.queAc {
           if (state.forward(EXECUTING)) {
             // 但反馈有且只有一次（上面forward方法只会成功一次）
             if (reflow.basis.stepOf(trat) == 0) reporter.reportOnStart()
@@ -489,7 +492,7 @@ private[reflow] object Tracker {
     override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, depth: Int): Unit = {
       if (!isInput(trat)) {
         // 跟上面onTaskStart()保持一致（包在外面），否则会出现顺序问题。
-        snatcher.queueAction(canAbandon = true) {
+        snatcher.queAc(canAbandon = true) {
           subProgress(trat, sub) // 在abandon之前必须要做的
         } { p =>
           // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。

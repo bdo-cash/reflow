@@ -276,29 +276,29 @@ object Reflow {
         currentGTrack = null
       }
 
-      override def onPending(): Unit = snatcher.queueAction(deliver(delegator.onPending()))
+      override def onPending(): Unit = snatcher.queAc(deliver(delegator.onPending()))
 
-      override def onStart(): Unit = snatcher.queueAction(deliver(delegator.onStart()))
+      override def onStart(): Unit = snatcher.queAc(deliver(delegator.onStart()))
 
-      override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = snatcher.queueAction(
+      override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = snatcher.queAc(
         deliver(delegator.onProgress(progress, out, depth)))
 
-      override def onComplete(out: Out): Unit = snatcher.queueAction(deliver {
+      override def onComplete(out: Out): Unit = snatcher.queAc(deliver {
         delegator.onComplete(out)
         if (currentGTrack.scheduler.isDone) globalTrackMap.remove(this)
       })
 
-      override def onUpdate(out: Out): Unit = snatcher.queueAction(deliver {
+      override def onUpdate(out: Out): Unit = snatcher.queAc(deliver {
         delegator.onUpdate(out)
         globalTrackMap.remove(this)
       })
 
-      override def onAbort(trigger: Option[Trait]): Unit = snatcher.queueAction(deliver {
+      override def onAbort(trigger: Option[Trait]): Unit = snatcher.queAc(deliver {
         delegator.onAbort(trigger)
         globalTrackMap.remove(this)
       })
 
-      override def onFailed(trat: Trait, e: Exception): Unit = snatcher.queueAction(deliver {
+      override def onFailed(trat: Trait, e: Exception): Unit = snatcher.queAc(deliver {
         delegator.onFailed(trat, e)
         globalTrackMap.remove(this)
       })

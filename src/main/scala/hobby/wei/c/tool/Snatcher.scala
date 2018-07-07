@@ -17,7 +17,7 @@
 package hobby.wei.c.tool
 
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import hobby.chenai.nakam.basis.TAG
 
 import scala.util.control.Breaks._
@@ -47,22 +47,37 @@ import scala.util.control.Breaks._
   * }}}
   *
   * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 24/01/2018
+  * @version 1.0, 24/01/2018;
+  *          2.0, 07/07/2018, 增加可重入（`reentrant`）能力。
   */
 class Snatcher {
   private val scheduling = new AtomicBoolean(false)
   private val signature = new AtomicBoolean(false)
+  private val thread = new AtomicReference[Thread](null)
 
   /**
     * 线程尝试抢占执行权并执行某任务。
     * <p>
-    * 注意：由于对于同一个线程没有`reentrant`能力（即：不能嵌套），本方法仅限用于抢占执行同一个（能够一次性
-    * 把所有事情都处理完的）任务。如果有多个不同的任务，请换用`ActionQueue.queueAction()`。
+    * 2.0 版本新增了可重入（`reentrant`）能力，使得本方法可以嵌套使用。*** 但这似乎是个伪命题：<br>
+    * 多重甚至不可预知的嵌套，意味着有多个不同的任务需要抢占执行权，这是危险的：抢不到执行权的任务会被忽略不执行。***
+    * <p>
+    * 对于 1.0 版本或者把当前`needReentrant`参数设为`false`时，由于对于同一个线程没有`reentrant`能力，嵌套的`tryOn()`无法执行。
+    * 但请注意：本方法仍然仅限用于抢占执行同一个（其它抢占到的线程做的是同样的事情）任务，而不适用于不可预知的嵌套情况。如果有
+    * 多个不同的任务，请换用`ActionQueue.queAc()`让其排队执行。
+    * <p>
+    * 可重入（`reentrant`）能力可能的用法是与`queAc()`结合，并明确知晓嵌套状况，但细节仍需仔细斟酌。2.0 实现仅提供一种选择，但不一定适用。
     *
+    * @param doSomething  要执行的任务。
+    * @param forReentrant 是否需要可重入（`reentrant`）能力。`true`表示需要（默认值），`false`拒绝。
+    *                     用于执行权已经被抢占而当前可能正处于该线程（当前调用嵌套于正在执行的另一个`doSomething`内）的情况。
     * @return `true` 抢占成功并执行任务，`false`抢占失败，未执行任务。
     */
-  def tryOn(doSomething: => Unit): Boolean = {
-    if (snatch()) {
+  def tryOn(doSomething: => Unit, forReentrant: Boolean = true): Boolean = {
+    // 同一个线程，说明重入（`reentrant`）了。这种情况下，如果本方法的当前调用未结束，则必然处于抢占而未释放的状态中。
+    if (forReentrant && isReentrant) {
+      doSomething
+      true
+    } else if (snatch()) {
       breakable {
         while (true) {
           doSomething
@@ -82,6 +97,7 @@ class Snatcher {
     signature.set(true) // 必须放在前面。标识新的调度请求，防止遗漏。
     if (scheduling.compareAndSet(false, true)) {
       signature.set(false)
+      thread.set(Thread.currentThread)
       true
     } else false
   }
@@ -94,14 +110,21 @@ class Snatcher {
   def glance(): Boolean = {
     // 必须放在sSignature前面，确保不会有某个瞬间丢失调度(外部线程拿不到锁，而本线程认为没有任务了)。
     scheduling.set(false)
+    thread.set(null)
     // 再看看是不是又插入了新任务，并重新竞争锁定。
     // 如果不要sSignature的判断而简单再来一次是不是就解决了问题呢？
     // 不能。这个再来一次的问题会递归。
     if (signature.get() && scheduling.compareAndSet(false, true)) {
       signature.set(false) // 等竞争到了再置为false.
+      thread.set(Thread.currentThread)
       true // continue
     } else false // break
   }
+
+  /**
+    * @return 当前是否可重入。
+    */
+  def isReentrant: Boolean = thread.get == Thread.currentThread
 }
 
 object Snatcher {
@@ -119,9 +142,8 @@ object Snatcher {
     *
     * @param fluentMode 流畅模式。启用后，在拥挤（队列不空）的情况下，设置了`flag`的`action`将会被丢弃而不执行（除非是最后一个）。默认`不启用`。
     */
-  class ActionQueue(val fluentMode: Boolean = false) extends TAG.ClassName {
+  class ActionQueue(val fluentMode: Boolean = false) extends Snatcher with TAG.ClassName {
     private lazy val queue = new ConcurrentLinkedQueue[Action[_]]
-    private lazy val snatcher = new Snatcher
 
     private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean) {
       type A = T
@@ -131,7 +153,8 @@ object Snatcher {
       def execA(args: A): Unit = action(args)
     }
 
-    def queueAction(action: => Unit): Unit = queueAction()(action) { _ => }
+    /** queueAction()的简写。 */
+    def queAc(action: => Unit): Unit = queAc()(action) { _ => }
 
     /**
       * 执行`action`或将其放进队列。
@@ -140,13 +163,13 @@ object Snatcher {
       * @param necessity  必须要执行的，不可以`abandon`的。本函数的返回值将作为`action`的输入。
       * @param action     要执行的代码。
       */
-    def queueAction[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
+    def queAc[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
       def hasMore = !queue.isEmpty
 
       val elem = Action(() => necessity, action, canAbandon)
       while (!(queue offer elem)) Thread.`yield`()
 
-      snatcher.tryOn {
+      tryOn({
         // 第一次也要检查，虽然前面入队了。因为很可能在当前线程抢占到的时候，自己入队的已经被前一个线程消化掉而退出了。
         while (hasMore) {
           val elem = queue.remove()
@@ -156,7 +179,7 @@ object Snatcher {
             } else elem.execA(p)
           } else elem.execA(p)
         }
-      }
+      }, false)
     }
   }
 }

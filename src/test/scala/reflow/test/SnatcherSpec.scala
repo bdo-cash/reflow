@@ -51,17 +51,17 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
         override def call() = 0
       })
       sThreadPoolExecutor.execute({
-        snatcher.queueAction {
+        snatcher.queAc {
           println("抢占 | Holding...")
           Thread.sleep(5000)
           println("抢占 | Done.")
         }
       }.run$)
       Thread.sleep(2000)
-      snatcher.queueAction {
+      snatcher.queAc {
         println("在 snatcher 调度器内部执行")
       }
-      snatcher.queueAction {
+      snatcher.queAc {
         println("在 snatcher 调度器内部执行")
         println("在 queueAction Done 之后输出，即为正确。")
         future.run()
@@ -87,7 +87,7 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
               sThreadPoolExecutor.submit {
                 {
                   try {
-                    snatcher.queueAction(canAbandon = (Math.random() >= 0.6).obiter {
+                    snatcher.queAc(canAbandon = (Math.random() >= 0.6).obiter {
                       println("-----------------------------------------------------------")
                     }) {} { _ =>
                       count += 1
