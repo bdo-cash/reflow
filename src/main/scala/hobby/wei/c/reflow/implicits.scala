@@ -33,10 +33,10 @@ object implicits {
   lazy val P_NORMAL = Reflow.P_NORMAL
   lazy val P_LOW = Reflow.P_LOW
 
-  lazy val TRANSIENT = Period.TRANSIENT
-  lazy val SHORT = Period.SHORT
-  lazy val LONG = Period.LONG
-  lazy val INFINITE = Period.INFINITE
+  lazy val TRANSIENT: Period.Tpe = Period.TRANSIENT
+  lazy val SHORT: Period.Tpe = Period.SHORT
+  lazy val LONG: Period.Tpe = Period.LONG
+  lazy val INFINITE: Period.Tpe = Period.INFINITE
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
