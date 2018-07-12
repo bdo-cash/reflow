@@ -42,7 +42,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(10000)
+          Thread.sleep(6000)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
@@ -64,7 +64,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(10000)
+          Thread.sleep(5000)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
@@ -73,7 +73,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-            Thread.sleep(8000)
+            Thread.sleep(3000)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
@@ -89,8 +89,8 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       lazy val pulse: Pulse = reflow.pulse(null, feedback, true)
 
       lazy val feedback = new Pulse.Feedback.Adapter {
-        override def onOutput(count: Long, out: Out): Unit = {
-          if (count == 3) {
+        override def onComplete(serialNum: Long, out: Out): Unit = {
+          if (serialNum == 4) {
             callableOut = out
             future.run()
             println("abort()...")
@@ -98,11 +98,11 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           }
         }
 
-        override def onAbort(trigger: Option[Trait]): Unit = {
+        override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = {
           println("[onAbort]trigger:" + trigger.map(_.name$).orNull)
         }
 
-        override def onFailed(trat: Trait, e: Exception): Unit = {
+        override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {
           println("[onAbort]trat:" + trat.name$.s + ", e:" + (e.getClass.getName + ":" + e.getMessage))
         }
       }
@@ -118,7 +118,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       data.foreach(pulse.input(_))
 
       Then("等待结果")
-      future map { out => assertResult("2")(out(kces.str)) }
+      future map { out => assertResult("4")(out(kces.str)) }
     }
   }
 

@@ -48,25 +48,34 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
   private lazy val reporter = new Reporter(feedback.wizh(poster))
   private lazy val state = new Scheduler.State$()
-  private lazy val counter = new AtomicLong(0)
+  private lazy val serialNum = new AtomicLong(0)
   @volatile var head: Option[Tactic] = None
 
-  def input(in: In): Unit = Reflow.submit {
-    snatcher.queAc {
-      val s = getState
-      if (s == FAILED && abortIfError || s == ABORTED) return
-      if (isDone) state.reset()
-      val pending = state.forward(PENDING)
-      // 无论我是不是第一个，原子切换。
-      head = Option(new Tactic(head, this, counter.incrementAndGet))
-      val tac = head
+  /**
+    * 流式数据输入。请关注返回值。
+    *
+    * @return `false`不可以再继续输入。
+    */
+  def input(in: In): Boolean = {
+    if (isDone) false
+    else {
       Reflow.submit {
-        if (pending) reporter.reportOnPending()
-        tac.get.start(in)
-      }(TRANSIENT, P_HIGH)
-      ()
+        snatcher.queAc {
+          if (isDone) return false // `false`仅为通过编译检查，并不会给`input()`返回。
+          val pending = state.forward(PENDING)
+          // 无论我是不是第一个，原子切换。
+          head = Option(new Tactic(head, this, serialNum.getAndIncrement))
+          val tac = head
+          Reflow.submit {
+            // if (pending) reporter.reportOnPending(tac.get.serialNum)
+            tac.get.start(in)
+          }(TRANSIENT, P_HIGH)
+          ()
+        }
+      }(SHORT, P_NORMAL)
+      true
     }
-  }(SHORT, P_NORMAL)
+  }
 
   @deprecated
   override def sync() = head.get.scheduler.sync()
@@ -76,8 +85,9 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
   override def abort(): Unit = snatcher.queAc {
     if (state.forward(PENDING)) { // 说明还没有开始
-      state.forward(ABORTED)
-      reporter.reportOnAbort(None)
+      if (state.forward(ABORTED)) {
+        // reporter.reportOnAbort(serialNum.get, None)
+      }
     }
     abortHead(head)
     head = None
@@ -87,12 +97,14 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
   override def isDone = {
     val s = getState
-    s == COMPLETED /*不应该存在*/ || s == FAILED || s == ABORTED || s == UPDATED
+    s == COMPLETED /*不应该存在*/ || s == FAILED || s == ABORTED || s == UPDATED /*不应该存在*/
   }
 
-  private[reflow] def onFailed(): Unit = snatcher.queAc {
+  private[reflow] def onFailed(trat: Trait, e: Exception): Unit = snatcher.queAc {
     if (abortIfError) {
-      state.forward(FAILED)
+      if (state.forward(FAILED)) {
+        // reporter.reportOnFailed(serialNum.get, trat, e)
+      }
       // 后面的`state.forward()`是不起作用的。
       abort()
     }
@@ -100,7 +112,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
   private[reflow] def onAbort(trigger: Option[Trait]): Unit = snatcher.queAc {
     if (state.forward(ABORTED)) {
-      reporter.reportOnAbort(trigger)
+      // reporter.reportOnAbort(serialNum.get, trigger)
     }
     abort()
   }
@@ -112,7 +124,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     abortHead(thd) // 尾递归
   }
 
-  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, count: Long) extends TAG.ClassName {
+  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher.ActionQueue()
     private lazy val roadmap = new TrieMap[(Int, String), Out]
     private lazy val suspend = new TrieMap[(Int, String), () => Unit]
@@ -137,25 +149,22 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
     def followerGetCache(depth: Int, trat: String): Out = roadmap.get((depth, trat)).orNull
 
-    private lazy val feedback = new Feedback.Adapter {
-      override def onStart(): Unit = {
-        super.onStart()
-        pulse.snatcher.queAc {
-          if (pulse.state.forward(EXECUTING) && head.isEmpty) pulse.reporter.reportOnStart()
-        }
+    private lazy val feedback = new Feedback {
+      override def onPending(): Unit = pulse.snatcher.queAc {
+        pulse.reporter.reportOnPending(serialNum)
       }
 
-      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
-        super.onProgress(progress, out, depth)
-        pulse.snatcher.queAc {
-          if (pulse.state.get == EXECUTING) pulse.reporter.reportOnEvolve(count, progress, out, depth)
-        }
+      override def onStart(): Unit = pulse.snatcher.queAc {
+        pulse.reporter.reportOnStart(serialNum)
+      }
+
+      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = pulse.snatcher.queAc {
+        pulse.reporter.reportOnProgress(serialNum, progress, out, depth)
       }
 
       override def onComplete(out: Out): Unit = {
-        super.onComplete(out)
         pulse.snatcher.queAc {
-          if (pulse.state.get == EXECUTING) pulse.reporter.reportOnOutput(count, out)
+          pulse.reporter.reportOnComplete(serialNum, out)
         }
         // 释放`head`。由于总是会引用前一个，会造成内存泄露。
         head = None
@@ -163,20 +172,21 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
       }
 
       override def onUpdate(out: Out): Unit = {
-        super.onUpdate(out)
         assert(assertion = false, "对于`Pulse`中的`Reflow`，不应该走到`onUpdate`这里。".tag)
       }
 
-      override def onAbort(trigger: Option[Trait]): Unit = {
-        super.onAbort(trigger)
-        head = None
+      override def onAbort(trigger: Option[Trait]): Unit = pulse.snatcher.queAc {
+        pulse.reporter.reportOnAbort(serialNum, trigger)
         pulse.onAbort(trigger)
+        // 放到最后
+        head = None
       }
 
-      override def onFailed(trat: Trait, e: Exception): Unit = {
-        super.onFailed(trat, e)
+      override def onFailed(trat: Trait, e: Exception): Unit = pulse.snatcher.queAc {
+        pulse.reporter.reportOnFailed(serialNum, trat, e)
+        pulse.onFailed(trat, e)
+        // 放到最后
         head = None
-        pulse.onFailed()
       }
     }
 
@@ -207,28 +217,26 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 }
 
 object Pulse {
-  trait Feedback extends hobby.wei.c.reflow.Feedback {
-    override def onPending(): Unit
-    override def onStart(): Unit
-    @deprecated
-    override final def onProgress(progress: hobby.wei.c.reflow.Feedback.Progress, out: Out, depth: Int): Unit = {}
-    @deprecated
-    override final def onComplete(out: Out): Unit = {}
-    @deprecated
-    override final def onUpdate(out: Out): Unit = {}
-    def onEvolve(count: Long, progress: hobby.wei.c.reflow.Feedback.Progress, out: Out, depth: Int): Unit
-    def onOutput(count: Long, out: Out)
-    override def onAbort(trigger: Option[Trait]): Unit
-    override def onFailed(trat: Trait, e: Exception): Unit
+  trait Feedback extends Equals {
+    def onPending(serialNum: Long): Unit
+    def onStart(serialNum: Long): Unit
+    def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit
+    def onComplete(serialNum: Long, out: Out): Unit
+    def onAbort(serialNum: Long, trigger: Option[Trait]): Unit
+    def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit
+
+    override def equals(any: Any) = super.equals(any)
+    override def canEqual(that: Any) = false
   }
 
   object Feedback {
     trait Adapter extends Feedback {
-      override def onPending(): Unit = {}
-      override def onStart(): Unit = {}
-      override def onEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = {}
-      override def onAbort(trigger: Option[Trait]): Unit = {}
-      override def onFailed(trat: Trait, e: Exception): Unit = {}
+      override def onPending(serialNum: Long): Unit = {}
+      override def onStart(serialNum: Long): Unit = {}
+      override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = {}
+      override def onComplete(serialNum: Long, out: Out): Unit = {}
+      override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = {}
+      override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {}
     }
   }
 
@@ -268,32 +276,31 @@ object Pulse {
     def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
       require(poster.nonNull)
 
-      override def onPending(): Unit = poster.post(feedback.onPending())
+      override def onPending(serialNum: Long): Unit = poster.post(feedback.onPending(serialNum))
 
-      override def onStart(): Unit = poster.post(feedback.onStart())
+      override def onStart(serialNum: Long): Unit = poster.post(feedback.onStart(serialNum))
 
-      override def onEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = poster.post(feedback.onEvolve(count, progress, out, depth))
+      override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = poster.post(feedback.onProgress(serialNum, progress, out, depth))
 
-      override def onOutput(count: Long, out: Out): Unit = poster.post(feedback.onOutput(count, out))
+      override def onComplete(serialNum: Long, out: Out): Unit = poster.post(feedback.onComplete(serialNum, out))
 
-      override def onAbort(trigger: Option[Trait]): Unit = poster.post(feedback.onAbort(trigger))
+      override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = poster.post(feedback.onAbort(serialNum, trigger))
 
-      override def onFailed(trat: Trait, e: Exception): Unit = poster.post(feedback.onFailed(trat, e))
+      override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = poster.post(feedback.onFailed(serialNum, trat, e))
     }
   }
 
-  private[reflow] class Reporter(feedback: Pulse.Feedback) extends Tracker.Reporter(feedback) {
-    @deprecated
-    private[reflow] override final def reportOnProgress(progress: Progress, out: Out, depth: Int): Unit = ???
+  private[reflow] class Reporter(feedback: Feedback) {
+    private[reflow] def reportOnPending(serialNum: Long): Unit = eatExceptions(feedback.onPending(serialNum))
 
-    @deprecated
-    private[reflow] override final def reportOnComplete(out: Out): Unit = ???
+    private[reflow] def reportOnStart(serialNum: Long): Unit = eatExceptions(feedback.onStart(serialNum))
 
-    @deprecated
-    private[reflow] override final def reportOnUpdate(out: Out): Unit = ???
+    private[reflow] def reportOnProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onProgress(serialNum, progress, out, depth))
 
-    def reportOnEvolve(count: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onEvolve(count, progress, out, depth))
+    private[reflow] def reportOnComplete(serialNum: Long, out: Out): Unit = eatExceptions(feedback.onComplete(serialNum, out))
 
-    def reportOnOutput(count: Long, out: Out): Unit = eatExceptions(feedback.onOutput(count, out))
+    private[reflow] def reportOnAbort(serialNum: Long, trigger: Option[Trait]): Unit = eatExceptions(feedback.onAbort(serialNum, trigger))
+
+    private[reflow] def reportOnFailed(serialNum: Long, trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(serialNum, trat, e))
   }
 }
