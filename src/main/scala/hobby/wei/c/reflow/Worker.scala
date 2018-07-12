@@ -37,22 +37,16 @@ object Worker extends TAG.ClassName {
 
     def newThread(runnable: Runnable): Thread = {
       val thread = new Thread(runnable, "pool-thread-" + Worker.getClass.getName + "#" + mIndex.getAndIncrement)
-      resetThread(thread, runOnCurrentThread = false)
+      resetThread(thread, beforeOrOfterWork = true, runOnCurrentThread = false)
       thread
     }
   }
 
   @volatile
-  private var sThreadResetor = new ThreadResetor() {
-    override def reset(thread: Thread, runOnCurrentThread: Boolean): Unit = {
-      if (thread.getPriority != Thread.NORM_PRIORITY) {
-        thread.setPriority(Thread.NORM_PRIORITY)
-      }
-    }
-  }
+  private var sThreadResetor = new ThreadResetor() {}
 
-  private def resetThread(thread: Thread, runOnCurrentThread: Boolean) {
-    sThreadResetor.reset(thread, runOnCurrentThread)
+  private def resetThread(thread: Thread, beforeOrOfterWork: Boolean, runOnCurrentThread: Boolean) {
+    sThreadResetor.reset(thread, beforeOrOfterWork, runOnCurrentThread)
     Thread.interrupted()
     if (thread.isDaemon) thread.setDaemon(false)
   }
@@ -180,6 +174,7 @@ object Worker extends TAG.ClassName {
             sExecuting.sCounters(index).incrementAndGet
             executor.execute(new Runnable {
               override def run(): Unit = {
+                resetThread(Thread.currentThread, beforeOrOfterWork = true, runOnCurrentThread = true)
                 try {
                   runner.run()
                 } catch {
@@ -187,7 +182,7 @@ object Worker extends TAG.ClassName {
                 } finally {
                   // runner.run()里的endMe()会触发本调度方法，但发生在本句递减计数之前，因此调度几乎无效，已删。
                   sExecuting.sCounters(index).decrementAndGet
-                  resetThread(Thread.currentThread, runOnCurrentThread = true)
+                  resetThread(Thread.currentThread, beforeOrOfterWork = false, runOnCurrentThread = true)
                   scheduleBuckets()
                 }
               }

@@ -28,7 +28,10 @@ package hobby.wei.c.reflow
 trait ThreadResetor {
   /**
     * @param thread             需要被重置的线程。
+    * @param beforeOrOfterWork  在运行任务之前还是之后。`true`表示之前。
     * @param runOnCurrentThread 都是本调用在`thread`指定的线程内。
     */
-  def reset(thread: Thread, runOnCurrentThread: Boolean)
+  def reset(thread: Thread, beforeOrOfterWork: Boolean, runOnCurrentThread: Boolean): Unit = {
+    if (thread.getPriority != Thread.NORM_PRIORITY) thread.setPriority(Thread.NORM_PRIORITY)
+  }
 }

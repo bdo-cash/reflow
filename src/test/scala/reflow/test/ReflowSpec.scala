@@ -510,9 +510,11 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   Feature("线程状态重置") {
     Reflow.setThreadResetor(new ThreadResetor {
-      override def reset(thread: Thread, runOnCurrentThread: Boolean): Unit = {
+      override def reset(thread: Thread, beforeOrAfterWork: Boolean, runOnCurrentThread: Boolean): Unit = {
         // 对于`Android`平台，线程的优先级是通过`Process`来调用的。
-        if (runOnCurrentThread) {}
+        if (beforeOrAfterWork && runOnCurrentThread) {
+          // Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+        }
       }
     })
   }
