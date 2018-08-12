@@ -2,9 +2,9 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "0.0.1-SNAPSHOT"
+version := "1.0.1-SNAPSHOT"
 
-scalaVersion := "2.11.11"
+scalaVersion := "2.12.6"
 
 crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
@@ -39,7 +39,7 @@ libraryDependencies ++= Seq(
   // 如果要用 jitpack 打包的话就加上，打完了再注掉。
   // TODO: 独立使用本库的话，应该启用本依赖。
   "com.github.dedge-space" % "annoguard" % "1.0.3-beta",
-  "com.github.dedge-space" % "scala-lang" % "6077e4a865",
+  "com.github.dedge-space" % "scala-lang" % "6fbee40d1a",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % Test,
