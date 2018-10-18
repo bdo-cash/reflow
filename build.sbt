@@ -2,7 +2,7 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "1.0.2-SNAPSHOT"
+version := "1.0.3-SNAPSHOT"
 
 scalaVersion := "2.11.11"
 
@@ -13,6 +13,8 @@ crossScalaVersions := Seq(
   "2.12.6")
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+// 启用对 java8 lambda 语法的支持。
+scalacOptions += "-Xexperimental"
 
 // 解决生成文档报错导致 jitpack.io 出错的问题。
 publishArtifact in packageDoc := false

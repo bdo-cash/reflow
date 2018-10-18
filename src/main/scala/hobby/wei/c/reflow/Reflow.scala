@@ -20,15 +20,15 @@ import java.util.concurrent._
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.wei.c.tool
+import hobby.wei.c.{reflow, tool}
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Feedback.Observable
 import hobby.wei.c.reflow.Feedback.Progress.Policy
-import hobby.wei.c.reflow.Reflow.Period
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
+import hobby.wei.c.reflow.Reflow.Period
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
@@ -198,21 +198,43 @@ object Reflow {
     * @param _desc     同`Trait#description()`。
     * @param _name     同`Trait#name()`。
     */
-  def submit[V](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Future[V] = {
-    val future = new FutureTask[V](new Callable[V] {
-      override def call() = _runner
-    })
-    Worker.scheduleRunner(new Worker.Runner(new Trait.Adapter() {
+  def submit[V >: Null](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Future[V] = {
+    import implicits._
+    @volatile var callableOut: V = null
+    val future = new FutureTask[V](() => callableOut)
+    val trat = new Trait.Adapter() {
       override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
-
       override protected def priority() = _priority
-
       override protected def period() = _period
-
       override protected def desc() = if (_desc.isNull) name$ else _desc
+      override def newTask() = new Task {
+        override protected def doWork(): Unit = {
+          callableOut = _runner
+          future.run()
+        }
+      }
+    }
+    create(trat).submit(trat.name$, none).start(none, new reflow.Feedback.Adapter)(FullDose, null)
+    future
+  }
 
+  /**
+    * 本实现存在两个问题：<p>
+    * 1. 无法被`GlobalTrack`监控到；<p>
+    * 2. FutureTask 会吞掉异常（现已修正）。<p>
+    * 所以简版仅留给内部使用。 */
+  private[reflow] def submit$[V >: Null](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL): Future[V] = {
+    @volatile var callableOut: V = null
+    val future = new FutureTask[V](() => callableOut)
+    Worker.scheduleRunner(new Worker.Runner(new Trait.Adapter() {
+      override protected def priority() = _priority
+      override protected def period() = _period
+      override protected def desc() = name$
       override def newTask() = null
-    }, future))
+    }, () => {
+      callableOut = _runner
+      future.run()
+    }))
     future
   }
 
@@ -334,7 +356,7 @@ object Reflow {
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
       // 异步反馈新增任务到全局跟踪器
-      Reflow.submit {
+      Reflow.submit$ {
         scheduler.start$()
       }(Period.TRANSIENT, P_HIGH)
       scheduler
@@ -356,13 +378,12 @@ object Reflow {
 
 abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: String = null) {
   require(name.nonEmpty)
-
   /**
     * 启动任务。可并行启动多个。
     *
     * @param inputs   输入内容的加载器。
     * @param feedback 事件反馈回调接口。
-    * @param policy   进度反馈的优化策略。可以叠加使用，如：{{{Policy.Depth(2) + Policy.Interval(600)}}}。
+    * @param policy   进度反馈的优化策略。可以叠加使用，如：`Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)`。
     * @param poster   转移`feedback`的调用线程, 可为`null`。
     * @return `true`启动成功，`false`正在运行。
     */
