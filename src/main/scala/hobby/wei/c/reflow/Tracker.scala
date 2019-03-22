@@ -41,7 +41,8 @@ import scala.util.control.Breaks._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018, 重启本项目直到完成；
-  *          1.2, 05/07/2018, 更新以便支持`Pulse`功能。
+  *          1.2, 05/07/2018, 更新以便支持`Pulse`功能；
+  *          1.3, 03/23/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法。
   * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
   * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -49,12 +50,15 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   require(policy.nonNull)
   private lazy final val snatcher4Init = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
-  // 而在Reinforce阶段，会从外部传入。
+  // 而在`Reinforce`阶段，会从外部传入。
   // 因此有这样的设计。
-  @volatile private var cacheInited: Boolean = outer.fold(false)(_.isReinforcing)
+  // 1.3, 03/23/2019, 将`false`改为了`true`。
+  @volatile private var cacheInited: Boolean = outer.fold(true)(_.isReinforcing)
+  // 1.3, 03/23/2019, 最外层的`Tracker`在各个阶段（`Reinforce`）都是同一个实例，因此本变量也是同一个实例。
   private final lazy val reinforceCache = outer.fold(new ReinforceCache) { env =>
     if (isPulseMode) assert(!env.isReinforcing)
-    if (env.isReinforcing) env.obtainCache.getOrElse(new ReinforceCache) else new ReinforceCache
+    // 1.3, 03/23/2019, 去掉`env.obtainCache.get`后面的`OrElse(new ReinforceCache)`。
+    if (env.isReinforcing) env.obtainCache.get else new ReinforceCache
   }
 
   @deprecated(message = "不要直接调用本属性，特别是对于`SubReflow`，根本不需要使用它，否则会导致状态错误。", since = "0.0.1")
@@ -63,6 +67,11 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   final lazy val subDepth: Int = outer.fold(0)(_.subDepth + 1)
 
   private final def getOrInitFromOuterCache(trat: String = null, sub: Option[ReinforceCache] = None): ReinforceCache = {
+    // 1.3, 03/23/2019, 本操作和下面的`cache init`是不相干的两件事。本操作有可能执行多次，因为有可能是多个并行子任务。
+    // `Reinforce`阶段，`cacheInited`生来为`true`，不需要初始化，也就不会触发本方法递归，因此`sub`始终为`None`, 不会
+    // 引起不必要的多余调用，结果是直接返回（不过`getCache`和上面`obtainCache`会触发循环递归，直到最外层的`Tracker`或`reinforceCache`已经初始化）；
+    // 只是在非`Reinforce`阶段，会有一些重复不必要的调用，但没有更好的办法。
+    sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
     if (!cacheInited) {
       snatcher4Init.tryOn {
         if (!cacheInited) {
@@ -73,7 +82,6 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
         }
       }
     }
-    sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
     reinforceCache
   }
 
