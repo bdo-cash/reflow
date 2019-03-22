@@ -4,7 +4,7 @@ organization := "hobby.wei.c"
 
 version := "1.0.3-SNAPSHOT"
 
-scalaVersion := "2.11.11"
+scalaVersion := "2.12.6"
 
 crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
