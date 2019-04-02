@@ -289,23 +289,32 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     val transformer = new Transformer[Integer, String](kces.int, kces.str) {
       override def transform(in: Option[Integer]) = in.map(String.valueOf)
     }
-    Scenario("局部转换") {
+    Scenario("[局部]转换") {
       val scheduler = Reflow.create(
         Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
           ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
         }, transformer)
         .submit("reflow test", kces.str)
+        .start(kces.str -> "00000", implicitly)
+      assertResult("00000")(scheduler.sync()(kces.str))
+    }
+    Scenario("[全局]转换 1") {
+      val scheduler = Reflow.create(
+        Trait("int2str 1", TRANSIENT, kces.int, kces.str) { ctx =>
+          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).get))
+        }).next(transformer)
+        .submit("reflow test 1", kces.str)
         .start(kces.str -> "11111", implicitly)
       assertResult("11111")(scheduler.sync()(kces.str))
     }
-    Scenario("全局转换") {
+    Scenario("[不]转换 2") {
       val scheduler = Reflow.create(
-        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
-          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
-        }).next(transformer)
-        .submit("reflow test", kces.str)
-        .start(kces.str -> "11111", implicitly)
-      assertResult("11111")(scheduler.sync()(kces.str))
+        Trait("int2str 2", TRANSIENT, kces.int, kces.str) { ctx =>
+          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).get))
+        }, transformer).next(transformer)
+        .submit("reflow test 2", kces.int)
+        .start(kces.str -> "22222", implicitly)
+      assertResult(22222)(scheduler.sync()(kces.int))
     }
   }
 
