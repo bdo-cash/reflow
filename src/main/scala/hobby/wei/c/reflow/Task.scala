@@ -93,7 +93,7 @@ abstract class Task protected() {
   /**
     * 发送一个进度。
     *
-    * @param _progress 进度百分百，取值区间[0, 1]，必须是递增的。
+    * @param _progress 进度百分比，取值区间[0, 1]，必须是递增的。
     */
   final def progress(_progress: Float): Unit = {
     val s = String.valueOf(_progress)
@@ -105,7 +105,7 @@ abstract class Task protected() {
     * 发送一个进度。
     *
     * @param step 进度的分子。必须是递增的。
-    * @param sum  进度的分母。必须大于`step`且不可变。
+    * @param sum  进度的分母。必须大于等于`step`且不可变。
     */
   final def progress(step: Int, sum: Int): Unit = env.tracker.onTaskProgress(
     trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env.out, env.subDepth)

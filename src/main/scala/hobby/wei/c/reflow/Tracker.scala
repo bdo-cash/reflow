@@ -42,7 +42,8 @@ import scala.util.control.Breaks._
   * @version 1.0, 26/06/2016;
   *          1.1, 31/01/2018, 重启本项目直到完成；
   *          1.2, 05/07/2018, 更新以便支持`Pulse`功能；
-  *          1.3, 03/23/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法。
+  *          1.3, 23/03/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法；
+  *          1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug。
   * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
   * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -52,12 +53,12 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在`Reinforce`阶段，会从外部传入。
   // 因此有这样的设计。
-  // 1.3, 03/23/2019, 将`false`改为了`true`。
+  // 1.3, 23/03/2019, 将`false`改为了`true`。
   @volatile private var cacheInited: Boolean = outer.fold(true)(_.isReinforcing)
-  // 1.3, 03/23/2019, 最外层的`Tracker`在各个阶段（`Reinforce`）都是同一个实例，因此本变量也是同一个实例。
+  // 1.3, 23/03/2019, 最外层的`Tracker`在各个阶段（`Reinforce`）都是同一个实例，因此本变量也是同一个实例。
   private final lazy val reinforceCache = outer.fold(new ReinforceCache) { env =>
     if (isPulseMode) assert(!env.isReinforcing)
-    // 1.3, 03/23/2019, 去掉`env.obtainCache.get`后面的`OrElse(new ReinforceCache)`。
+    // 1.3, 23/03/2019, 去掉`env.obtainCache.get`后面的`OrElse(new ReinforceCache)`。
     if (env.isReinforcing) env.obtainCache.get else new ReinforceCache
   }
 
@@ -67,7 +68,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
   final lazy val subDepth: Int = outer.fold(0)(_.subDepth + 1)
 
   private final def getOrInitFromOuterCache(trat: String = null, sub: Option[ReinforceCache] = None): ReinforceCache = {
-    // 1.3, 03/23/2019, 本操作和下面的`cache init`是不相干的两件事。本操作有可能执行多次，因为有可能是多个并行子任务。
+    // 1.3, 23/03/2019, 本操作和下面的`cache init`是不相干的两件事。本操作有可能执行多次，因为有可能是多个并行子任务。
     // `Reinforce`阶段，`cacheInited`生来为`true`，不需要初始化，也就不会触发本方法递归，因此`sub`始终为`None`, 不会
     // 引起不必要的多余调用，结果是直接返回（不过`getCache`和上面`obtainCache`会触发循环递归，直到最外层的`Tracker`或`reinforceCache`已经初始化）；
     // 只是在非`Reinforce`阶段，会有一些重复不必要的调用，但没有更好的办法。
@@ -168,7 +169,7 @@ private[reflow] object Tracker {
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
-    private lazy val reporter = if (debugMode && !policy.isFluentMode) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
+    private lazy val reporter = if (debugMode && !policy.isFluentMode/*受`snatcher`的参数的牵连*/) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
     @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
@@ -380,7 +381,12 @@ private[reflow] object Tracker {
         flow.putWith(map, nulls, ignoreDiffType = false, fullVerify = true)
         flow
       }
-      onTransGlobal(outFlowTrimmed, transOut)
+      // 1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug。
+      // bug fix: 将本行移到下面了。
+      // onTransGlobal(outFlowTrimmed, transOut)
+      // 1.4, 08/04/2019, bug 的复现方法，恢复上一行的同时，再启用下一行：
+      // Thread.sleep(100)
+      val trimmed = outFlowTrimmed
       prevOutFlow = transOut
       if (next.nonNull) {
         outFlowTrimmed = new Out(reflow.basis.outsFlowTrimmed(next.name$))
@@ -390,6 +396,8 @@ private[reflow] object Tracker {
         outFlowTrimmed = transOut
         // nothing ...
       }
+      // 1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug。
+      onTransGlobal(trimmed, transOut)
     }
 
     private def joinOutFlow(flow: Out): Unit = if (flow /*input任务可能是一样的*/ ne outFlowTrimmed) outFlowTrimmed.putWith(flow._map, flow._nullValueKeys,
