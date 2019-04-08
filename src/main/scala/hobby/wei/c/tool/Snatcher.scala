@@ -16,10 +16,10 @@
 
 package hobby.wei.c.tool
 
+import hobby.chenai.nakam.basis.TAG
+import hobby.chenai.nakam.lang.J2S.NonNull
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import hobby.chenai.nakam.basis.TAG
-
 import scala.util.control.Breaks._
 
 /**
@@ -48,7 +48,8 @@ import scala.util.control.Breaks._
   *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 24/01/2018;
-  *          2.0, 07/07/2018, 增加可重入（`reentrant`）能力。
+  *          2.0, 07/07/2018, 增加可重入（`reentrant`）能力；
+  *          2.1, 08/04/2019, 重构。
   */
 class Snatcher {
   private val scheduling = new AtomicBoolean(false)
@@ -68,13 +69,13 @@ class Snatcher {
     * 可重入（`reentrant`）能力可能的用法是与`queAc()`结合，并明确知晓嵌套状况，但细节仍需仔细斟酌。2.0 实现仅提供一种选择，但不一定适用。
     *
     * @param doSomething  要执行的任务。
-    * @param forReentrant 是否需要可重入（`reentrant`）能力。`true`表示需要（默认值），`false`拒绝。
+    * @param forReentrant 是否需要可重入（`reentrant`）能力。`true`表示需要，`false`拒绝（默认值）。
     *                     用于执行权已经被抢占而当前可能正处于该线程（当前调用嵌套于正在执行的另一个`doSomething`内）的情况。
-    * @return `true` 抢占成功并执行任务，`false`抢占失败，未执行任务。
+    * @return `true`抢占成功并执行任务，`false`抢占失败，未执行任务。
     */
-  def tryOn(doSomething: => Unit, forReentrant: Boolean = true): Boolean = {
+  def tryOn(doSomething: => Unit, forReentrant: Boolean = false): Boolean = {
     // 同一个线程，说明重入（`reentrant`）了。这种情况下，如果本方法的当前调用未结束，则必然处于抢占而未释放的状态中。
-    if (forReentrant && isReentrant) {
+    if (forReentrant && tryReentrant()) {
       doSomething
       true
     } else if (snatch()) {
@@ -95,11 +96,7 @@ class Snatcher {
     */
   def snatch(): Boolean = {
     signature.set(true) // 必须放在前面。标识新的调度请求，防止遗漏。
-    if (scheduling.compareAndSet(false, true)) {
-      signature.set(false)
-      thread.set(Thread.currentThread)
-      true
-    } else false
+    tryLock()
   }
 
   /**
@@ -114,20 +111,32 @@ class Snatcher {
     // 再看看是不是又插入了新任务，并重新竞争锁定。
     // 如果不要sSignature的判断而简单再来一次是不是就解决了问题呢？
     // 不能。这个再来一次的问题会递归。
-    if (signature.get() && scheduling.compareAndSet(false, true)) {
-      signature.set(false) // 等竞争到了再置为false.
-      thread.set(Thread.currentThread)
-      true // continue
-    } else false // break
+    signature.get && tryLock()
   }
+
+  private def tryLock() = if (scheduling.compareAndSet(false, true)) {
+    signature.set(false) // 等竞争到了再置为false.
+    thread.set(Thread.currentThread)
+    true // continue
+  } else false // break
 
   /**
     * @return 当前是否可重入。
     */
-  def isReentrant: Boolean = thread.get == Thread.currentThread
+  private def tryReentrant(): Boolean = {
+    val t = thread.get
+    if (t eq Thread.currentThread) true
+    else if (t.isNull) false
+    // 情况复杂，不能这样处理。见`Tracker.snatcher4Init`用法。
+    // 针对于并行情况，存在多线程同时调用，而有需要`可重入`能力，不能简单的抛出异常。
+    // else if (debugMode) throw new ReentrantLockError("非当前线程[`tryOn()`的嵌套情况]，不可启用`可重入`功能。")
+    else false
+  }
 }
 
 object Snatcher {
+  class ReentrantLockError(msg: String) extends Error(msg)
+
   /**
     * 为避免多线程的阻塞，提高运行效率，可使用本组件将`action`队列化（非`顺序化`）。
     * <p>

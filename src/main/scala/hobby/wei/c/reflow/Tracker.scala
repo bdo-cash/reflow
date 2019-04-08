@@ -74,14 +74,14 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
     // 只是在非`Reinforce`阶段，会有一些重复不必要的调用，但没有更好的办法。
     sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
     if (!cacheInited) {
-      snatcher4Init.tryOn {
+      snatcher4Init.tryOn ({
         if (!cacheInited) {
           outer.foreach { env =>
             env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(reinforceCache))
           }
           cacheInited = true
         }
-      }
+      }, true)
     }
     reinforceCache
   }

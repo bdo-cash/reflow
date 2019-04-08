@@ -16,17 +16,20 @@
 
 package reflow.test
 
+import hobby.chenai.nakam.lang.J2S.{future2Scala, Obiter, Run}
+import hobby.wei.c.reflow.Reflow
+import hobby.wei.c.tool
+import hobby.wei.c.tool.Snatcher.ReentrantLockError
+import org.scalatest._
 import java.util
 import java.util.concurrent.{LinkedBlockingQueue => _, _}
-import hobby.chenai.nakam.lang.J2S.{future2Scala, Obiter, Run}
-import hobby.wei.c.tool
-import org.scalatest._
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 13/03/2018
   */
 class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
+  Reflow.setDebugMode(true)
 
   Feature("Snatcher 测试") {
     /*Scenario("并发不同步测试") { // 并不会发生
@@ -45,6 +48,36 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
       assert(true)
     }*/
 
+    Scenario("Reentrant 抛出异常测试") {
+      val snatcher = new tool.Snatcher
+      new Thread(snatcher.tryOn({
+        info("第 1 层 tryOn(...)")
+        snatcher.tryOn({
+          info("第 2 层 tryOn(...)")
+          snatcher.tryOn({
+            info("第 3 层 tryOn(...)")
+            info("do something")
+            Thread.sleep(3000)
+            info("第 3 层 tryOn(...), Done.")
+          }, true)
+          info("第 2 层 tryOn(...), Done.")
+        }, true)
+        info("第 1 层 tryOn(...), Done.")
+      }, true).run$).start()
+
+      Thread.sleep(2000)
+      assertThrows[ReentrantLockError] {
+        snatcher.tryOn({
+          info("第 1 层")
+          snatcher.tryOn({
+            info("第 2 层")
+            info("第 2 层, Done.")
+          }, true)
+          info("第 1 层, Done.")
+        }, true)
+      }
+    }
+
     Scenario("传名参数") {
       val snatcher = new tool.Snatcher.ActionQueue(false)
       val future = new FutureTask[Int](new Callable[Int] {
@@ -56,7 +89,7 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
           Thread.sleep(5000)
           println("抢占 | Done.")
         }
-      }.run$)
+        }.run$)
       Thread.sleep(2000)
       snatcher.queAc {
         println("在 snatcher 调度器内部执行")
@@ -98,7 +131,7 @@ class SnatcherSpec extends AsyncFeatureSpec with GivenWhenThen {
                       stop = true
                       println(s"Throwable<<<<<<thread:${Thread.currentThread.getId}>>>>>>第${count}次计算")
                   }
-                }.run$
+                  }.run$
               }
             }
           })
