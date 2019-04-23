@@ -16,8 +16,9 @@
 
 package reflow.test
 
-import hobby.wei.c.reflow._
+import hobby.wei.c.reflow.{Kce, _}
 import hobby.wei.c.reflow.implicits._
+import reflow.test.enum._
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -29,6 +30,14 @@ object kces {
   lazy val str = new Kce[String]("str") {}
   lazy val outputstr = new Kce[String]("outputstr") {}
   lazy val seq = new Kce[Seq[_]]("seq") {}
+  lazy val enum = new Kce[EnumTest.Tpe]("enum") {}
+}
+
+object enum {
+  object EnumTest extends Enumeration {
+    type Tpe = Value
+    val A, B = Value
+  }
 }
 
 object trans {

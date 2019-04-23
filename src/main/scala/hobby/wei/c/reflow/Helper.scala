@@ -29,10 +29,11 @@ object Helper {
     def empty(): immutable.Set[Kce[_ <: AnyRef]] = immutable.Set.empty
 
     def +(ks: Kce[_ <: AnyRef]*): Builder = new Builder + (ks: _*)
+
     class Builder private[reflow]() {
       private val keys = new mutable.HashSet[Kce[_ <: AnyRef]]
 
-      def +(ks: Kce[_ <: AnyRef]*): Builder = {
+      def +(ks: Kce[_ <: AnyRef]*): this.type = {
         keys ++= ks.ensuring(_.forall(_.nonNull))
         this
       }
@@ -54,12 +55,12 @@ object Helper {
     class Builder private[reflow]() {
       private val trans = new mutable.HashSet[Transformer[_ <: AnyRef, _ <: AnyRef]]
 
-      def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): Builder = {
+      def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): this.type = {
         trans ++= ts.ensuring(_.forall(_.nonNull))
         this
       }
 
-      def retain[O <: AnyRef](kce: Kce[O]): Builder = this + Transformers.retain[O](kce)
+      def retain[O <: AnyRef](kce: Kce[O]): this.type = this + Transformers.retain[O](kce)
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }

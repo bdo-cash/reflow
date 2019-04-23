@@ -68,7 +68,7 @@ object implicits {
 
   implicit def transBdr2Ok(tb: Helper.Transformers.Builder): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = tb ok()
 
-  implicit def kceKv2Bdr[V <: AnyRef](kv: (Kce[V], V)): In.Builder = In + (kv._1.key, kv._2)
+  implicit def kceKv2Bdr[V <: AnyRef](kv: (Kce[V], V)): In.Builder = In + kv
 
   implicit def kceKv2Ok[V <: AnyRef](kv: (Kce[V], V)): In = kv ok()
 

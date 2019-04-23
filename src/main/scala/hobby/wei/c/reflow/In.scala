@@ -17,8 +17,8 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.lang.J2S
-import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
+import hobby.wei.c.reflow.Dependency.MapTo
 import hobby.wei.c.tool.Locker
 
 import scala.collection._
@@ -26,7 +26,8 @@ import scala.ref.WeakReference
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 14/08/2016
+  * @version 1.0, 14/08/2016;
+  *          2.0, 23/04/2019, 修复 Scala 枚举在`In`中的 Bug。
   */
 abstract class In protected(_keys: Set[Kce[_ <: AnyRef]], _trans: Transformer[_ <: AnyRef, _ <: AnyRef]*) {
   private[reflow] val keys: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(_keys.toSet))
@@ -38,45 +39,46 @@ abstract class In protected(_keys: Set[Kce[_ <: AnyRef]], _trans: Transformer[_ 
 }
 
 object In {
-  def map[T <: AnyRef](kce: Kce[T], value: T): In = map(kce.key, value)
+  def map(map: Map[String, Any], mapKes: Map[Kce[_ <: AnyRef], AnyRef], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): In = new M(
+    generate(map) ++ mapKes.keySet,
+    (map.mutable /: mapKes) { (m, kv) => m += (kv._1.key, kv._2) }, trans: _*)
 
-  def map(key: String, value: Any): In = map(Map((key, value)))
+  def from(input: Out): In = new M(input._keys.values.toSet, input._map)
 
-  def map(map: Map[String, Any], trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): In = new M(generate(map), map, trans: _*)
-
-  def from(input: Out): In = new M(generate(input._map) ++ input._nullValueKeys.values, input._map)
-
-  def +[T <: AnyRef](kce: Kce[T], value: T): Builder = this + (kce.key, value)
+  def +[T <: AnyRef](kv: (Kce[T], T)): Builder = new Builder + kv
 
   def +(key: String, value: Any): Builder = new Builder + (key, value)
 
   class Builder private[reflow]() {
+    private lazy val mapKes = new mutable.AnyRefMap[Kce[_ <: AnyRef], AnyRef]
     private lazy val map = new mutable.AnyRefMap[String, Any]
     private lazy val tb: Helper.Transformers.Builder = new Helper.Transformers.Builder
 
-    def +[T <: AnyRef](kce: Kce[T], value: T): Builder = this + (kce.key, value)
+    def +[T <: AnyRef](kv: (Kce[T], T)): this.type = {
+      require(!map.contains(kv._1.key))
+      mapKes += kv
+      this
+    }
 
-    def +(key: String, value: Any): Builder = {
+    def +(key: String, value: Any): this.type = {
+      require(!mapKes.exists(_._1.key == key))
       map += (key, value)
       this
     }
 
-    def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): Builder = {
+    def +(ts: Transformer[_ <: AnyRef, _ <: AnyRef]*): this.type = {
       tb + (ts: _*)
       this
     }
 
-    def ok(): In = if (tb.isNull) In.map(map) else In.map(map, tb.ok().toSeq: _*)
+    def ok(): In = In.map(map, mapKes, tb.ok().toSeq: _*)
   }
 
-  private def generate(map: Map[String, Any]): Set[Kce[_ <: AnyRef]] = {
-    val set = new mutable.HashSet[Kce[_ <: AnyRef]]
-    map.foreach { kv: (String, Any) => set.add(new Kce(kv._1, kv._2.getClass, 0, true) {}) }
-    set
-  }
+  private def generate(map: Map[String, Any]): Set[Kce[_ <: AnyRef]] = if (map.isEmpty) Set.empty else
+    (new mutable.HashSet[Kce[_ <: AnyRef]] /: map) { (set, kv) => set += new Kce(kv._1, kv._2.getClass, 0, true) {} }
 
   private class M private[reflow](keys: Set[Kce[_ <: AnyRef]], map: Map[String, Any],
-                                  trans: Transformer[_ <: AnyRef, _ <: AnyRef]*) extends In(keys: Set[Kce[_ <: AnyRef]], trans: _*) {
+                                  trans: Transformer[_ <: AnyRef, _ <: AnyRef]*) extends In(keys, trans: _*) {
     override protected def loadValue(key: String) = map.get(key)
   }
 

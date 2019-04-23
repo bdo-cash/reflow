@@ -23,6 +23,7 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
+import reflow.test.enum.EnumTest
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -140,6 +141,14 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
       assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
+    }
+
+    Scenario("[Scala 枚举]在`In`中的 Bug") {
+      val trat = Trait("t1", SHORT, none, kces.enum) { _ => }
+      val scheduler = Reflow.create(trat).submit("枚举", kces.enum)
+        .start(kces.enum -> EnumTest.A, implicitly)
+      info("输出：" + scheduler.sync())
+      assertResult(EnumTest.A)(scheduler.sync()(kces.enum))
     }
   }
 

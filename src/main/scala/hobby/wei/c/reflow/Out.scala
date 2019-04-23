@@ -30,7 +30,7 @@ import scala.collection._
 class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
   private[reflow] def this() = this(Map.empty[String, Kce[_ <: AnyRef]])
 
-  private[reflow] def this(keys: Set[Kce[_ <: AnyRef]]) = this((new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: keys) { (m, k) => m += (k.key, k) })
+  def this(keys: Set[Kce[_ <: AnyRef]]) = this((new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: keys) { (m, k) => m += (k.key, k) })
 
   // 仅读取
   private[reflow] val _keys = map.toMap[String, Kce[_ <: AnyRef]]
