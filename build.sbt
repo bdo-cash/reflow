@@ -2,9 +2,9 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "1.0.3-SNAPSHOT"
+version := "1.0.5"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.11.11"
 
 crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
