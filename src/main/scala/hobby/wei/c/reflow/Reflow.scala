@@ -214,7 +214,7 @@ object Reflow {
         }
       }
     }
-    create(trat).submit(trat.name$, none).start(none, new reflow.Feedback.Adapter)(FullDose, null)
+    create(trat).submit(none).start(none, new reflow.Feedback.Adapter)(FullDose, null)
     future
   }
 
@@ -276,19 +276,12 @@ object Reflow {
 
     private class Feedback4Observer(observer: GlobalTrackObserver) extends Feedback {
       private def reportOnUpdate(gt: GlobalTrack = currentGTrack): Unit = eatExceptions(observer.onUpdate(gt, obtainer))
-
       override def onPending(): Unit = reportOnUpdate()
-
       override def onStart(): Unit = reportOnUpdate()
-
       override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = reportOnUpdate(currentGTrack.progress(progress))
-
       override def onComplete(out: Out): Unit = reportOnUpdate()
-
       override def onUpdate(out: Out): Unit = reportOnUpdate()
-
       override def onAbort(trigger: Option[Trait]): Unit = reportOnUpdate()
-
       override def onFailed(trat: Trait, e: Exception): Unit = reportOnUpdate()
     }
     private[reflow] class Feedback4GlobalTrack extends Feedback {
@@ -330,8 +323,8 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  private[reflow] class Impl private[reflow](override val name: String, override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
-    Kce[_ <: AnyRef]], override val desc: String = null) extends Reflow(name: String, basis: Dependency.Basis, desc: String) with TAG.ClassName {
+  private[reflow] class Impl private[reflow](override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
+    Kce[_ <: AnyRef]]) extends Reflow(basis: Dependency.Basis) with TAG.ClassName {
     override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl = {
       require(feedback.nonNull)
       require(policy.nonNull)
@@ -354,7 +347,7 @@ object Reflow {
         trackPolicy.genDelegator(feedback4track).join(policy.genDelegator(feedback.wizh(poster))),
         policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
-      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(Impl.this, scheduler, outer.nonNull))
+      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, outer.nonNull))
       // 异步反馈新增任务到全局跟踪器
       Reflow.submit$ {
         scheduler.start$()
@@ -362,22 +355,19 @@ object Reflow {
       scheduler
     }
 
-    override def torat(_period: Period.Tpe = basis.maxPeriod()) = new ReflowTrait(this) {
-      override protected def name() = reflow.name
-
+    override def torat(_name: String, _period: Period.Tpe = basis.maxPeriod(), _desc: String = null) = new ReflowTrait(this) {
+      override protected def name() = _name
       override protected def requires() = inputRequired.values.toSet
-
       override protected def outs() = reflow.basis.outs
-
       override protected def period() = _period.ensuring(_ >= reflow.basis.maxPeriod())
-
-      override protected def desc() = if (reflow.desc.isNull || reflow.desc.isEmpty) name$ else reflow.desc
+      override protected def desc() = if (_desc.isNull || _desc.isEmpty) name$ else _desc
     }
+
+    override def fork() = new Impl(basis, inputRequired)
   }
 }
 
-abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: String = null) {
-  require(name.nonEmpty)
+abstract class Reflow(val basis: Dependency.Basis) {
   /**
     * 启动任务。可并行启动多个。
     *
@@ -405,7 +395,7 @@ abstract class Reflow(val name: String, val basis: Dependency.Basis, val desc: S
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
-  def torat(period: Period.Tpe = basis.maxPeriod()): ReflowTrait
+  def torat(name: String, period: Period.Tpe = basis.maxPeriod(), desc: String = null): ReflowTrait
 
-  override def toString = s"[Reflow]name:$name, desc:$desc."
+  def fork(): Reflow
 }

@@ -32,7 +32,8 @@ import scala.util.control.Breaks._
   * 注意: 对本类的任何操作都应该是单线程的, 否则依赖关系是不可预期的, 没有意义。
   *
   * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 02/07/2016
+  * @version 1.0, 02/07/2016;
+  *          1.1, 07/09/2019, bug fix.
   */
 class Dependency private[reflow]() extends TAG.ClassName {
   private val basis = new BasisMutable
@@ -144,8 +145,8 @@ class Dependency private[reflow]() extends TAG.ClassName {
     *
     * @param outputs 输出值的key列表。
     * @return { @link Scheduler.Starter}接口。
-    */
-  def submit(name: String, outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
+    */// 重构: 06/09/2019. 简化参数。
+  def submit(outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
     if (debugMode) log.w("[submit]")
     Assist.requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
@@ -161,7 +162,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     } // 避免空值
     // 必须先于下面transGlobal的读取。
     val trimmed = Dependency.trimOutsFlow(basisx, outputs, uselesx)
-    new Reflow.Impl(name, new Dependency.Basis {
+    new Reflow.Impl(new Dependency.Basis {
       override val traits = basisx.traits.to[immutable.Seq]
       override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
       override val transformers = basisx.transformers.mapValues(_.toSet).toMap
@@ -177,6 +178,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
   private def copy(dependency: Dependency): Unit = {
     dependency.names.foreach(names += _)
     basis.copyFrom(dependency.basis)
+    // bug fix: 07/09/2019. 增加以下两行。
+    useless ++= dependency.useless.mapValues(_.toMap)
+    inputRequired ++= dependency.inputRequired
   }
 }
 
@@ -296,7 +300,7 @@ object Dependency {
   }
 
   implicit class MapTo[K <: AnyRef, V](map: Map[K, V]) {
-    // bug fix: 09/06/2019. 上次修改后出现了一个 bug: 大部分使用中其实是需要它的 copy, 而不是本身。
+    // bug fix: 06/09/2019. 上次修改后出现了一个 bug: 大部分使用中其实是需要它的 copy, 而不是本身。
     def mutable = /*if (map.isInstanceOf[scala.collection.mutable.AnyRefMap[K, V]])
        map.as[scala.collection.mutable.AnyRefMap[K, V]] else*/ new scala.collection.mutable.AnyRefMap[K, V] ++= map
 

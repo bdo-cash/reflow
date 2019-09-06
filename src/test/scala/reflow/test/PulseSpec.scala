@@ -56,7 +56,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
         })
-        .submit("pulseX0", kces.str)
+        .submit(kces.str)
 
       Given("创建一个顶层`reflow`")
       val reflow = Reflow.create(Trait("pulse-0", LONG, kces.str) { ctx =>
@@ -68,7 +68,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
-      }).and(reflowX.torat())
+      }).and(reflowX.torat("pulseX0"))
         .next(Trait("pulse-1", LONG, kces.str, kces.str) { ctx =>
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
@@ -78,7 +78,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
         })
-        .submit("pulseX1", kces.str)
+        .submit(kces.str)
 
       @volatile var callableOut: Out = null
       val future = new FutureTask[Out](new Callable[Out] {

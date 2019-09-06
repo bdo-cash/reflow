@@ -458,7 +458,7 @@ private[reflow] object Tracker {
     }
 
     private def interruptSync(reinforce: Boolean) {
-      Monitor.duration(this, reflow.name, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)
+      Monitor.duration(this, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)
       if (debugMode) log.i("[interruptSync]------------------------------------------------------------------------------reinforce:%s.", reinforce)
       normalDone = true
       if (reinforce) reinforceDone = true
@@ -798,13 +798,13 @@ private[reflow] object Tracker {
     }
 
     override private[reflow] def reportOnComplete(out: Out): Unit = {
-      log.i("[reportOnComplete]reflow:%s, step:%d, sub:%f, sum:%d, _stateResetted:%b, out:%s.", reflow.name.s, step, sub, sum, beenReset, out)
+      log.i("[reportOnComplete]step:%d, sub:%f, sum:%d, _stateResetted:%b, out:%s.", step, sub, sum, beenReset, out)
       assert(beenReset && step == sum - 1 && sub == 0)
       super.reportOnComplete(out)
     }
 
     override private[reflow] def reportOnUpdate(out: Out): Unit = {
-      log.i("[reportOnUpdate]reflow:%s, out:%s.", reflow.name.s, out)
+      log.i("[reportOnUpdate]out:%s.", out)
       super.reportOnUpdate(out)
     }
   }
