@@ -24,7 +24,6 @@ import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist.Throws
 import hobby.wei.c.reflow.Dependency.{BasisMutable, IsPar, MapTo}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
-
 import scala.collection.{mutable, Set, _}
 import scala.util.control.Breaks._
 
@@ -297,16 +296,17 @@ object Dependency {
   }
 
   implicit class MapTo[K <: AnyRef, V](map: Map[K, V]) {
-    def mutable = if (map.isInstanceOf[scala.collection.mutable.AnyRefMap[K, V]])
-      map.as[scala.collection.mutable.AnyRefMap[K, V]] else new scala.collection.mutable.AnyRefMap[K, V] ++= map
+    // bug fix: 09/06/2019. 上次修改后出现了一个 bug: 大部分使用中其实是需要它的 copy, 而不是本身。
+    def mutable = /*if (map.isInstanceOf[scala.collection.mutable.AnyRefMap[K, V]])
+       map.as[scala.collection.mutable.AnyRefMap[K, V]] else*/ new scala.collection.mutable.AnyRefMap[K, V] ++= map
 
-    def concurrent = if (map.isInstanceOf[scala.collection.concurrent.TrieMap[K, V]])
-      map.as[scala.collection.concurrent.TrieMap[K, V]] else new scala.collection.concurrent.TrieMap[K, V] ++= map
+    // def concurrent = if (map.isInstanceOf[scala.collection.concurrent.TrieMap[K, V]])
+    //   map.as[scala.collection.concurrent.TrieMap[K, V]] else new scala.collection.concurrent.TrieMap[K, V] ++= map
   }
 
   implicit class SetTo[T](set: Set[T]) {
-    def mutable = if (set.isInstanceOf[scala.collection.mutable.HashSet[T]])
-      set.as[scala.collection.mutable.HashSet[T]] else new scala.collection.mutable.HashSet[T] ++= set
+    def mutable = /*if (set.isInstanceOf[scala.collection.mutable.HashSet[T]])
+      set.as[scala.collection.mutable.HashSet[T]] else*/ new scala.collection.mutable.HashSet[T] ++= set
   }
 
   implicit class IsPar(trat: Trait) {
