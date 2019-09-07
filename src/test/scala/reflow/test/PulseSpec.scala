@@ -103,7 +103,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         }
 
         override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {
-          println("[onAbort]trat:" + trat.name$.s + ", e:" + (e.getClass.getName + ":" + e.getMessage))
+          println("[onFailed]trat:" + trat.name$.s + ", e:" + (e.getClass.getName + ":" + e.getMessage))
         }
       }
 
