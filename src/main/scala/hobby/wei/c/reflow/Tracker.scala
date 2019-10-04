@@ -43,7 +43,8 @@ import scala.util.control.Breaks._
   *          1.1, 31/01/2018, 重启本项目直到完成；
   *          1.2, 05/07/2018, 更新以便支持`Pulse`功能；
   *          1.3, 23/03/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法；
-  *          1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug。
+  *          1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug；
+  *          1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
   * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
   * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -210,7 +211,11 @@ private[reflow] object Tracker {
       // 断言`trat`与`remaining`的一致性。
       assert(runner.trat == tratGlobal || (tratGlobal.isPar && tratGlobal.asPar.traits().contains(runner.trat)))
       // 处理对`pulse`的支持。
-      if (isPulseMode && !isInput(runner.trat)) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
+      if (isPulseMode && !isInput(runner.trat)) {
+        // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
+        // bug fix: 加了如下判断。
+        if(!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
+      }
       runnersParallel -= runner
       // 并行任务全部结束
       if (runnersParallel.isEmpty) snatcher.queAc {
@@ -314,14 +319,15 @@ private[reflow] object Tracker {
         //progress.put(trat.name$, 0f)
         runnersParallel += ((new Runner(Env(trat, this)), None))
       }
-      if (isPulseMode && !isInput(trat)) runnersParallel.keys.foreach { runner =>
-        pulse.forward(subDepth, runner.trat, () => Worker.scheduleRunner(runner, bucket = true))
-      } else {
-        runnersParallel.keys.foreach { runner =>
-          Worker.scheduleRunner(runner, bucket = false)
-        }
-        Worker.scheduleBuckets()
+      if (isPulseMode && !isInput(trat)) runnersParallel.keys.foreach { runner: Runner =>
+        // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
+        // bug fix: 加了如下判断。
+        if (runner.trat.is4Reflow) Worker.scheduleRunner(runner, bucket = false)
+        else pulse.forward(subDepth, runner.trat, () => Worker.scheduleRunner(runner, bucket = true))
+      } else runnersParallel.keys.foreach {
+        Worker.scheduleRunner(_, bucket = false)
       }
+      Worker.scheduleBuckets()
     }
 
     override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {

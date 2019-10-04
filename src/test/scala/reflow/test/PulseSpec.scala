@@ -21,45 +21,48 @@ import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
+import hobby.wei.c.reflow.Feedback.Progress.Policy
 import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
-  * @version 1.0, 07/07/2018
+  * @version 1.0, 07/07/2018;
+  *          1.5, 04/10/2019, fix 了一个很重要的 bug。
   */
 class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(false)
+//    Reflow.setConfig(SINGLE_THREAD)
   }
 
+  implicit lazy val policy: Policy = Policy.Fluent
   implicit lazy val poster: Poster = null
 
   Feature("`Pulse`脉冲步进流式数据处理") {
     Scenario("数据将流经`集成任务集（Reflow）`，并始终保持输入时的先后顺序，多组数据会排队进入同一个任务。") {
       Given("创建一个`reflowX`作为嵌套的`SubReflow`")
-      val reflowX = Reflow.create(Trait("pulse-0", LONG, kces.str) { ctx =>
+      val reflowX0 = Reflow.create(Trait("pulse-0", SHORT, kces.str) { ctx =>
         val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(6000)
+          Thread.sleep(2000)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
       })
-        .next(Trait("pulse-1", LONG, kces.str, kces.str) { ctx =>
+        .next(Trait("pulse-1", SHORT, kces.str, kces.str) { ctx =>
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-            Thread.sleep(8000)
+            Thread.sleep(5000)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
         })
-        .submit(kces.str)
+        .submit(none)
 
-      Given("创建一个顶层`reflow`")
-      val reflow = Reflow.create(Trait("pulse-0", LONG, kces.str) { ctx =>
+      val reflowX1 = Reflow.create(Trait("pulse-2", SHORT, kces.str) { ctx =>
         val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
@@ -68,12 +71,34 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
-      }).and(reflowX.torat("pulseX0"))
-        .next(Trait("pulse-1", LONG, kces.str, kces.str) { ctx =>
+      }).and(reflowX0.torat("pulseX0"))
+        .next(Trait("pulse-3", SHORT, kces.str, kces.str) { ctx =>
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
             Thread.sleep(3000)
+          }
+          ctx.cache[Integer](kces.int, times + 1)
+          ctx.output(kces.str, times + "")
+        })
+        .submit(none)
+
+      Given("创建一个顶层`reflow`")
+      val reflow = Reflow.create(Trait("pulse-4", SHORT, kces.str) { ctx =>
+        val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+        println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
+        if (times == 1) {
+          println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
+          Thread.sleep(1000)
+        }
+        ctx.cache[Integer](kces.int, times + 1)
+        ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
+      }).and(reflowX1.torat("pulseX1"))
+        .next(Trait("pulse-5", SHORT, kces.str, kces.str) { ctx =>
+          val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+          if (times % 2 == 0) {
+            println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
+            Thread.sleep(2000)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
@@ -86,9 +111,9 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       })
 
       Then("创建 pulse")
-      lazy val pulse: Pulse = reflow.pulse(null, feedback, true)
+      lazy val pulse: Pulse = reflow.pulse(null, feedbackPulse, true)
 
-      lazy val feedback = new Pulse.Feedback.Adapter {
+      lazy val feedbackPulse = new Pulse.Feedback.Adapter {
         override def onComplete(serialNum: Long, out: Out): Unit = {
           if (serialNum == 4) {
             callableOut = out
@@ -104,6 +129,13 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
 
         override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {
           println("[onFailed]trat:" + trat.name$.s + ", e:" + (e.getClass.getName + ":" + e.getMessage))
+        }
+      }
+
+      lazy val feedback = new Feedback.Adapter {
+        override def onComplete(out: Out): Unit = {
+          callableOut = out
+          future.run()
         }
       }
 

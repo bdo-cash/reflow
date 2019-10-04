@@ -16,21 +16,19 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.atomic.AtomicLong
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.ThrowMsg
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.pool.S._2S
-import hobby.wei.c.tool
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Pulse.Reporter
-import hobby.wei.c.reflow.Reflow.{P_HIGH, logger => log}
+import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
 import hobby.wei.c.reflow.State._
-
+import hobby.wei.c.tool
+import java.util.concurrent.atomic.AtomicLong
 import scala.collection.concurrent.TrieMap
 
 /**
@@ -42,7 +40,8 @@ import scala.collection.concurrent.TrieMap
   * @param reflow       每个`流处理器`都`Base`在一个主`Reflow`上。
   * @param abortIfError 当有一次输入出现错误时，是否中断。默认为`false`。
   * @author Chenai Nakam(chenai.nakam@gmail.com)
-  * @version 1.0, 01/07/2018
+  * @version 1.0, 01/07/2018;
+  *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）。
   */
 class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster) extends Scheduler {
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
@@ -59,20 +58,18 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   def input(in: In): Boolean = {
     if (isDone) false
     else {
-      Reflow.submit {
-        snatcher.queAc {
-          if (isDone) return false // `false`仅为通过编译检查，并不会给`input()`返回。
-          val pending = state.forward(PENDING)
-          // 无论我是不是第一个，原子切换。
-          head = Option(new Tactic(head, this, serialNum.getAndIncrement))
-          val tac = head
-          Reflow.submit {
-            // if (pending) reporter.reportOnPending(tac.get.serialNum)
-            tac.get.start(in)
-          }(TRANSIENT, P_HIGH)
-          ()
-        }
-      }(SHORT, P_NORMAL)
+      snatcher.queAc {
+        if (isDone) return false // `false`仅为通过编译检查，并不会给`input()`返回。
+        val pending = state.forward(PENDING)
+        // 无论我是不是第一个，原子切换。
+        head = Option(new Tactic(head, this, serialNum.getAndIncrement))
+        val tac = head
+        Reflow.submit$ {
+          // if (pending) reporter.reportOnPending(tac.get.serialNum)
+          tac.get.start(in)
+        }(TRANSIENT, (P_LOW + P_NORMAL) / 2) // 优先级较低
+        () // 返回`Unit`而不是上面的返回值`Future`。
+      }
       true
     }
   }
@@ -125,29 +122,68 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   }
 
   private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long) extends TAG.ClassName {
-    private lazy val snatcher = new tool.Snatcher.ActionQueue()
+    private lazy val snatcher = new tool.Snatcher
     private lazy val roadmap = new TrieMap[(Int, String), Out]
     private lazy val suspend = new TrieMap[(Int, String), () => Unit]
-    @volatile private var follower: Tactic = _
+    // @volatile private var follower: Tactic = _
     @volatile var scheduler: Scheduler = _
 
     // `in`参数放在这里以缩小作用域。
     def start(in: In): Unit = {
       head.foreach(follow)
-      scheduler = pulse.reflow.as[Reflow.Impl].start(in, feedback,
+      scheduler = pulse.reflow.start(in, feedback,
         /*全量进度，以便下一个输入可以在任何深度确认是否可以运行某`Task`了。*/
         Policy.FullDose,
         /*不使用外部客户代码提供的`poster`，以确保`feedback`和`cacheBack`反馈顺序问题。*/
         null, null, interact)
     }
 
-    def follow(tac: Tactic): Unit = tac.snatcher.queAc {
-      tac.follower = this
+    private def follow(tac: Tactic): Unit = {
+      // require(tac.follower.isNull)
+      // tac.follower = this
     }
 
-    def onEvolve(depth: Int, trat: Trait): Unit = suspend.remove((depth, trat.name$)).foreach(_ ())
+    private def doForward(map: TrieMap[(Int, String), () => Unit], data: TrieMap[(Int, String), Out]): Unit = snatcher.tryOn {
+      lazy val keys = data.keys
+      for ((k, go) <- map) { // 放到`map`中的肯定是并行的任务或单个任务，因此遍历时不用管它们放进去的顺序。
+        // 切记不能用`contains`，不然如果`value eq null`，则`contains`返回`false`，即使`keySet`也一样。
+        // 前一版的 bug：
+        // 1. 主要是这个原因导致的；
+        // 2. 还有一个严重影响性能的问题：如果嵌套了子层`reflow`，则必须等该层`reflow`的所有任务执行完毕才能`endRunner()`,进而
+        // 调用`interact.evolve()`，而后才能推动下一个数据的该层`reflow`继续。bug fix 已对`ReflowTrait`作了忽略处理。
+        if (keys.exists(_ == k)) {
+          if (debugMode) log.i("(%d)[doForward](%s, %s).", serialNum, k._1, k._2.s)
+          map.remove(k)
+          go()
+        }
+      }
+    }
 
-    def followerGetCache(depth: Int, trat: String): Out = roadmap.get((depth, trat)).orNull
+    private lazy val interact = new Pulse.Interact {
+      override def evolve(depth: Int, trat: Trait, cache: Out): Unit = {
+        if (debugMode) log.i("(%d)[interact.evolve](%s, %s).", serialNum, depth, trat.name$.s)
+        roadmap.put((depth, trat.name$), cache)
+        doForward(suspend, roadmap)
+      }
+
+      //********** 以上为上一个`Tactic`的输出 **********//
+      //********** 以下为当前`Tactic`的询问和交互 *******//
+
+      override def forward(depth: Int, trat: Trait, go: () => Unit): Unit = {
+        if (debugMode) log.i("(%d)[interact.forward](%s, %s).", serialNum, depth, trat.name$.s)
+        head.fold(go()) { tac =>
+          tac.suspend.put((depth, trat.name$), go)
+          doForward(tac.suspend, tac.roadmap)
+        }
+      }
+
+      override def getCache(depth: Int, trat: Trait): Out = {
+        if (debugMode) log.i("(%d)[interact.getCache](%s, %s).", serialNum, depth, trat.name$.s)
+        head.fold[Out](null) {
+          _.roadmap.remove((depth, trat.name$)).orNull
+        }
+      }
+    }
 
     private lazy val feedback = new Feedback {
       override def onPending(): Unit = pulse.snatcher.queAc {
@@ -189,30 +225,6 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
         head = None
       }
     }
-
-    private lazy val interact = new Pulse.Interact {
-      override def evolve(depth: Int, trat: Trait, cache: Out): Unit = snatcher.queAc {
-        log.i("[interact.evolve](%s, %s):", depth, trat.name$.s)
-        roadmap.put((depth, trat.name$), cache)
-        if (follower.nonNull) follower.onEvolve(depth, trat)
-      }
-
-      override def forward(depth: Int, trat: Trait, go: () => Unit): Unit = head.fold(go()) { tac =>
-        tac.snatcher.queAc {
-          if (tac.roadmap.contains((depth, trat.name$))) go()
-          else suspend.put((depth, trat.name$), go)
-          () // 返回 Unit
-        }
-      }
-
-      override def getCache(depth: Int, trat: Trait): Out = head.fold[Out](null) {
-        log.i("[interact.getCache](%s, %s).", depth, trat.name$.s)
-        // 不需要也不能使用`(tac.)snatcher`：
-        // 因为此时数据一定是就绪的（而且存储结构支持并发，不需要同步）；
-        // 而由于需要直接返回，所以不能（使用`(tac.)snatcher`）。
-        _.followerGetCache(depth, trat.name$)
-      }
-    }
   }
 }
 
@@ -251,6 +263,7 @@ object Pulse {
       * @param cache 留给下一个路过`Task`的数据。
       */
     def evolve(depth: Int, trat: Trait, cache: Out): Unit
+
     //********** 以上为上一个`Tactic`的输出 **********//
     //********** 以下为当前`Tactic`的询问和交互 *******//
     /**
@@ -262,6 +275,7 @@ object Pulse {
       *              将本参数缓存起来，以备在`evolve()`调用满足条件时，再执行本函数以推进`Task`继续。
       */
     def forward(depth: Int, trat: Trait, go: () => Unit)
+
     /**
       * 当前`Tactic`的某`Task`执行的时候，需要获得上一个`Tactic`留下的数据。
       *
@@ -275,32 +289,21 @@ object Pulse {
   implicit class WithPoster(feedback: Feedback) {
     def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Feedback {
       require(poster.nonNull)
-
       override def onPending(serialNum: Long): Unit = poster.post(feedback.onPending(serialNum))
-
       override def onStart(serialNum: Long): Unit = poster.post(feedback.onStart(serialNum))
-
       override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = poster.post(feedback.onProgress(serialNum, progress, out, depth))
-
       override def onComplete(serialNum: Long, out: Out): Unit = poster.post(feedback.onComplete(serialNum, out))
-
       override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = poster.post(feedback.onAbort(serialNum, trigger))
-
       override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = poster.post(feedback.onFailed(serialNum, trat, e))
     }
   }
 
   private[reflow] class Reporter(feedback: Feedback) {
     private[reflow] def reportOnPending(serialNum: Long): Unit = eatExceptions(feedback.onPending(serialNum))
-
     private[reflow] def reportOnStart(serialNum: Long): Unit = eatExceptions(feedback.onStart(serialNum))
-
     private[reflow] def reportOnProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onProgress(serialNum, progress, out, depth))
-
     private[reflow] def reportOnComplete(serialNum: Long, out: Out): Unit = eatExceptions(feedback.onComplete(serialNum, out))
-
     private[reflow] def reportOnAbort(serialNum: Long, trigger: Option[Trait]): Unit = eatExceptions(feedback.onAbort(serialNum, trigger))
-
     private[reflow] def reportOnFailed(serialNum: Long, trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(serialNum, trat, e))
   }
 }

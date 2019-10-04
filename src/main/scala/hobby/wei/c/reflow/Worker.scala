@@ -158,9 +158,9 @@ object Worker extends TAG.ClassName {
           if (r.nonNull && (runner.isNull || // 值越小优先级越大
             ((r.trat.priority$ + r.trat.period$.weight /*采用混合优先级*/)
               < runner.trat.priority$ + runner.trat.period$.weight))) {
-            if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> preparing exec >: index:%d, runner:%s.", index, runner)
             runner = r
             index = i
+            if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> preparing exec >: index:%d, runner:%s.", index, runner)
           }
         }
         if (runner.isNull) {
