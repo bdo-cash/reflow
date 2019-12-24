@@ -12,7 +12,7 @@
 
 思想的启发，我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架，把业务逻辑构造为**任务（Task）**。而任务之间的关系也可进一步归纳为两类：有依赖和无依赖，即：**串行**和**并行**。用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。Reflow 的设计便是围绕着处理这些任务的控制逻辑而展开。
 
-Reflow 为 _简化复杂业务逻辑中_ **多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理** 的 _编码复杂度_ 而生。通过 **要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27) 任务的[ I ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)**、基于 [**关键字** 和 **值类型**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26) 分析的智能化 [**依赖管理**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、 一致的 [**运行调度**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[**事件反馈**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25) 及 [**错误处理**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124) 接口等设计，实现了既定目标：**任务[串](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[并联](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度**。 _数据_ 即 **电流**， _任务_ 即 **元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
+**Reflow** 为简化*复杂业务逻辑中*多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理的*编码复杂度*而生。通过要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)任务的[ I](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)、基于[关键字](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)和[值类型](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)分析的智能化[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、一致的[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)及[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)接口等设计，实现了既定目标：任务[_串](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[并联_](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度。*数据* 即 **电流**，*任务* 即 **元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
 
 ##### Reflow 有以下特性：
 
@@ -46,7 +46,8 @@ Reflow 为 _简化复杂业务逻辑中_ **多[任务](https://github.com/WeiCho
       // 1. 由客户代码质量问题导致的`RuntimeException`如`NullPointerException`等，这些异常被包裹在`CodeException`里，
       // 可以通过`CodeException#getCause()`方法取出具体的异常对象。
       case c: CodeException => c.getCause
-      // 2. 客户代码自定义的`Exception`，即显式传给`Task#failed(Exception)`方法的参数，可能为`null`（虽然 Scala 认为`null`是 low level 的）。
+      // 2. 客户代码自定义的`Exception`，即显式传给`Task#failed(Exception)`方法的参数，可能
+      // 为`null`（虽然 Scala 认为`null`是 low level 的）。
       case e: Exception => e.printStackTrace()
     }
   }
