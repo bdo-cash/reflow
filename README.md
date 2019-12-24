@@ -8,15 +8,69 @@
 在一个大型系统中，往往存在着大量的业务逻辑和控制逻辑，它们是数以百计的“工作”的具体化。这些逻辑交织在一起，从整体上看，往往错综复杂。那么我们该如何抽象并简化这些复杂的逻辑呢？受
 
 > **Programs = Algorithms + Data Structures**  
-> **Algorithm = Logic + Control**
+> **Algorithm = Logic + Control**  
 
-思想的启发，我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架，把业务逻辑构造为**任务（Task）**。而任务之间的关系也可进一步归纳为两类：有依赖和无依赖，即：**串行**和**并行**。用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。本框架的设计便是围绕着处理这些任务的控制逻辑而展开。
+思想的启发，我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架，把业务逻辑构造为**任务（Task）**。而任务之间的关系也可进一步归纳为两类：有依赖和无依赖，即：**串行**和**并行**。用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。Reflow 的设计便是围绕着处理这些任务的控制逻辑而展开。
 
-本框架为 _简化复杂业务逻辑中 **多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理**_ 的 _编码复杂度_ 而生。通过 **_要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)_ 任务的[ I ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)**、基于 [_**关键字**_ 和 _**值类型**_](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26) 分析的智能化 **[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)**、一致的 **[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)**、**[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)** 及 **[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)** 接口等设计，实现了既定目标：**任务 _[串](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78) /[并](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)联_ 组合调度**。 _数据_ 即 **电流**， _任务_ 即 **元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
+Reflow 为 _简化复杂业务逻辑中_ **多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理** 的 _编码复杂度_ 而生。通过 **要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27) 任务的[ I ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)**、基于 [**关键字** 和 **值类型**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26) 分析的智能化 [**依赖管理**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、 一致的 [**运行调度**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[**事件反馈**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25) 及 [**错误处理**](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124) 接口等设计，实现了既定目标：**任务[串](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[并联](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度**。 _数据_ 即 **电流**， _任务_ 即 **元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
 
-此外还有优化的 _[可配置](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Config.scala#L19)_ [线程池](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Worker.scala#L71)、基于 _[优先级](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L58)_ 和 _[预估时长](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L63)_ 的 **按需的** 任务装载机制、便捷的 **[同](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L34)/异（默认）步** 切换调度、巧妙的 _[中断](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L51)策略_ 、任务的 _无限_ **嵌套** 组装、**浏览/[强化](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L100)** 运行模式、 _无依赖输出_ **丢弃**、事件反馈可 **[指定到线程](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Poster.scala#L20)** 和对异常事件的 _[确定性分类](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L56)_ 等设计，实现了线程的 **无** _阻塞_ 高效利用、全局 **精准** 的任务管理、内存的 _有效利用（垃圾丢弃）_ 、以及数据的 _快速加载（**浏览** 模式）_ 和进度的 _[策略化](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L154)反馈_ ，极大地满足了大型项目的需求。
+##### Reflow 有以下特性：
 
-在`Reflow`的逻辑里，首先应将复杂业务拆分成多个**功能单一**的、没有**阻塞**等待的、**单线程**结构的一系列任务集合，并将它们包装在显式定义了任务的各种属性的`Trait`里，然后使用`Dependency`构建依赖关系并提交，最终获得一个可运行的`reflow`对象，启动它，任务流便可执行。
+- 基于**关键字**和**值类型**的智能化依赖分析算法，在任务组装阶段即可分析出错误，确保了在任务执行期间不会出现关键字缺失或值类型不匹配的错误；
+- 基于**优先级**和**预估时长**的按需的任务装载机制。**按需** 是指，轮到该任务执行时，它才会被放入优先级桶中**等待**被执行。为什么还要等待？因为不同任务流中当前待执行的任务会被放入同一个优先级桶中，那么这些已经存在于桶中的任务会按各自的优先级进行排序；
+- 一个任务流可申请先**浏览**后**强化**的运行模式。**浏览**模式使得数据可以被快速加载；
+- 任务可以无限嵌套组装；
+- 事件反馈可指定到线程。如：UI 线程；
+- 如果后续任务不依赖于某任务的某个输出，那么该输出将会被丢弃，使得内存能够被有效利用；
+- 便捷的 **同/异步** 模式切换：
+  > 
+  ```Scala
+    // 默认异步
+    reflow.start(input, feedback)
+    // 若要改为同步，只需在结尾加上`sync()`
+    reflow.start(input, feedback).sync()
+  ```
+- 任务执行进度可以被策略化反馈：
+  > 
+  ```Scala
+    // Progress.Policy.Xxxx, 如：
+    implicit lazy val policy: Policy = Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)
+  ```
+- 对异常事件有确定性分类：
+  > 
+  ```Scala
+    // Feecback.scala
+    def onFailed(trat: Trait, e: Exception): Unit = {
+    e match {
+      // 分为两类:
+      // 1. 由客户代码质量问题导致的`RuntimeException`如`NullPointerException`等，这些异常被包裹在`CodeException`里，
+      // 可以通过`CodeException#getCause()`方法取出具体的异常对象。
+      case c: CodeException => c.getCause
+      // 2. 客户代码自定义的`Exception`，即显式传给`Task#failed(Exception)`方法的参数，可能为`null`（虽然 Scala 认为`null`是 low level 的）。
+      case e: Exception => e.printStackTrace()
+    }
+  }
+  ```
+- 巧妙的中断策略；
+- 全局精准的任务监控和管理；
+  > 
+  ```Scala
+    Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
+        override def onUpdate(current: GlobalTrack, items: All): Unit = {
+          if (!current.isSubReflow && current.scheduler.getState == State.EXECUTING) {
+            println(s"++++++++++[[[current.state:${current.scheduler.getState}")
+            items().foreach(println)
+            println("----------]]]")
+          }
+        }
+      })(Policy.Interval(600), null)
+  ```
+- 优化的可配置线程池：如果有任务持续进入线程池队列，那么先增加线程数直到配置的最大值，再入队列，空闲释放线程直到`core size`；
+- 线程实现了无阻塞高效利用：
+  > 没有`future.get()`机制的代码；  
+  > 这需要用户定义的任务中无阻塞（若有阻塞可以拆分成多个有依赖关系但无阻塞的任务，网络请求除外）。
+
+这些特性极大地满足了各种项目的实际需求。在 Reflow 的逻辑里，首先应将复杂业务拆分成多个**功能单一**的、没有**阻塞**等待的、**单线程**结构的一系列任务集合，并将它们包装在显式定义了任务的各种属性的`Trait`里，然后使用`Dependency`构建依赖关系并提交，最终获得一个可运行的`reflow`对象，启动它，任务流便可执行。
 
 
 ##### _1.1 相关_
