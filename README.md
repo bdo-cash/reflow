@@ -1,11 +1,16 @@
 ## Reflow:  任务 _`串/并联`_ 组合调度框架，脉冲步进流处理框架。
 
 * 新增:  **[Pulse](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala#L46) 步进流式数据处理器**
-  - 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会排队进入各个任务，每个任务可保留前一个数据在处理时特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
+  - 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会“排队”（`FIFO`，使用了一种巧妙的调度策略而不会真的有队列）进入各个任务，每个任务还可保留前一个数据在处理时特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
 
 #### 一、概述
 
-在一个大型系统中，往往存在着大量的业务逻辑，它们是数以百计的“工作”的具体化。这些逻辑交织在一起，从整体上看，往往错综复杂。这些“工作”可以构造为**任务（Task）**，而它们之间的关系也可归纳为两类：有依赖和无依赖，即：**串行**和**并行**。本框架的设计便是围绕着处理这两种关系而展开。
+在一个大型系统中，往往存在着大量的业务逻辑和控制逻辑，它们是数以百计的“工作”的具体化。这些逻辑交织在一起，从整体上看，往往错综复杂。那么我们该如何抽象并简化这些复杂的逻辑呢？受
+
+> **Programs = Algorithms + Data Structures**  
+> **Algorithm = Logic + Control**
+
+思想的启发，我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架，把业务逻辑构造为**任务（Task）**。而任务之间的关系也可进一步归纳为两类：有依赖和无依赖，即：**串行**和**并行**。用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。本框架的设计便是围绕着处理这些任务的控制逻辑而展开。
 
 本框架为 _简化复杂业务逻辑中 **多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理**_ 的 _编码复杂度_ 而生。通过 **_要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)_ 任务的[ I ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O ](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)**、基于 [_**关键字**_ 和 _**值类型**_](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26) 分析的智能化 **[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)**、一致的 **[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)**、**[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)** 及 **[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)** 接口等设计，实现了既定目标：**任务 _[串](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78) /[并](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)联_ 组合调度**。 _数据_ 即 **电流**， _任务_ 即 **元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
 
