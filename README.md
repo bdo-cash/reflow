@@ -14,7 +14,9 @@
 
 **Reflow** 为简化*复杂业务逻辑中*多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理的*编码复杂度*而生。通过要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)任务的[ I](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)、基于[关键字](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)和[值类型](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)分析的智能化[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、一致的[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)及[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)接口等设计，实现了既定目标：任务[*串*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[*并联*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度。*数据*即**电流**，*任务*即**元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
 
-##### Reflow 有以下特性：
+在 Reflow 的逻辑里，首先应将复杂业务拆分成多个**功能单一**的、没有**阻塞**等待的、**单线程**结构的一系列任务集合，并将它们包装在显式定义了任务的各种属性的`Trait`里，然后使用`Dependency`构建依赖关系并提交，最终获得一个可运行的`reflow`对象，启动它，任务流便可执行。
+
+#### Reflow 具有以下特性：
 
 - 基于**关键字**和**值类型**的智能化依赖分析算法，在任务组装阶段即可分析出错误，确保了在任务执行期间不会出现关键字缺失或值类型不匹配的错误；
 - 基于**优先级**和**预估时长**的按需的任务装载机制。**按需**是指，轮到该任务执行时，它才会被放入优先级桶中**等待**被执行。为什么还要等待？因为不同任务流中当前待执行的任务会被放入同一个优先级桶中，那么这些已经存在于桶中的任务会按各自的优先级进行排序；
@@ -53,7 +55,7 @@
   }
   ```
 - 巧妙的中断策略；
-- 全局精准的任务监控和管理；
+- 全局精准的任务监控和管理：
   > 
   ```Scala
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
@@ -71,7 +73,7 @@
   > 没有`future.get()`机制的代码；  
   > 这需要用户定义的任务中无阻塞（若有阻塞可以拆分成多个有依赖关系但无阻塞的任务，网络请求除外）。
 
-这些特性极大地满足了各种项目的实际需求。在 Reflow 的逻辑里，首先应将复杂业务拆分成多个**功能单一**的、没有**阻塞**等待的、**单线程**结构的一系列任务集合，并将它们包装在显式定义了任务的各种属性的`Trait`里，然后使用`Dependency`构建依赖关系并提交，最终获得一个可运行的`reflow`对象，启动它，任务流便可执行。
+这些特性极大地满足了各种项目的实际需求。
 
 
 ##### _1.1 相关_
