@@ -21,9 +21,10 @@ import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.pool.S._2S
-import hobby.wei.c.reflow.Assist.Throws
-import hobby.wei.c.reflow.Dependency.{BasisMutable, IsPar, MapTo}
+import hobby.wei.c.reflow.Assist.{Throws, _}
+import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
+
 import scala.collection.{mutable, Set, _}
 import scala.util.control.Breaks._
 
@@ -33,7 +34,8 @@ import scala.util.control.Breaks._
   *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016;
-  *          1.1, 07/09/2019, bug fix.
+  *          1.1, 07/09/2019, bug fix;
+  *          1.2, 29/12/2019.
   */
 class Dependency private[reflow]() extends TAG.ClassName {
   private val basis = new BasisMutable
@@ -51,7 +53,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     */
   def and(trat: Trait, trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
-    Assist.requireTaskNameDiff(trat, names)
+    requireTaskNameDiff(trat, names)
     if (basis.traits.isEmpty) {
       basis.traits += trat
     } else {
@@ -77,8 +79,8 @@ class Dependency private[reflow]() extends TAG.ClassName {
     */
   def next(trat: Trait): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
-    Assist.requireTaskNameDiff(trat, names)
-    basis.last(false).foreach(Dependency.genIOPrev(_, null, basis, inputRequired, useless))
+    requireTaskNameDiff(trat, names)
+    basis.last(false).foreach(genIOPrev(_, null, basis, inputRequired, useless))
     basis.traits += trat
     this
   }
@@ -131,38 +133,59 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @see Transformer
     */
   private def trans$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], child: Trait = basis.last(true).get): Dependency = {
-    if (tranSet.nonNull && tranSet.nonEmpty) basis.transformers.put(child.name$, Assist.requireTransInTpeSame$OutKDiff(Assist.requireElemNonNull(tranSet)))
+    if (tranSet.nonNull && tranSet.nonEmpty) basis.transformers.put(child.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
   }
 
   private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], top: Trait = basis.last(false).get): Dependency = {
-    if (tranSet.nonNull && tranSet.nonEmpty) basis.transGlobal.put(top.name$, Assist.requireTransInTpeSame$OutKDiff(Assist.requireElemNonNull(tranSet)).to[mutable.Set])
+    if (tranSet.nonNull && tranSet.nonEmpty) basis.transGlobal.put(top.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.Set])
     this
+  }
+
+  /**
+    * [[#submit(outputs)]]的简写：如果要将最后任务（或转换器）的输出作为最终输出。
+    */
+  // 新增: 29/12/2019。
+  def submit(): Reflow = {
+    val outsPal = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
+    basis.last(false).foreach { trat =>
+      if (trat.isPar) trat.asPar.traits().foreach { t => genOuts(t, outsPal, basis) } else genOuts(trat, outsPal, basis)
+      basis.transGlobal.get(trat.name$).foreach { tranSet =>
+        // next$()已经对tranSet输入输出检查过了
+        tranSet.map(_.out).foreach { k =>
+          // 此时outsPal里面装的是：最后transGlobal的输出和最后的任务的输出。
+          // 检查的事就交给submit(outputs)吧。
+          outsPal.put(k.key, k)
+        }
+      }
+    }
+    submit(outsPal.values.toSet)
   }
 
   /**
     * 完成依赖的创建。
     *
     * @param outputs 输出值的key列表。
-    * @return { @link Scheduler.Starter}接口。
-    */// 重构: 06/09/2019. 简化参数。
+    * @return Reflow 实例。
+    */
+  // 重构: 06/09/2019. 简化参数。
   def submit(outputs: Set[Kce[_ <: AnyRef]]): Reflow = {
     if (debugMode) log.w("[submit]")
-    Assist.requireKkDiff(outputs)
+    requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
     val uselesx = useless.mapValues(_.toMap.as[Map[String, Kce[_ <: AnyRef]]]).mutable
     val inputReqx = inputRequired.mutable
     val basisx = new BasisMutable(basis)
-    Dependency.genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
-    Dependency.genDeps(outputs, basisx.traits.reverse, basisx, inputReqx, uselesx)
+    genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
+    genDeps(outputs, basisx.traits.reverse, basisx, inputReqx, uselesx)
     basisx.traits.foreach { trat =>
       if (trat.isPar) {
         trat.asPar.traits().foreach(t => basisx.dependencies.getOrElseUpdate(t.name$, mutable.Map.empty))
       } else basisx.dependencies.getOrElseUpdate(trat.name$, mutable.Map.empty)
     } // 避免空值
     // 必须先于下面transGlobal的读取。
-    val trimmed = Dependency.trimOutsFlow(basisx, outputs, uselesx)
-    new Reflow.Impl(new Dependency.Basis {
+    val trimmed = trimOutsFlow(basisx, outputs, uselesx)
+    new Reflow.Impl(new Basis {
       override val traits = basisx.traits.to[immutable.Seq]
       override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
       override val transformers = basisx.transformers.mapValues(_.toSet).toMap
@@ -341,11 +364,9 @@ object Dependency {
       mapUseless.put(last.name$, outsPal)
     } else {
       /*##### for requires #####*/
-      val requires = genDeps(last.requires$, basis.traits.reverse.tail /*从倒数第{二}个开始*/ , basis, inputRequired, mapUseless)
-      // 前面的所有输出都没有满足, 那么看看初始输入。
-      genInputRequired(requires, inputRequired)
+      genDeps(last.requires$, basis.traits.reverse.tail /*从倒数第{二}个开始*/ , basis, inputRequired, mapUseless)
       /*##### for outs #####*/
-      val outs: mutable.Map[String, Kce[_ <: AnyRef]] = genOuts(last, mapParallelOuts, basis)
+      val outs = genOuts(last, mapParallelOuts, basis)
       // 后面的输出可以覆盖掉前面的useless输出, 不论值类型。
       // 在为并行任务确定依赖的时候，如果从parent中取值，会导致requires都被绑定到并行的第一个任务的错误。
       // if (mapParallelOuts.isNull) {
@@ -361,10 +382,11 @@ object Dependency {
     * 根据最终的输出需求，向前生成依赖。同`genIOPrev()`。
     */
   private def genDeps(req: Set[Kce[_ <: AnyRef]], seq: Seq[Trait], basis: BasisMutable, inputRequired: mutable.Map[String, Kce[_ <: AnyRef]],
-                      mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]])(implicit logTag: LogTag): mutable.Map[String, Kce[_ <: AnyRef]] = {
+                      mapUseless: Map[String, Map[String, Kce[_ <: AnyRef]]])(implicit logTag: LogTag) {
     val requires = new mutable.AnyRefMap[String, Kce[_ <: AnyRef]]
     putAll(requires, req)
     breakable {
+      // 由于reverse了，所以实际上是倒序的。
       seq.foreach { trat =>
         if (requires.isEmpty) break
         // 把符合requires需求的globalTrans输出对应的输入放进requires.
@@ -374,9 +396,9 @@ object Dependency {
         consumeRequires(trat, null /*此处总是null*/ , requires, basis, mapUseless)
       }
     }
+    // 前面的所有输出都没有满足, 那么看看初始输入。
     genInputRequired(requires, inputRequired)
     if (debugMode) log.i("[genDeps]basis.dependencies:%s.", basis.dependencies)
-    requires
   }
 
   /**
@@ -437,16 +459,16 @@ object Dependency {
     }
   }
 
-  /*
-   * 一、如果不自动将`Transformer`的输入保留到输出集合，要解决的问题：
-   * 1. 如果`requires`正好需要一个与`Transformer`的输入相同的输出，而又缺少一个[输入即输出]的转换，会导致消化检测阶段通过，但运行时出现缺少某输出的错误；
-   * 2. 客户代码需要增加看上去多此一举的[输入即输出]转换（不自动增加的话）；
-   * 二、如果自动保留（与`一`相反），要解决的问题：
-   * 1. 在现有数据结构状况下，在运行时，无法知晓是否应该保留哪些`Transformer`的输入到输出集合。因为很多输入是因为转换的需求才加入的，而不一定总被后面的任务需要；
-   * 2. 与任务的局部转换功能设计相冲突：局部转换的目的之一，是为了避免并行任务的输出`key`冲突，因此不应该自动保留；
-   * 3. 如果全部保留，会导致不再需要的数据淤积，与设计初衷相悖（即使把局部和全局转换的运行时执行区分开，也无法解决数据淤积问题，即使淤积仅仅占用下一任务的时间）。
-   * 最终方案：自动增加[输入即输出]转换（即：`retain`功能的`Transformer`）。
-   */
+  /**
+    * 一、如果不自动将`Transformer`的输入保留到输出集合，要解决的问题：
+    * 1. 如果`requires`正好需要一个与`Transformer`的输入相同的输出，而又缺少一个[输入即输出]的转换，会导致消化检测阶段通过，但运行时出现缺少某输出的错误；
+    * 2. 客户代码需要增加看上去多此一举的[输入即输出]转换（不自动增加的话）；
+    * 二、如果自动保留（与`一`相反），要解决的问题：
+    * 1. 在现有数据结构状况下，在运行时，无法知晓是否应该保留哪些`Transformer`的输入到输出集合。因为很多输入是因为转换的需求才加入的，而不一定总被后面的任务需要；
+    * 2. 与任务的局部转换功能设计相冲突：局部转换的目的之一，是为了避免并行任务的输出`key`冲突，因此不应该自动保留；
+    * 3. 如果全部保留，会导致不再需要的数据淤积，与设计初衷相悖（即使把局部和全局转换的运行时执行区分开，也无法解决数据淤积问题，即使淤积仅仅占用下一任务的时间）。
+    * 最终方案：自动增加[输入即输出]转换（即：`retain`功能的`Transformer`）。
+    */
   private[reflow] def consumeTranSet(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, Kce[_ <: AnyRef]],
                                      prevOuts: Map[String, Kce[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false)(implicit logTag: LogTag) {
     var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
@@ -461,7 +483,7 @@ object Dependency {
       tranSet.foreach { t =>
         if (requires.isEmpty) break
         if (!ignore.contains(t.out.key)) requires.get(t.out.key).foreach { k =>
-          if (debugMode && check) requireTypeMatch4Consume(k, t.out)
+          if (check) requireTypeMatch4Consume(k, t.out)
           requires.remove(k.key)
           trans = t :: trans
         }
@@ -471,7 +493,7 @@ object Dependency {
       trans.foreach { t =>
         if (requires.isEmpty) break
         requires.get(t.in /*注意这里不一样*/ .key).foreach { k =>
-          if (debugMode && check) requireTypeMatch4Consume(k, t.in)
+          if (check) requireTypeMatch4Consume(k, t.in)
           requires.remove(k.key)
           retains = Helper.Transformers.retain(t.in) :: retains
         }
@@ -516,23 +538,23 @@ object Dependency {
     */
   private def consumeRequires(prev: Trait, requires: mutable.Map[String, Kce[_ <: AnyRef]],
                               outs: mutable.Map[String, Kce[_ <: AnyRef]], useless: Map[String, Kce[_ <: AnyRef]]) {
-    if (prev.outs$.isEmpty) return // 根本就没有输出，就不浪费时间了。
-    if (requires.isEmpty) return
-    requires.values.foreach { k =>
-      outs.get(k.key).fold(
-        if (useless.contains(k.key)) {
-          val out = useless(k.key)
+    if (prev.outs$.nonEmpty && requires.nonEmpty) {
+      requires.values.foreach { k =>
+        outs.get(k.key).fold(
+          if (useless.contains(k.key)) {
+            val out = useless(k.key)
+            requireTypeMatch4Consume(k, out)
+            // 移入到依赖
+            outs.put(out.key, out)
+            // 所有的useless都不删除，为了transGlobal。
+            // useless.remove(out.key)
+            requires.remove(k.key)
+          }) { out =>
           requireTypeMatch4Consume(k, out)
-          // 移入到依赖
-          outs.put(out.key, out)
-          // 所有的useless都不删除，为了transGlobal。
-          // useless.remove(out.key)
+          // 直接删除, 不用再向前面的任务要求这个输出了。
+          // 而对于并行的任务, 前面已经检查过并行的任务不会有相同的输出, 后面不会再碰到这个key。
           requires.remove(k.key)
-        }) { out =>
-        requireTypeMatch4Consume(k, out)
-        // 直接删除, 不用再向前面的任务要求这个输出了。
-        // 而对于并行的任务, 前面已经检查过并行的任务不会有相同的输出, 后面不会再碰到这个key。
-        requires.remove(k.key)
+        }
       }
     }
   }
@@ -593,13 +615,14 @@ object Dependency {
     if (requires.nonEmpty) {
       requires.values.toSet.filter(k => inputRequired.contains(k.key)).foreach { k =>
         val in = inputRequired(k.key)
-        if (debugMode) {
-          if (!k.isAssignableFrom(in)) {
-            // input不是require的子类, 但是require是input的子类, 那么把require存进去。
-            if (in.isAssignableFrom(k)) inputRequired.put(k.key, k)
-            else Throws.typeNotMatch4Required(in, k)
-          }
-        } else inputRequired.put(k.key, k)
+        /*if (debugMode) {*/
+        // 这里必须判断，不管是不是debugMode。
+        if (!k.isAssignableFrom(in)) {
+          // input不是require的子类, 但是require是input的子类, 那么把require存进去。
+          if (in.isAssignableFrom(k)) inputRequired.put(k.key, k)
+          else Throws.typeNotMatch4Required(in, k)
+        }
+        /*} else inputRequired.put(k.key, k)*/
         requires.remove(k.key)
       }
       // 初始输入里(前面任务放入的)也没有, 那么也放进去。
@@ -622,11 +645,12 @@ object Dependency {
     inputs
   }
 
-  private[reflow] def requireRealInEnough(requires: Set[Kce[_ <: AnyRef]], realIn: Map[String, Kce[_ <: AnyRef]]): Unit = if (debugMode) requires.foreach { k =>
-    realIn.get(k.key).fold(Throws.lackIOKey(k, in$out = true)) { kIn =>
-      if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
+  private[reflow] def requireRealInEnough(requires: Set[Kce[_ <: AnyRef]], realIn: Map[String, Kce[_ <: AnyRef]]): Unit =
+    if (debugMode) requires.foreach { k =>
+      realIn.get(k.key).fold(Throws.lackIOKey(k, in$out = true)) { kIn =>
+        if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
+      }
     }
-  }
 
   /**
     * 用于运行时执行转换操作。注意：本方法已经忽略了用不上的`Transformer`。

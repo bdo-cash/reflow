@@ -50,6 +50,10 @@ object implicits {
 
   def none: In = In.empty()
 
+  implicit class TransformerRetain(kce: Kce[_ <: AnyRef]) {
+    @inline def re: Transformer[_ <: AnyRef, _ <: AnyRef] = Helper.Transformers.retain(kce)
+  }
+
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _
   implicit lazy val f1 = trans2Bdr _

@@ -362,7 +362,7 @@ object Feedback {
     def onValueGotOnUpdate(value: Option[T]): Unit = {}
   }
 
-  class Observable extends Adapter {
+  class Observable extends Adapter with TAG.ClassName {
     import Assist.eatExceptions
     implicit private lazy val lock: ReentrantLock = Locker.getLockr(this)
 

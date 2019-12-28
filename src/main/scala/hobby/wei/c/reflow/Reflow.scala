@@ -274,7 +274,7 @@ object Reflow {
       def onUpdate(current: GlobalTrack, items: All): Unit
     }
 
-    private class Feedback4Observer(observer: GlobalTrackObserver) extends Feedback {
+    private class Feedback4Observer(observer: GlobalTrackObserver) extends Feedback with TAG.ClassName {
       private def reportOnUpdate(gt: GlobalTrack = currentGTrack): Unit = eatExceptions(observer.onUpdate(gt, obtainer))
       override def onPending(): Unit = reportOnUpdate()
       override def onStart(): Unit = reportOnUpdate()

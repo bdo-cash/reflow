@@ -31,7 +31,7 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 02/07/2016
   */
-object Assist extends TAG.ClassName {
+object Assist {
   def between(min: Float, value: Float, max: Float) = min max value min max
 
   @Burden
@@ -95,7 +95,7 @@ object Assist extends TAG.ClassName {
     tranSet
   }
 
-  def eatExceptions(work: => Unit) {
+  def eatExceptions(work: => Unit)(implicit tag: LogTag) {
     try {
       work
     } catch {

@@ -137,7 +137,14 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val trat = Trait("t0", SHORT, new Kce[String]("outputstr") {}) { ctx =>
         ctx.output(kces.outputstr.key, outputStr)
       }
-      val scheduler = Reflow.create(trat).next(Trait("t1", SHORT) { _ => }).submit(kces.outputstr)
+      val trat1 = Trait("t1", SHORT, kces.outputstr) { ctx =>
+        ctx.output(kces.outputstr.key, "abcd")
+      }
+      val scheduler = Reflow.create(trat).next(Trait("t2", SHORT) { _ => })
+        .and(trat1, new Transformer[String, Integer](kces.outputstr, new Kce[Integer]("kkk") {}) {
+          override def transform(in: Option[String]) = Option(666)
+        }).next(kces.outputstr.re)
+        .submit(/*kces.outputstr*/) // 默认用最后的输出作为prefer输出
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
       assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
@@ -153,9 +160,10 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   }
 
   info("【进阶】高级用法")
-  info("在一个大型系统中，往往存在大量的业务逻辑，这些业务包含着数以百计的`工作`需要处理，那么可以把这些工作构造为任务。")
-  info("这些任务之间通常具有顺序性，即：`依赖`关系。从整体上看，往往错综复杂。")
-  info("但可以将两两之间的关系归纳为两类：有依赖和无依赖，即：`串行`和`并行`。本框架的设计便是围绕这两种关系而展开。")
+  info("在一个大型系统中，往往存在着大量的业务逻辑和控制逻辑，它们是数以百计的“工作”的具体化。这些逻辑交织在一起，从整体上看，往往错综复杂。")
+  info("我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架（本`Reflow`框架），把业务逻辑构造为任务（Task）。而任务之间的关系也可进一步" +
+    "归纳为两类：有依赖和无依赖，即：串行和并行。")
+  info("用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。本框架的设计便是围绕着处理这些任务的控制逻辑而展开。")
   info("在`Reflow`里，对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
 
   Feature("组装复杂业务逻辑") {

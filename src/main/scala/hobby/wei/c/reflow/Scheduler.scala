@@ -36,8 +36,8 @@ trait Scheduler {
   def sync(): Out
 
   /**
-    * 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}, 则会重新{@link Starter#start(In,
-     * Feedback, Poster)} 启动}.
+    * 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}), 则会重新{@link Impl#start()} 启动。但
+    * 这种情况极少见。
     *
     * @param reinforce    是否等待`reinforce`阶段结束。
     * @param milliseconds 延迟的deadline, 单位：毫秒。
@@ -73,7 +73,7 @@ object Scheduler {
     private lazy val state = new State$()
     @volatile private var delegatorRef: ref.WeakReference[Tracker.Impl] = _
 
-    private[reflow] def start$(): Scheduler.Impl = {
+    private[reflow] def start$(): this.type = {
       var permit = false
       Locker.syncr {
         if (isDone) {
@@ -86,9 +86,9 @@ object Scheduler {
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
         val tracker = new Tracker.Impl(reflow, traitIn, inputTrans, state, feedback, policy, Option(outer), pulse)
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
-        // 这里增加一层软引用, 避免在任务完毕之后得不到释放。
+        // 这里增加一层弱引用, 避免在任务完毕之后得不到释放。
         delegatorRef = new ref.WeakReference[Tracker.Impl](tracker)
-        tracker.start()
+        tracker.start$()
         this
       } else null
     }
@@ -105,19 +105,21 @@ object Scheduler {
 
     @throws[InterruptedException]
     override def sync(reinforce: Boolean, milliseconds: Long = -1): Out = {
-      val start = System.currentTimeMillis
+      val begin = System.currentTimeMillis
       var loop = true
-      var delegator: Scheduler = null
+      var delegator: Tracker.Impl = null
       while (loop) {
-        getDelegator.orElse(Option(start$())).fold {
-          // 如果还没拿到, 说明其他线程也在同时start().
-          Thread.`yield`() // 那就等一下下再看看
+        getDelegator.fold {
+          Option(start$()).fold {
+            // 如果还没拿到, 说明其他线程也在同时start().
+            Thread.`yield`() // 那就等一下下再看看
+          } { _ => } // 重启成功，再走一次循环拿值。
         } { d =>
           delegator = d
           loop = false
         }
       }
-      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - (System.currentTimeMillis - start))
+      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - (System.currentTimeMillis - begin))
     }
 
     override def abort(): Unit = getDelegator.fold()(_.abort())

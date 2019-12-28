@@ -24,7 +24,7 @@ import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.log.Logger._
-import hobby.wei.c.reflow.Assist.{eatExceptions, AbortException, FailedException, InnerError, Monitor}
+import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Policy
@@ -75,7 +75,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, v
     // 只是在非`Reinforce`阶段，会有一些重复不必要的调用，但没有更好的办法。
     sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
     if (!cacheInited) {
-      snatcher4Init.tryOn ({
+      snatcher4Init.tryOn({
         if (!cacheInited) {
           outer.foreach { env =>
             env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(reinforceCache))
@@ -176,7 +176,7 @@ private[reflow] object Tracker {
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
     @volatile private var timeStart = 0L
 
-    private[reflow] def start(): Unit = {
+    private[reflow] def start$(): Unit = {
       if (debugMode) log.w("[start]reinforcing:%s, subReflow:%s, subDepth:%s.=====>>>>>", isReinforcing, isSubReflow, subDepth)
       assert(remaining.nonEmpty, s"`start()`时候，不应该存在空任务列表。isReinforcing:$isReinforcing")
       // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
@@ -214,7 +214,7 @@ private[reflow] object Tracker {
       if (isPulseMode && !isInput(runner.trat)) {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
-        if(!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
+        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
       }
       runnersParallel -= runner
       // 并行任务全部结束
@@ -296,7 +296,7 @@ private[reflow] object Tracker {
             tryScheduleNext(remaining.head)
           } else if (!isPulseMode && !isSubReflow && isReinforceRequired && state.forward(REINFORCE_PENDING)) {
             remaining = reflow.basis.traits
-            start()
+            start$()
           }
         }
       }
@@ -755,7 +755,7 @@ private[reflow] object Tracker {
     * 该结构的目标是保证进度反馈的递增性。同时保留关键点，丢弃密集冗余。
     * 注意：事件到达本类，已经是单线程操作了。
     */
-  private[reflow] class Reporter(feedback: Feedback) {
+  private[reflow] class Reporter(feedback: Feedback)(implicit tag: LogTag) {
     private[reflow] def reportOnPending(): Unit = eatExceptions(feedback.onPending())
 
     private[reflow] def reportOnStart(): Unit = eatExceptions(feedback.onStart())
@@ -771,7 +771,7 @@ private[reflow] object Tracker {
     private[reflow] def reportOnFailed(trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(trat, e))
   }
 
-  private class Reporter4Debug(reflow: Reflow, feedback: Feedback, sum: Int)(implicit logTag: LogTag) extends Reporter(feedback) {
+  private class Reporter4Debug(reflow: Reflow, feedback: Feedback, sum: Int)(implicit tag: LogTag) extends Reporter(feedback) {
     @volatile private var step: Int = _
     @volatile private var sub: Float = _
     @volatile private var beenReset = true

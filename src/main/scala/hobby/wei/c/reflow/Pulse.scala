@@ -17,7 +17,7 @@
 package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG
-import hobby.chenai.nakam.basis.TAG.ThrowMsg
+import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Feedback.Progress.Policy
@@ -43,7 +43,8 @@ import scala.collection.concurrent.TrieMap
   * @version 1.0, 01/07/2018;
   *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）。
   */
-class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster) extends Scheduler {
+class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster)
+  extends Scheduler with TAG.ClassName {
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
   private lazy val reporter = new Reporter(feedback.wizh(poster))
   private lazy val state = new Scheduler.State$()
@@ -298,7 +299,7 @@ object Pulse {
     }
   }
 
-  private[reflow] class Reporter(feedback: Feedback) {
+  private[reflow] class Reporter(feedback: Feedback)(implicit tag: LogTag) {
     private[reflow] def reportOnPending(serialNum: Long): Unit = eatExceptions(feedback.onPending(serialNum))
     private[reflow] def reportOnStart(serialNum: Long): Unit = eatExceptions(feedback.onStart(serialNum))
     private[reflow] def reportOnProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onProgress(serialNum, progress, out, depth))
