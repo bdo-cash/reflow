@@ -170,7 +170,7 @@ private[reflow] object Tracker {
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
-    private lazy val reporter = if (debugMode && !policy.isFluentMode/*受`snatcher`的参数的牵连*/) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
+    private lazy val reporter = if (debugMode && !policy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
     @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
@@ -431,34 +431,37 @@ private[reflow] object Tracker {
     }
 
     @deprecated(message = "已在{Impl}中实现, 本方法不会被调用。", since = "0.0.1")
-    override def sync(): Out = ???
+    override def sync(reinforce: Boolean = false): Out = ???
 
     @throws[InterruptedException]
-    override def sync(reinforce: Boolean, milliseconds: Long): Out = {
+    override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
       val start = System.currentTimeMillis
-      Locker.sync$(new Locker.CodeC[Out](1) {
+      Locker.sync$(new Locker.CodeC[Option[Out]](1) {
         @throws[InterruptedException]
         override protected def exec(cons: Array[Condition]) = {
-          // 不去判断`state`是因为任务流可能会失败
-          while (!(if (reinforce) reinforceDone else normalDone)) {
-            if (debugMode) log.i("[sync]++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++>>>")
-            if (milliseconds == -1) {
-              cons(0).await()
-              if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 0.")
-            } else {
-              val delta = milliseconds - (System.currentTimeMillis - start)
-              if (delta <= 0 || !cons(0).await(delta, TimeUnit.MILLISECONDS)) {
-                throw new InterruptedException()
+          breakable {
+            // 不去判断`state`是因为任务流可能会失败
+            while (!(if (reinforce) reinforceDone else normalDone)) {
+              if (debugMode) log.i("[sync]++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++>>>")
+              if (milliseconds == -1) {
+                cons(0).await()
+                if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 0.")
+              } else {
+                val delta = milliseconds - (System.currentTimeMillis - start)
+                if (delta <= 0 || !cons(0).await(delta, TimeUnit.MILLISECONDS)) {
+                  if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 1.")
+                  break
+                } else Thread.`yield`() // throw new InterruptedException()
               }
-              if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 1.")
             }
           }
           val state = getState
-          if (reinforce) {
-            if (state == UPDATED) outFlowTrimmed else null
-          } else {
-            if (state == COMPLETED || state.group > COMPLETED.group) outFlowTrimmed else null
-          }
+          Option(
+            if (reinforce) {
+              if (state == UPDATED) outFlowTrimmed else null
+            } else {
+              if (state == COMPLETED || state.group > COMPLETED.group) outFlowTrimmed else null
+            })
         }
       }, lockSync, interruptable = false)
     }

@@ -174,7 +174,7 @@ object Trait {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
     override def newTask() = new Task {
-      override protected def doWork(): Unit = in.fillValues(getEnv.out)
+      override protected def doWork(): Unit = in.fillValues(env.out)
     }
 
     override protected def outs() = outsTrimmed

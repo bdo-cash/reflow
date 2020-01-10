@@ -76,7 +76,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   }
 
   @deprecated
-  override def sync() = head.get.scheduler.sync()
+  override def sync(reinforce: Boolean = false) = head.get.scheduler.sync(reinforce)
 
   @deprecated
   override def sync(reinforce: Boolean, milliseconds: Long) = head.get.scheduler.sync(reinforce, milliseconds)

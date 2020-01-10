@@ -35,7 +35,7 @@ import scala.collection._
 abstract class Task protected() {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
-  @volatile private var env: Env = _
+  @volatile private var env$: Env = _
   @volatile private var thread: Thread = _
   @volatile private var aborted: Boolean = _
   @volatile private var working: Boolean = _
@@ -43,12 +43,12 @@ abstract class Task protected() {
   /**
     * @return 与本任务相关的执行环境对象。
     */
-  final def getEnv = env
+  final def env = env$
 
   /**
     * @return 与本任务相关的接口及调度参数信息对象。
     */
-  final def trat: Trait = env.trat
+  final def trat: Trait = env$.trat
 
   /**
     * 取得输入的value。
@@ -57,7 +57,7 @@ abstract class Task protected() {
     * @tparam T value的类型参数。
     * @return `Option[T]`.
     */
-  final def input[T >: Null](key: String): Option[T] = env.input.get(key)
+  final def input[T >: Null](key: String): Option[T] = env$.input.get(key)
 
   final def input[T >: Null <: AnyRef](kce: Kce[T]): Option[T] = input(kce.key)
 
@@ -68,7 +68,7 @@ abstract class Task protected() {
     * @param value
     * @tparam T
     */
-  final def output[T](key: String, value: T): Unit = env.out.put(key, value)
+  final def output[T](key: String, value: T): Unit = env$.out.put(key, value)
 
   final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = output(kce.key, value)
 
@@ -83,9 +83,9 @@ abstract class Task protected() {
     * @param value
     */
   final def cache[T](key: String, value: T): Unit = {
-    require(env.isPulseMode || env.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
-    env.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
-    env.cache(key, value)
+    require(env$.isPulseMode || env$.isReinforceRequired, "`cache()`操作必须在`requireReinforce()`之后。")
+    env$.input.cache(key, null) // 仅用来测试key是否重复，null值不会被放进去。
+    env$.cache(key, value)
   }
 
   final def cache[T <: AnyRef](kce: Kce[T], value: T): Unit = cache(kce.key, value)
@@ -107,30 +107,30 @@ abstract class Task protected() {
     * @param step 进度的分子。必须是递增的。
     * @param sum  进度的分母。必须大于等于`step`且不可变。
     */
-  final def progress(step: Int, sum: Int): Unit = env.tracker.onTaskProgress(
-    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env.out, env.subDepth)
+  final def progress(step: Int, sum: Int): Unit = env$.tracker.onTaskProgress(
+    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env$.out, env$.subDepth)
 
   /**
     * 请求强化运行。
     *
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
-  final def requireReinforce() = env.requireReinforce()
+  final def requireReinforce() = env$.requireReinforce()
 
   /**
     * @return 当前是否已经请求过强化运行。
     */
-  final def isReinforceRequired: Boolean = env.isReinforceRequired
+  final def isReinforceRequired: Boolean = env$.isReinforceRequired
 
   /**
     * @return 当前是否处于强化运行阶段。
     */
-  final def isReinforcing: Boolean = env.isReinforcing
+  final def isReinforcing: Boolean = env$.isReinforcing
 
   /**
     * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（即：被包装在一个`Trait`里面被再次组装运行）。
     */
-  final def isSubReflow: Boolean = env.tracker.isSubReflow
+  final def isSubReflow: Boolean = env$.tracker.isSubReflow
 
   final def isAborted: Boolean = aborted
 
@@ -151,13 +151,13 @@ abstract class Task protected() {
     * 如果子类在{@link #doWork()}中检测到了中断请求(如: 在循环里判断{@link #isAborted()}),
     * 应该在处理好了当前事宜、准备好中断的时候调用本方法以中断整个任务。
     */
-  final def abortDone() = throw new AbortError()
+  final def abortionDone = throw new AbortError()
 
   @throws[CodeException]
   @throws[AbortException]
   @throws[FailedException]
   private[reflow] final def exec(_env: Env, _runner: Runner): Boolean = {
-    env = _env
+    env$ = _env
     Locker.syncr {
       if (aborted) return false
       thread = Thread.currentThread()
@@ -173,9 +173,16 @@ abstract class Task protected() {
       case e: Exception =>
         // 各种非正常崩溃的RuntimeException, 如NullPointerException等。
         throw new CodeException(e)
+    } finally {
+      // 不能置为false, 不然异步执行`exec$()`时，obort()请求传不到onAbort().
+      // working = false // 节省一个`async`变量
+      thread = null
     }
   }
 
+  /**
+    * @return 同步还是异步执行。
+    */
   private[reflow] def exec$(_env: Env, _runner: Runner): Boolean = {
     // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
     progress(0)
@@ -188,29 +195,35 @@ abstract class Task protected() {
     Locker.syncr {
       aborted = true
     }
-    if (working) {
+    if (working) { // || async
       try {
         onAbort()
       } finally {
-        thread.interrupt()
+        val t = thread
+        // 这个中断信号对框架毫无影响：
+        // 1. 对于外部对`sync()`的调用，只有外部调用`sync()`的线程对象发出的中断信号才对它起作用；
+        // 2. 框架内部没有监听这个信号，`Tracker.interruptSync()`的实现也没有。
+        if (t.nonNull) t.interrupt()
       }
     }
   }
 
   /**
-    * 客户代码扩展位置。<br>
-    * 注意：必须仅有同步代码，不可以执行异步操作（如果有异步需求，应该运用本`Reflow`框架去并行化）。
+    * 客户代码的扩展位置。<br>
+    * 重写本方法应该在必要时监听`isAborted`或`Thread.interrupt()`信号从而及时中断。<br>
+    * 注意：必须仅有同步代码，不可以执行异步操作（如果有异步需求，应该运用本`Reflow`框架的思想去实现并行化）。
     */
   protected def doWork(): Unit
 
   /**
-    * 重写本方法以获得中断通知，并处理中断后的收尾工作。注意：本方法的执行与`doWork()`并不在同一线程，需谨慎处理。<br>
-    * 通常任务执行（`doWork()`）所使用的线程在此之前已经设置了中断标识（`thread.interrupt()`）。
+    * 一般不需要重写本方法，只需在`doWork()`中检测`isAborted`标识即可。
+    * 重写本方法以获得中断通知，并处理中断后的收尾工作。<br>
+    * 注意：本方法的执行与`doWork()`并不在同一线程，需谨慎处理。<br>
     */
   protected def onAbort(): Unit = {}
 
   /**
-    * 当同一个任务被放到多个{@link Dependency}中运行, 而某些代码段需要Class范围的串行化时, 应该使用本方法包裹。
+    * 当同一个任务被放到多个{@link Reflow}中运行, 而某些代码段需要Class范围的串行化时, 应该使用本方法包裹。
     * 注意: 不要使用synchronized关键字, 因为它在等待获取锁的时候不能被中断, 而本方法使用{@link ReentrantLock}锁机制,
     * 当{@link #abort()}请求到达时, 如果还处于等待获取锁状态, 则可以立即中断。
     *

@@ -33,7 +33,7 @@ trait Scheduler {
     * @see #sync(boolean, long)
     */
   @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
-  def sync(): Out
+  def sync(reinforce: Boolean = false): Out
 
   /**
     * 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}), 则会重新{@link Impl#start()} 启动。但
@@ -46,7 +46,7 @@ trait Scheduler {
     */
   @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
   @throws[InterruptedException]
-  def sync(reinforce: Boolean, milliseconds: Long = -1): Out
+  def sync(reinforce: Boolean, milliseconds: Long): Option[Out]
 
   def abort(): Unit
 
@@ -95,16 +95,16 @@ object Scheduler {
 
     private[reflow] def getDelegator: Option[Tracker.Impl] = J2S.getRef(delegatorRef)
 
-    override def sync(): Out = {
+    override def sync(reinforce: Boolean = false): Out = {
       try {
-        sync(reinforce = false, -1)
+        sync(reinforce, -1).get
       } catch {
         case e: InterruptedException => throw new IllegalStateException(e)
       }
     }
 
     @throws[InterruptedException]
-    override def sync(reinforce: Boolean, milliseconds: Long = -1): Out = {
+    override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
       val begin = System.currentTimeMillis
       var loop = true
       var delegator: Tracker.Impl = null
