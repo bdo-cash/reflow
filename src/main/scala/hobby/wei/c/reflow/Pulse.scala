@@ -60,7 +60,8 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     if (isDone) false
     else {
       snatcher.queAc {
-        if (isDone) return false // `false`仅为通过编译检查，并不会给`input()`返回。
+        // 去掉，避免歧义。会不会直接导致`input()`返回是个问题。
+        // if (isDone) return false // `false`仅为通过编译检查
         val pending = state.forward(PENDING)
         // 无论我是不是第一个，原子切换。
         head = Option(new Tactic(head, this, serialNum.getAndIncrement))
