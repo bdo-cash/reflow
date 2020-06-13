@@ -42,7 +42,7 @@ libraryDependencies ++= Seq(
   // TODO: 独立使用本库的话，应该启用本依赖。
   "com.github.dedge-space" % "annoguard" % "1.0.3-beta",
   // TODO: 如果 jitpack 打包 2.12.6, 这个包的引入也必须是 2.12.6，切记切记。
-  "com.github.dedge-space" % "scala-lang" % "0f2c30633e",
+  "com.github.dedge-space" % "scala-lang" % "727912b657",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % Test,
