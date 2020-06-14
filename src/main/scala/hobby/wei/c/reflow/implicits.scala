@@ -29,14 +29,14 @@ import scala.language.implicitConversions
 @KeepVp$
 @KeepMp$
 object implicits {
-  lazy val P_HIGH = Reflow.P_HIGH
-  lazy val P_NORMAL = Reflow.P_NORMAL
-  lazy val P_LOW = Reflow.P_LOW
+  val P_HIGH = Reflow.P_HIGH
+  val P_NORMAL = Reflow.P_NORMAL
+  val P_LOW = Reflow.P_LOW
 
-  lazy val TRANSIENT: Period.Tpe = Period.TRANSIENT
-  lazy val SHORT: Period.Tpe = Period.SHORT
-  lazy val LONG: Period.Tpe = Period.LONG
-  lazy val INFINITE: Period.Tpe = Period.INFINITE
+  val TRANSIENT: Period.Tpe = Period.TRANSIENT
+  val SHORT: Period.Tpe = Period.SHORT
+  val LONG: Period.Tpe = Period.LONG
+  val INFINITE: Period.Tpe = Period.INFINITE
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
@@ -45,6 +45,10 @@ object implicits {
   lazy val Fluent = Policy.Fluent
   lazy val Depth = Policy.Depth
   lazy val Interval = Policy.Interval
+
+  type KeyVType[T <: AnyRef] = Kce[T]
+  type Intent = Trait
+  val Intent = Trait
 
   def none[A]: immutable.Set[Kce[_ <: AnyRef]] = Helper.Kces.empty()
 

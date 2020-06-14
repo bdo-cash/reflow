@@ -72,22 +72,15 @@ trait Trait extends Equals {
     */
   protected def desc(): String
 
-  lazy val name$: String = requireNonEmpty(name())
-
+  lazy val name$: String = name().ensuring(_.nonEmpty)
   lazy val requires$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
-
   lazy val outs$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
-
   lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
-
   lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
-
   lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
 
   override def equals(any: scala.Any) = super.equals(any)
-
   override def canEqual(that: Any) = super.equals(that)
-
   override def hashCode() = super.hashCode()
 
   override def toString = "name:%s, requires:%s, out:%s, priority:%s, period:%s, description: %s" format(
@@ -95,6 +88,7 @@ trait Trait extends Equals {
 }
 
 object Trait {
+  @deprecated
   def apply(_name: String,
             _period: Period.Tpe,
             _outs: immutable.Set[Kce[_ <: AnyRef]] = none,
@@ -103,20 +97,12 @@ object Trait {
             _desc: String = null)(
              _dosth: Task.Context => Unit): Trait = new Trait {
     override protected def name() = _name
-
     override protected def requires() = _requires
-
     override protected def outs() = _outs
-
     override protected def priority() = _priority
-
     override protected def period() = _period
-
     override protected def desc() = if (_desc.isNull) name$ else _desc
-
-    override def newTask() = new Task.Context {
-      override protected def doWork(): Unit = _dosth(this)
-    }
+    override def newTask() = Task(_dosth)
   }
 
   private final val sCount = new AtomicInteger(0)
@@ -130,43 +116,31 @@ object Trait {
     private[reflow] def this(t: Trait) = this(Seq(t))
 
     private[reflow] def traits() = _traits
-
     private[reflow] def add(t: Trait): Unit = {
       assertf(!t.isInstanceOf[Parallel])
       _traits += t
     }
 
     private[reflow] def first(): Trait = _traits.head
-
     private[reflow] def last(): Trait = _traits.last
 
     override protected def name() = {
       // 由于不允许同一个队列里面有相同的名字，所以取第一个的名字即可区分。
       classOf[Parallel].getName + "#" + _traits.head.name$
     }
-
     override def newTask() = ???
-
     override protected def requires() = none
-
     override protected def outs() = none
-
     override protected def priority() = Reflow.P_NORMAL
-
     override protected def period() = ???
-
     override protected def desc() = name$
   }
 
   trait Adapter extends Trait {
     override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
-
     override protected def requires() = none
-
     override protected def outs() = none
-
     override protected def priority() = Reflow.P_NORMAL
-
     override protected def desc() = name$
   }
 
@@ -178,9 +152,7 @@ object Trait {
     }
 
     override protected def outs() = outsTrimmed
-
     override protected def priority() = reflow.basis.first(child = true).get.priority$
-
     override protected def period() = Period.TRANSIENT
   }
 
@@ -188,7 +160,6 @@ object Trait {
     override final val is4Reflow = true
 
     override final def newTask() = new SubReflowTask()
-
     override final def priority() = reflow.basis.first(child = true).get.priority$
   }
 }
