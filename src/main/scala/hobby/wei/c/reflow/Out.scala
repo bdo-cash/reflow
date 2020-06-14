@@ -147,5 +147,5 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
     */
   def keys(): immutable.Set[Kce[_ <: AnyRef]] = _keys.values.filter { k => _map.contains(k.key) || _nullValueKeys.contains(k.key) }.toSet
 
-  override def toString = "keys:" + _keys + ", values:" + _map + (if (_nullValueKeys.isEmpty) "" else ", null:" + _nullValueKeys.values)
+  override def toString = "keys:" + _keys.values + ", values:" + _map + (if (_nullValueKeys.isEmpty) "" else ", null:" + _nullValueKeys.values)
 }

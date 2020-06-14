@@ -46,11 +46,11 @@ trait Feedback extends Equals {
   /**
     * 进度反馈。
     *
-    * @param progress 进度对象。
-    * @param out      进度的时刻已经获得的输出。
-    * @param depth    触发当前进度反馈的`子任务流（SubReflow）`的嵌套深度（顶层为`0`，并按照`SubReflow`的嵌套层级依次递增）。
+    * @param progress  进度对象。
+    * @param out       进度的时刻已经获得的输出。
+    * @param fromDepth 触发当前进度反馈的`子任务流（SubReflow）`的嵌套深度（顶层为`0`，并按照`SubReflow`的嵌套层级依次递增）。
     */
-  def onProgress(progress: Progress, out: Out, depth: Int): Unit
+  def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit
 
   /**
     * 任务流执行完成。
@@ -103,7 +103,7 @@ object Feedback {
     *             注意：`subs`中的进度同样分为以上3种情况。
     * @param subs 子任务。可以是并行的，所以用了`Seq`。
     */
-  case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, subs: Option[Seq[Progress]] = None) {
+  final case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, subs: Option[Seq[Progress]] = None) {
     require(step < sum || (step == sum && subs.isEmpty))
     require(subs.fold(true)(_.forall(_.nonNull)))
 
@@ -113,7 +113,7 @@ object Feedback {
 
     @inline def apply(): Float = main
 
-    override def toString = s"sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$.tag}" }}."
+    override def toString = s"Progress(sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$.tag}" }})"
   }
 
   object Progress {
@@ -171,12 +171,12 @@ object Feedback {
         override def genDelegator(feedback: Feedback) = new Delegator(feedback) with TAG.ClassName {
           @volatile private var main = -1f
 
-          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
-            if (debugMode) log.i("~~~~~~~~~~~~~~~~~~~~~~~~[Fluent]depth:%s, progress:%s.", depth, progress)
+          override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+            if (debugMode) log.i("~~~~~~~~~~~~~~~~~~~~~~~~[Fluent]fromDepth:%s, progress:%s.", fromDepth, progress)
             if ((progress.main > main).obiter {
               main = progress.main
             }) {
-              super.onProgress(progress, out, depth)
+              super.onProgress(progress, out, fromDepth)
             }
           }
         }
@@ -196,14 +196,14 @@ object Feedback {
         else new Delegator(feedback) with TAG.ClassName {
           @volatile private var step: Int = -1
 
-          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
-            if (debugMode) log.i("[Depth(%s)]progress:%s, out:%s, depth:%s.", level, progress, out, depth)
+          override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+            if (debugMode) log.i("[Depth(%s)]progress:%s, out:%s, fromDepth:%s.", level, progress, out, fromDepth)
             if (isMind(0)) { // 关注当前层
               if (isMind(1) /*关注子层*/
                 || (progress.step > step).obiter {
                 step = progress.step
               }) {
-                super.onProgress(progress, out, depth)
+                super.onProgress(progress, out, fromDepth)
               }
             }
           }
@@ -227,14 +227,14 @@ object Feedback {
             time = System.currentTimeMillis
           }
 
-          override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
+          override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
             if (minGap > 0) {
               val curr = System.currentTimeMillis
               if (curr - time >= minGap) {
                 time = curr
-                super.onProgress(progress, out, depth)
+                super.onProgress(progress, out, fromDepth)
               }
-            } else super.onProgress(progress, out, depth)
+            } else super.onProgress(progress, out, fromDepth)
           }
         }
       }
@@ -271,7 +271,7 @@ object Feedback {
 
       override def onStart(): Unit = poster.post(super.onStart())
 
-      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = poster.post(super.onProgress(progress, out, depth))
+      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(super.onProgress(progress, out, fromDepth))
 
       override def onComplete(out: Out): Unit = poster.post(super.onComplete(out))
 
@@ -290,7 +290,7 @@ object Feedback {
 
     override def onStart(): Unit = feedback.onStart()
 
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = feedback.onProgress(progress, out, depth)
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = feedback.onProgress(progress, out, fromDepth)
 
     override def onComplete(out: Out): Unit = feedback.onComplete(out)
 
@@ -306,7 +306,7 @@ object Feedback {
 
     override def onStart(): Unit = {}
 
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {}
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {}
 
     override def onComplete(out: Out): Unit = {}
 
@@ -339,9 +339,9 @@ object Feedback {
     *                           本参数表示关注第几层的进度（即：是第几层的哪个任务会输出`kce`值，Reflow 要求不同层任务的`kce`可以相同）。
     **/
   abstract class Butt[T >: Null <: AnyRef](kce: Kce[T], watchProgressDepth: Int = 0) extends Adapter {
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
-      super.onProgress(progress, out, depth)
-      if (depth == watchProgressDepth && out.keysDef().contains(kce))
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+      super.onProgress(progress, out, fromDepth)
+      if (fromDepth == watchProgressDepth && out.keysDef().contains(kce))
         onValueGotOnProgress(out.get(kce), progress)
     }
 
@@ -385,7 +385,7 @@ object Feedback {
 
     override def onStart(): Unit = obs.foreach { fb => eatExceptions(fb.onStart()) }
 
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, depth)) }
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, fromDepth)) }
 
     override def onComplete(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
 
@@ -403,7 +403,7 @@ object Feedback {
 
     override def onStart(): Unit = log.i("[onStart]")
 
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, out:%s.", depth, progress, out)
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, out:%s.", fromDepth, progress, out)
 
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
 

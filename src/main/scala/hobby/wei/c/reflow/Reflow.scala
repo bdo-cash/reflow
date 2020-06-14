@@ -20,15 +20,13 @@ import java.util.concurrent._
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
-import hobby.wei.c.{reflow, tool}
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.log.Logger
+import hobby.wei.c.reflow
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
-import hobby.wei.c.reflow.Feedback.Observable
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
-import hobby.wei.c.reflow.Reflow.Period
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 
@@ -238,29 +236,24 @@ object Reflow {
     future
   }
 
-  private def builder = new Dependency()
+  private[reflow] def builder = new Dependency()
 
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Global Track **********************************//
 
   object GlobalTrack {
-    private lazy val snatcher = new tool.Snatcher.ActionQueue
-    private lazy val delegator = new Observable
-    private lazy val observer2Wrapper = new TrieMap[GlobalTrackObserver, Feedback]
+    private lazy val observersMap = new TrieMap[GlobalTrackObserver, Feedback4Observer]
     private[reflow] lazy val globalTrackMap = new TrieMap[Feedback, GlobalTrack]
     private[reflow] lazy val obtainer = getAllItems _
-    @volatile private var currentGTrack: GlobalTrack = _
 
-    def getAllItems = globalTrackMap.values
+    def getAllItems = globalTrackMap.readOnlySnapshot.values
 
-    // 由于有此需求的比较少，最终存储为`Seq`可提高框架的效率。
-    def registerObserver(observer: GlobalTrackObserver)(implicit policy: Policy, poster: Poster): Unit = {
-      val feedback = policy.genDelegator(new Feedback4Observer(observer.ensuring(_.nonNull)).wizh(poster))
-      observer2Wrapper.put(observer, feedback)
-      delegator.addObservers(feedback)
+    def registerObserver(observer: GlobalTrackObserver)(implicit poster: Poster): Unit = {
+      val feedback = new Feedback4Observer(observer.ensuring(_.nonNull))
+      observersMap.put(observer, feedback)
     }
 
-    def unregisterObserver(observer: GlobalTrackObserver): Unit = delegator.removeObservers(observer2Wrapper.remove(observer).get)
+    def unregisterObserver(observer: GlobalTrackObserver): Unit = observersMap.remove(observer)
 
     trait GlobalTrackObserver {
       type All = obtainer.type
@@ -274,49 +267,41 @@ object Reflow {
       def onUpdate(current: GlobalTrack, items: All): Unit
     }
 
-    private class Feedback4Observer(observer: GlobalTrackObserver) extends Feedback with TAG.ClassName {
-      private def reportOnUpdate(gt: GlobalTrack = currentGTrack): Unit = eatExceptions(observer.onUpdate(gt, obtainer))
-      override def onPending(): Unit = reportOnUpdate()
-      override def onStart(): Unit = reportOnUpdate()
-      override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = reportOnUpdate(currentGTrack.progress(progress))
-      override def onComplete(out: Out): Unit = reportOnUpdate()
-      override def onUpdate(out: Out): Unit = reportOnUpdate()
-      override def onAbort(trigger: Option[Trait]): Unit = reportOnUpdate()
-      override def onFailed(trat: Trait, e: Exception): Unit = reportOnUpdate()
+    private class Feedback4Observer(observer: GlobalTrackObserver)(implicit poster: Poster) extends TAG.ClassName {
+      private def reportOnUpdate(gt: GlobalTrack): Unit = eatExceptions(observer.onUpdate(gt, obtainer))
+
+      def onPending(gt: GlobalTrack): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onStart(gt: GlobalTrack): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onProgress(gt: GlobalTrack, progress: Feedback.Progress, out: Out, fromDepth: Int): Unit =
+        if (poster.isNull) reportOnUpdate(gt.progress(progress)) else poster.post(reportOnUpdate(gt.progress(progress)))
+      def onComplete(gt: GlobalTrack, out: Out): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onUpdate(gt: GlobalTrack, out: Out): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onAbort(gt: GlobalTrack, trigger: Option[Trait]): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onFailed(gt: GlobalTrack, trat: Trait, e: Exception): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
     }
-    private[reflow] class Feedback4GlobalTrack extends Feedback {
-      private def deliver(action: => Unit): Unit = {
-        currentGTrack = globalTrackMap(this)
-        action
-        currentGTrack = null
+    private[reflow] class Feedback4GlobalTrack extends Feedback with TAG.ClassName {
+      private lazy val tracker: GlobalTrack = globalTrackMap(this)
+
+      override def onPending(): Unit = observersMap.snapshot.values.foreach(_.onPending(tracker))
+      override def onStart(): Unit = observersMap.snapshot.values.foreach(_.onStart(tracker))
+      override def onProgress(progress: Feedback.Progress, out: Out, fromDepth: Int): Unit =
+        observersMap.snapshot.values.foreach(_.onProgress(tracker, progress, out, fromDepth))
+      override def onComplete(out: Out): Unit = {
+        observersMap.snapshot.values.foreach(_.onComplete(tracker, out))
+        if (tracker.scheduler.isDone) globalTrackMap.remove(this)
       }
-
-      override def onPending(): Unit = snatcher.queAc(deliver(delegator.onPending()))
-
-      override def onStart(): Unit = snatcher.queAc(deliver(delegator.onStart()))
-
-      override def onProgress(progress: Feedback.Progress, out: Out, depth: Int): Unit = snatcher.queAc(
-        deliver(delegator.onProgress(progress, out, depth)))
-
-      override def onComplete(out: Out): Unit = snatcher.queAc(deliver {
-        delegator.onComplete(out)
-        if (currentGTrack.scheduler.isDone) globalTrackMap.remove(this)
-      })
-
-      override def onUpdate(out: Out): Unit = snatcher.queAc(deliver {
-        delegator.onUpdate(out)
+      override def onUpdate(out: Out): Unit = {
+        observersMap.snapshot.values.foreach(_.onUpdate(tracker, out))
         globalTrackMap.remove(this)
-      })
-
-      override def onAbort(trigger: Option[Trait]): Unit = snatcher.queAc(deliver {
-        delegator.onAbort(trigger)
+      }
+      override def onAbort(trigger: Option[Trait]): Unit = {
+        observersMap.snapshot.values.foreach(_.onAbort(tracker, trigger))
         globalTrackMap.remove(this)
-      })
-
-      override def onFailed(trat: Trait, e: Exception): Unit = snatcher.queAc(deliver {
-        delegator.onFailed(trat, e)
+      }
+      override def onFailed(trat: Trait, e: Exception): Unit = {
+        observersMap.snapshot.values.foreach(_.onFailed(tracker, trat, e))
         globalTrackMap.remove(this)
-      })
+      }
     }
   }
 
@@ -336,7 +321,9 @@ object Reflow {
       val reqSet = required.values.toSet
       if (debugMode) {
         requireRealInEnough(reqSet, realIn)
+        import Logger._
         logger.w("[start]required:%s, inputTrans:%s.", reqSet, tranSet)
+        logger.i("[start]intents:%s, parent:%s.", basis.traits.map(_.name$).mkString(", ").s, if (outer.isNull) null else outer.trat.name$.s)
       }
       val traitIn = new Trait.Input(this, inputs, reqSet)
       // 全局记录跟踪
@@ -347,37 +334,35 @@ object Reflow {
         trackPolicy.genDelegator(feedback4track).join(policy.genDelegator(feedback.wizh(poster))),
         policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
-      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, outer.nonNull))
-      // 异步反馈新增任务到全局跟踪器
+      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat)))
       Reflow.submit$ {
         scheduler.start$()
       }(Period.TRANSIENT, P_HIGH)
       scheduler
     }
 
-    override def torat(_name: String, _period: Period.Tpe = basis.maxPeriod(), _desc: String = null) = new ReflowTrait(this) {
-      override protected def name() = _name
+    override def torat(_name: String, _desc: String = null): ReflowTrait = new ReflowTrait(this) {
+      override protected def name() = if (_name.isNull) super.name() else _name
       override protected def requires() = inputRequired.values.toSet
       override protected def outs() = reflow.basis.outs
-      override protected def period() = _period.ensuring(_ >= reflow.basis.maxPeriod())
-      override protected def desc() = if (_desc.isNull || _desc.isEmpty) name$ else _desc
+      override protected def desc() = if (_desc.isNull) name$ else _desc
     }
 
     override def fork() = new Impl(basis, inputRequired)
   }
 }
 
-abstract class Reflow(val basis: Dependency.Basis) {
+abstract class Reflow private[reflow](val basis: Dependency.Basis) {
   /**
     * 启动任务。可并行启动多个。
     *
     * @param inputs   输入内容的加载器。
     * @param feedback 事件反馈回调接口。
-    * @param policy   进度反馈的优化策略。可以叠加使用，如：`Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)`。
+    * @param strategy 进度反馈的优化策略。可以叠加使用，如：`Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)`。
     * @param poster   转移`feedback`的调用线程, 可为`null`。
     * @return `true`启动成功，`false`正在运行。
     */
-  final def start(inputs: In, feedback: Feedback)(implicit policy: Policy, poster: Poster): Scheduler = start(inputs, feedback, policy, poster, null)
+  final def start(inputs: In, feedback: Feedback)(implicit strategy: Policy, poster: Poster): Scheduler = start(inputs, feedback, strategy, poster, null)
 
   /**
     * 启动一个流处理器`Pulse`。
@@ -392,10 +377,13 @@ abstract class Reflow(val basis: Dependency.Basis) {
 
   private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
 
+  @deprecated
+  def torat(name: String, desc: String = null): ReflowTrait
+
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
-  def torat(name: String, period: Period.Tpe = basis.maxPeriod(), desc: String = null): ReflowTrait
+  def toSub(name: String, desc: String = null): Trait = torat(name, desc)
 
   def fork(): Reflow
 }

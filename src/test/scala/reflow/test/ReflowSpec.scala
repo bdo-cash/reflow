@@ -42,7 +42,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
           println("----------]]]")
         }
       }
-    })(Policy.Interval(600), null)
+    })(null)
   }
 
   info("------------------------- 简介 -------------------------")
