@@ -16,6 +16,7 @@
 
 package hobby.wei.c.reflow
 
+import hobby.chenai.nakam.basis.TAG.ClassName
 import hobby.wei.c.reflow.Feedback.Progress
 
 /**
@@ -24,7 +25,7 @@ import hobby.wei.c.reflow.Feedback.Progress
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 03/04/2018
   */
-class GlobalTrack(val reflow: Reflow, val scheduler: Scheduler, val isSubReflow: Boolean) extends Equals {
+final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[Trait]) extends Equals with ClassName {
   @volatile private var _progress: Progress = Progress(reflow.basis.traits.size, 0)
 
   private[reflow] def progress(progress: Progress): GlobalTrack = {
@@ -32,18 +33,21 @@ class GlobalTrack(val reflow: Reflow, val scheduler: Scheduler, val isSubReflow:
     this
   }
 
+  def isSubReflow: Boolean = parent.isDefined
   def progress = _progress
 
-  /** 取得[正在]和[将要]任务的任务列表。 */
+  /** 取得[正在]和[将要]执行的任务列表。 */
   def remaining = reflow.basis.traits.drop(_progress.step).ensuring(r => _progress.trat.fold(true)(_ == r.head))
 
   override def equals(any: Any) = any match {
     case that: GlobalTrack if that.canEqual(this) =>
-      (this.reflow eq that.reflow) && (this.scheduler eq that.scheduler) && (this.isSubReflow == that.isSubReflow)
+      (this.reflow eq that.reflow) && (this.scheduler eq that.scheduler)
     case _ => false
   }
 
   override def canEqual(that: Any) = that.isInstanceOf[GlobalTrack]
 
-  override def toString = s"[GlobalTrack]reflow:$reflow, scheduler:$scheduler, isSubReflow:$isSubReflow, progress:$progress."
+  override def toString = s"[$className]reflow:$reflow, scheduler:$scheduler, isSubReflow:$isSubReflow, parent:${
+    parent.fold[String](null)(_.name$)
+  }, progress:$progress."
 }

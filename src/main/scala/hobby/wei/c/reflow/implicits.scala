@@ -18,9 +18,11 @@ package hobby.wei.c.reflow
 
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.reflow.Reflow.Period
+import hobby.wei.c.reflow.lite.{Lite, Par}
 
 import scala.collection.immutable
 import scala.language.implicitConversions
+import scala.reflect.ClassTag
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -40,11 +42,11 @@ object implicits {
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
-  lazy val Policy = Feedback.Progress.Policy
-  lazy val FullDose = Policy.FullDose
-  lazy val Fluent = Policy.Fluent
-  lazy val Depth = Policy.Depth
-  lazy val Interval = Policy.Interval
+  lazy val Strategy = Feedback.Progress.Policy
+  lazy val FullDose = Strategy.FullDose
+  lazy val Fluent = Strategy.Fluent
+  lazy val Depth = Strategy.Depth
+  lazy val Interval = Strategy.Interval
 
   type KeyVType[T <: AnyRef] = Kce[T]
   type Intent = Trait
@@ -57,6 +59,9 @@ object implicits {
   implicit class TransformerRetain(kce: Kce[_ <: AnyRef]) {
     @inline def re: Transformer[_ <: AnyRef, _ <: AnyRef] = Helper.Transformers.retain(kce)
   }
+
+  implicit def lite2Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
+  (lite: Lite[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Par[IN, OUT] = Par(lite)
 
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _

@@ -44,7 +44,8 @@ import scala.util.control.Breaks._
   *          1.2, 05/07/2018, 更新以便支持`Pulse`功能；
   *          1.3, 23/03/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法；
   *          1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug；
-  *          1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
+  *          1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug;
+  *          1.6, 12/07/2020, fix bug: Progress(..trat)。
   * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
   * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -523,7 +524,9 @@ private[reflow] object Tracker {
           // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
           if (state.get == EXECUTING) {
             val top = remaining.head
-            reporter.reportOnProgress(Progress(sum, reflow.basis.stepOf(top), Option(top), Option(p)), out, depth)
+            // `top`是 hobby.wei.c.reflow.Trait$Parallel#${第一个`trat`的名字}，不是真实`trat`的名字。so...
+            // 1.6, 12/07/2020, fix bug: Progress(..trat)。
+            reporter.reportOnProgress(Progress(sum, reflow.basis.stepOf(top), Option(trat), Option(p)), out, depth)
           }
         }
       }

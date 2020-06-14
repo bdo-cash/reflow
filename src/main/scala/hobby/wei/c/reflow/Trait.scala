@@ -124,10 +124,7 @@ object Trait {
     private[reflow] def first(): Trait = _traits.head
     private[reflow] def last(): Trait = _traits.last
 
-    override protected def name() = {
-      // 由于不允许同一个队列里面有相同的名字，所以取第一个的名字即可区分。
-      classOf[Parallel].getName + "#" + _traits.head.name$
-    }
+    override protected def name() = classOf[Parallel].getName + "#" + sCount.getAndIncrement()
     override def newTask() = ???
     override protected def requires() = none
     override protected def outs() = none
@@ -159,7 +156,10 @@ object Trait {
   private[reflow] abstract class ReflowTrait(val reflow: Reflow) extends Trait {
     override final val is4Reflow = true
 
+    override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
     override final def newTask() = new SubReflowTask()
-    override final def priority() = reflow.basis.first(child = true).get.priority$
+    override protected final def priority() = reflow.basis.first(child = true).get.priority$
+    // 这只是一个外壳，调度瞬间完成。子任务执行时，这层壳不会阻塞线程（事件回调机制）。
+    override protected final def period() = Period.TRANSIENT
   }
 }

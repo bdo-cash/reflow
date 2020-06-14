@@ -23,9 +23,7 @@ package hobby.wei.c.reflow
   * @version 1.0, 23/07/2016
   */
 trait Poster {
-  def post(f: => Unit): Unit = post(new Runnable {
-    override def run(): Unit = f
-  })
+  def post(f: => Unit): Unit = post(() => f)
 
   def post(runner: Runnable): Unit // 可这样作默认实现 = runner.run()
 }
