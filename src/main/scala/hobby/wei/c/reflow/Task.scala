@@ -249,5 +249,9 @@ abstract class Task protected() {
 }
 
 object Task {
+  private[reflow] def apply(f: Context => Unit): Task = new Context {
+    override protected def doWork(): Unit = f(this)
+  }
+
   abstract class Context private[reflow]() extends Task
 }
