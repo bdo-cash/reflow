@@ -35,8 +35,8 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
         if (true /*!current.isSubReflow && current.scheduler.getState == State.EXECUTING*/ ) {
-          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState} | ${current.scheduler}")
-//          items().foreach(println)
+          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState}")
+          items().foreach(println)
           println(current)
           println("--------------------]]]")
         }
@@ -66,37 +66,37 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
   implicit lazy val c2d = Task[Ccc, Ddd]() { (ccc, ctx) => new Ddd(ccc) }
   implicit lazy val c2abc = c2a >>> a2b >>> b2c
 
-  implicit lazy val strategy = FullDose
+  implicit lazy val strategy = Fluent
   implicit lazy val poster: Poster = null
 
   lazy val feedback = new reflow.Feedback.Adapter
 
   Feature("使用 reflow.lite 库简化 Reflow 编码") {
-    //    Scenario("简单`【串】行任务`组装") {
-    //      info("以上定义了一些任务")
-    //      info("再定义一个输入：")
-    //      val input = Task(new Aaa)
-    //
-    //      Then("组装任务：")
-    //      info("1. 利用`类型匹配 + 隐世转换`自动组装；")
-    //
-    //      input.next[Bbb].next[Ccc].next[Ddd].run() sync()
-    //
-    //      info("2. 直接用任务的`引用`组装；")
-    //      input >>> a2b >>> b2c >>> c2d run() sync()
-    //
-    //      info("这两种方法是等价的，后面跟`run()`即可运行。")
-    //
-    //      When("调用`run(feedback)(strategy，poster)`运行")
-    //      info("观察输出")
-    //      assert(true)
-    //    }
+    Scenario("简单`【串】行任务`组装") {
+      info("以上定义了一些任务")
+      info("再定义一个输入：")
+      val input = Task(new Aaa)
+
+      Then("组装任务：")
+      info("1. 利用`类型匹配 + 隐世转换`自动组装；")
+
+      input.next[Bbb].next[Ccc].next[Ddd].run() sync()
+
+      info("2. 直接用任务的`引用`组装；")
+      input >>> a2b >>> b2c >>> c2d run() sync()
+
+      info("这两种方法是等价的，后面跟`run()`即可运行。")
+
+      When("调用`run(feedback)(strategy，poster)`运行")
+      info("观察输出")
+      assert(true)
+    }
 
     Scenario("`【串/并】行任务`混合组装") {
       val pars = (
         c2d
           +>>
-          c2abc("name#c2abc", "c2abc 串行任务组装到并行任务")
+          c2abc("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
           c2b
           +>>
@@ -108,7 +108,7 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
         info(d.toString)
         d
       }
-      Input(new Aaa) >>> a2b >>> b2c >>> pars run(feedback) sync()
+      Input(new Aaa) >>> a2b >>> b2c >>> pars run() sync()
 
       assert(true)
     }
