@@ -1,7 +1,10 @@
 ## Reflow:  任务 _`串/并联`_ 组合调度框架，脉冲步进流处理框架。
 
+* 新增: **[lite](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/lite/Task.scala) 工具，简化`串/并联`任务的混合组装**
+  - 示例请移步 _[这里](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95)_。
+
 * 新增:  **[Pulse](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala#L46) 步进流式数据处理器**
-  - 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会“排队”（`FIFO`，使用了一种巧妙的调度策略而不会真的有队列）进入各个任务，每个任务还可保留前一个数据在处理时特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
+  - 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会“排队”（`FIFO`，使用了一种巧妙的调度策略而不会真的有队列）进入各个任务，每个任务还可保留前一个数据在处理时特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。示例请移步 _[这里](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/PulseSpec.scala)_。
 
 #### 一、概述
 
@@ -138,6 +141,32 @@ object App {
 }
 ```
 
+* 以下为 [`LiteSpec`](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95) 片段：
+
+```Scala
+// ...
+Scenario("`【串/并】行任务`混合组装") {
+  val pars = (
+    c2d
+      +>>
+      c2abc("name#c2abc", "c2abc`串行`混入`并行`")
+      +>>
+      c2b
+      +>>
+      c2a
+    ) **> { (d, c, b, a, ctx) =>
+    info(a.toString)
+    info(b.toString)
+    info(c.toString)
+    info(d.toString)
+    d
+  }
+  Input(new Aaa) >>> a2b >>> b2c >>> pars run() sync()
+
+  assert(true)
+}
+```
+
 * 以下为 [`ReflowSpec`](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala) 原文。
 
 ```Scala
@@ -152,6 +181,10 @@ import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
 import reflow.test.enum.EnumTest
 
+/**
+  * @author Chenai Nakam(chenai.nakam@gmail.com)
+  * @version 1.0, 13/03/2018
+  */
 class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(false)
@@ -165,7 +198,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
           println("----------]]]")
         }
       }
-    })(Policy.Interval(600), null)
+    })(null)
   }
 
   info("------------------------- 简介 -------------------------")
@@ -260,7 +293,14 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       val trat = Trait("t0", SHORT, new Kce[String]("outputstr") {}) { ctx =>
         ctx.output(kces.outputstr.key, outputStr)
       }
-      val scheduler = Reflow.create(trat).next(Trait("t1", SHORT) { _ => }).submit(kces.outputstr)
+      val trat1 = Trait("t1", SHORT, kces.outputstr) { ctx =>
+        ctx.output(kces.outputstr.key, "abcd")
+      }
+      val scheduler = Reflow.create(trat).next(Trait("t2", SHORT) { _ => })
+        .and(trat1, new Transformer[String, Integer](kces.outputstr, new Kce[Integer]("kkk") {}) {
+          override def transform(in: Option[String]) = Option(666)
+        }).next(kces.outputstr.re)
+        .submit(/*kces.outputstr*/) // 默认用最后的输出作为prefer输出
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
       assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
@@ -276,9 +316,10 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   }
 
   info("【进阶】高级用法")
-  info("在一个大型系统中，往往存在大量的业务逻辑，这些业务包含着数以百计的`工作`需要处理，那么可以把这些工作构造为任务。")
-  info("这些任务之间通常具有顺序性，即：`依赖`关系。从整体上看，往往错综复杂。")
-  info("但可以将两两之间的关系归纳为两类：有依赖和无依赖，即：`串行`和`并行`。本框架的设计便是围绕这两种关系而展开。")
+  info("在一个大型系统中，往往存在着大量的业务逻辑和控制逻辑，它们是数以百计的“工作”的具体化。这些逻辑交织在一起，从整体上看，往往错综复杂。")
+  info("我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架（本`Reflow`框架），把业务逻辑构造为任务（Task）。而任务之间的关系也可进一步" +
+    "归纳为两类：有依赖和无依赖，即：串行和并行。")
+  info("用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。本框架的设计便是围绕着处理这些任务的控制逻辑而展开。")
   info("在`Reflow`里，对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
 
   Feature("组装复杂业务逻辑") {
