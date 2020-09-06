@@ -4,13 +4,13 @@ organization := "hobby.wei.c"
 
 version := "1.1.0"
 
-scalaVersion := "2.11.11"
+scalaVersion := "2.11.12"
 
 crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
-  "2.11.11",
+  "2.11.12",
   /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
-  "2.12.6")
+  "2.12.12")
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 // 启用对 java8 lambda 语法的支持。
@@ -21,7 +21,7 @@ publishArtifact in packageDoc := false
 
 // TODO: 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
-//  scalaVersion := "2.11.11"
+//  scalaVersion := "2.11.12"
 //)
 //
 //lazy val root = Project(id = "reflow", base = file("."))
@@ -42,7 +42,7 @@ libraryDependencies ++= Seq(
   // TODO: 独立使用本库的话，应该启用本依赖。
   "com.github.dedge-space" % "annoguard" % "1.0.3-beta",
   // TODO: 如果 jitpack 打包 2.12.6, 这个包的引入也必须是 2.12.6，切记切记。
-  "com.github.dedge-space" % "scala-lang" % "727912b657",
+  "com.github.dedge-space" % "scala-lang" % "6e95678f48",
 
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % Test,

@@ -565,7 +565,7 @@ private[reflow] object Tracker {
   private[reflow] class Runner private(val env: Env, trat: Trait) extends Worker.Runner(trat, null) with Equals with TAG.ClassName {
     def this(env: Env) = this(env, env.trat)
 
-    implicit lazy val logTag: LogTag = new LogTag(className + "/" + trat.name$.takeRight(8))
+    implicit lazy val logTag: LogTag = new LogTag(className + "/…" + trat.name$.takeRight(8))
 
     private lazy val workDone = new AtomicBoolean(false)
     private lazy val runnerDone = new AtomicBoolean(false)
