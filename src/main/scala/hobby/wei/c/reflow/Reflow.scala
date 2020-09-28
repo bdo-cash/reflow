@@ -369,8 +369,8 @@ abstract class Reflow private[reflow](val basis: Dependency.Basis) {
     *
     * @return `Pulse`实例，可进行无数次的`input(In)`操作。
     */
-  final def pulse(inputs: In = null, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster): Pulse = {
-    val pulse = new Pulse(this, feedback, abortIfError)
+  final def pulse(inputs: In = null, feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse = {
+    val pulse = new Pulse(this, feedback, abortIfError, inputCapacity)
     if (inputs.nonNull) pulse.input(inputs)
     pulse
   }

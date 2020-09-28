@@ -45,7 +45,8 @@ import scala.util.control.Breaks._
   *          1.3, 23/03/2019, 修改了`cacheInited`和`reinforceCache`以及`cache`初始化相关方法；
   *          1.4, 08/04/2019, fix 全局转换时的一个偶现的 bug；
   *          1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug;
-  *          1.6, 12/07/2020, fix bug: Progress(..trat)。
+  *          1.6, 12/07/2020, fix bug: Progress(..trat);
+  *          1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`。
   * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
   * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -436,7 +437,8 @@ private[reflow] object Tracker {
 
     @throws[InterruptedException]
     override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
-      val start = System.currentTimeMillis
+      // 1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`。
+      val start = System.nanoTime
       Locker.sync$(new Locker.CodeC[Option[Out]](1) {
         @throws[InterruptedException]
         override protected def exec(cons: Array[Condition]) = {
@@ -448,7 +450,7 @@ private[reflow] object Tracker {
                 cons(0).await()
                 if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 0.")
               } else {
-                val delta = milliseconds - (System.currentTimeMillis - start)
+                val delta = milliseconds - ((System.nanoTime - start) / 1e6).toLong
                 if (delta <= 0 || !cons(0).await(delta, TimeUnit.MILLISECONDS)) {
                   if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 1.")
                   break

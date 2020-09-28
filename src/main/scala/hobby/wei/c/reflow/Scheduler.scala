@@ -105,7 +105,7 @@ object Scheduler {
 
     @throws[InterruptedException]
     override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
-      val begin = System.currentTimeMillis
+      val begin = System.nanoTime
       var loop = true
       var delegator: Tracker.Impl = null
       while (loop) {
@@ -119,7 +119,7 @@ object Scheduler {
           loop = false
         }
       }
-      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - (System.currentTimeMillis - begin))
+      delegator.sync(reinforce, if (milliseconds == -1) -1 else milliseconds - ((System.nanoTime - begin) / 1e6).toLong)
     }
 
     override def abort(): Unit = getDelegator.fold()(_.abort())

@@ -21,7 +21,6 @@ import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Feedback.Progress.Policy
-import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Pulse.Reporter
@@ -29,6 +28,7 @@ import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.concurrent.TrieMap
 
 /**
@@ -37,42 +37,53 @@ import scala.collection.concurrent.TrieMap
   * 数据流经`大规模集成任务集（Reflow）`，能够始终保持输入时的先后顺序，会排队进入各个任务，每个任务可保留前一个数据在处理时
   * 特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
   *
-  * @param reflow       每个`流处理器`都`Base`在一个主`Reflow`上。
-  * @param abortIfError 当有一次输入出现错误时，是否中断。默认为`false`。
+  * @param reflow        每个`流处理器`都`Base`在一个主`Reflow`上。
+  * @param abortIfError  当有一次输入出现错误时，是否中断。默认为`false`。
+  * @param inputCapacity 输入数据的缓冲容量。
+  *
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 01/07/2018;
-  *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）。
+  *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）;
+  *          1.7, 29/09/2020, 增加了`strategy`和`queueCapacity`实现，至此算是完美了。
   */
-class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false)(implicit poster: Poster)
+class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false,
+            inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster)
   extends Scheduler with TAG.ClassName {
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
   private lazy val reporter = new Reporter(feedback.wizh(poster))
   private lazy val state = new Scheduler.State$()
   private lazy val serialNum = new AtomicLong(0)
-  @volatile var head: Option[Tactic] = None
+  private lazy val inputQueue = new LinkedBlockingQueue[In](inputCapacity)
+  @volatile private var head: Option[Tactic] = None
 
   /**
-    * 流式数据输入。请关注返回值。
+    * 流式数据输入。需要关注返回值，且应使用单线程输入，如果要用多线程，应自行保证线程安全。
+    * 注意：输入数据`in`会首先存入[[LinkedBlockingQueue]]，如果达到了[[inputCapacity]] size, 则会阻塞。
     *
-    * @return `false`不可以再继续输入。
+    * @return `false`表示已经结束运行，不能再继续输入。
     */
+  @throws[InterruptedException]
   def input(in: In): Boolean = {
     if (isDone) false
     else {
-      snatcher.queAc {
-        // 去掉，避免歧义。会不会直接导致`input()`返回是个问题。
-        // if (isDone) return false // `false`仅为通过编译检查
-        val pending = state.forward(PENDING)
-        // 无论我是不是第一个，原子切换。
-        head = Option(new Tactic(head, this, serialNum.getAndIncrement))
-        val tac = head
-        Reflow.submit$ {
-          // if (pending) reporter.reportOnPending(tac.get.serialNum)
-          tac.get.start(in)
-        }(TRANSIENT, (P_LOW + P_NORMAL) / 2) // 优先级较低
-        () // 返回`Unit`而不是上面的返回值`Future`。
-      }
+      // `isDone`只是本方法层面的判断，只要`Reflow.submit$()`了，总是可以执行完，
+      // 也必须让没有被`isDone`挡住的`In`能执行完，所以没必要再次加锁 double check `isDone`了。
+      inputQueue.put(in)
+      consumeInputQueue()
       true
+    }
+  }
+
+  private def consumeInputQueue(onStartedSNum: Long = -1): Unit = snatcher.queAc {
+    if (debugMode) log.i("[consumeInputQueue]onStartedSNum:%d.", onStartedSNum)
+    while (onStartedSNum + 3 >= serialNum.get && !inputQueue.isEmpty) {
+      if (debugMode) log.i("[consumeInputQueue]serialNum:%d, onStartedSNum: %d.", serialNum.get, onStartedSNum)
+      state.forward(PENDING)
+      // 无论我是不是第一个，原子交换。
+      head = Some(new Tactic(head, this, serialNum.getAndIncrement, strategy, { sn =>
+        consumeInputQueue(sn)
+      }))
+      head.get.start(inputQueue.take())
     }
   }
 
@@ -123,7 +134,8 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     abortHead(thd) // 尾递归
   }
 
-  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long) extends TAG.ClassName {
+  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long,
+                               strategy: Policy, onStartedCallback: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
     private lazy val roadmap = new TrieMap[(Int, String), Out]
     private lazy val suspend = new TrieMap[(Int, String), () => Unit]
@@ -133,9 +145,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     // `in`参数放在这里以缩小作用域。
     def start(in: In): Unit = {
       head.foreach(follow)
-      scheduler = pulse.reflow.start(in, feedback,
-        /*全量进度，以便下一个输入可以在任何深度确认是否可以运行某`Task`了。*/
-        Policy.FullDose,
+      scheduler = pulse.reflow.start(in, feedback, strategy,
         /*不使用外部客户代码提供的`poster`，以确保`feedback`和`cacheBack`反馈顺序问题。*/
         null, null, interact)
     }
@@ -194,6 +204,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
       override def onStart(): Unit = pulse.snatcher.queAc {
         pulse.reporter.reportOnStart(serialNum)
+        onStartedCallback(serialNum)
       }
 
       override def onProgress(progress: Progress, out: Out, depth: Int): Unit = pulse.snatcher.queAc {

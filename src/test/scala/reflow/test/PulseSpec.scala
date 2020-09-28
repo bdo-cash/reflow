@@ -35,7 +35,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
 //    Reflow.setConfig(SINGLE_THREAD)
   }
 
-  implicit lazy val policy: Policy = Policy.Fluent
+  implicit lazy val policy: Policy = Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)
   implicit lazy val poster: Poster = null
 
   Feature("`Pulse`脉冲步进流式数据处理") {

@@ -161,13 +161,17 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
     joinThis2Head(serial).as[Serial[IN, Next]]
   }
 
-  def run(feedback: Feedback = Feedback.Log)(implicit policy: Policy, poster: Poster): Scheduler = {
+  /** 去掉了[[Input]]的。*/
+  def resolveDepends(): Dependency = {
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) if head.isDefined => parseDepends(head.get).next(tail.intent)
       case input: Input[_] => Reflow.builder
       case _ => throwInputRequired
     }
+    parseDepends(this)
+  }
 
+  def run(feedback: Feedback = Feedback.Log)(implicit policy: Policy, poster: Poster): Scheduler = {
     @scala.annotation.tailrec
     def findIn(lite: AbsLite[_, _]): In = lite match {
       case Serial(head, _) if head.isDefined => findIn(head.get)
@@ -175,7 +179,7 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
       case _ => throwInputRequired
     }
 
-    parseDepends(this).submit().start(findIn(this), feedback)
+    resolveDepends().submit().start(findIn(this), feedback)
   }
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
