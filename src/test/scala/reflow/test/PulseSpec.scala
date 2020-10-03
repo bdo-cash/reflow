@@ -16,13 +16,13 @@
 
 package reflow.test
 
-import java.util.concurrent.{Callable, FutureTask}
 import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
+import java.util.concurrent.{Callable, FutureTask}
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -30,6 +30,7 @@ import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, Given
   *          1.5, 04/10/2019, fix 了一个很重要的 bug。
   */
 class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
+
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(false)
 //    Reflow.setConfig(SINGLE_THREAD)
@@ -46,7 +47,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(2000)
+          Thread.sleep(200)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
@@ -55,7 +56,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-            Thread.sleep(5000)
+            Thread.sleep(500)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
@@ -67,7 +68,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(5000)
+          Thread.sleep(500)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
@@ -76,7 +77,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-            Thread.sleep(3000)
+            Thread.sleep(300)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
@@ -89,7 +90,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-          Thread.sleep(1000)
+          Thread.sleep(100)
         }
         ctx.cache[Integer](kces.int, times + 1)
         ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
@@ -98,7 +99,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
-            Thread.sleep(2000)
+            Thread.sleep(200)
           }
           ctx.cache[Integer](kces.int, times + 1)
           ctx.output(kces.str, times + "")
@@ -111,11 +112,11 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       })
 
       Then("创建 pulse")
-      lazy val pulse: Pulse = reflow.pulse(null, feedbackPulse, true)
+      lazy val pulse: Pulse = reflow.pulse(feedbackPulse, true)
 
       lazy val feedbackPulse = new Pulse.Feedback.Adapter {
         override def onComplete(serialNum: Long, out: Out): Unit = {
-          if (serialNum == 4) {
+          if (serialNum == 20) {
             callableOut = out
             future.run()
             println("abort()...")
@@ -132,14 +133,30 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
         }
       }
 
-      lazy val feedback = new Feedback.Adapter {
-        override def onComplete(out: Out): Unit = {
-          callableOut = out
-          future.run()
-        }
-      }
+//      lazy val feedback = new Feedback.Adapter {
+//        override def onComplete(out: Out): Unit = {
+//          callableOut = out
+//          future.run()
+//        }
+//      }
 
       var data = (kces.str, "66666") :: Nil
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
+      data ::= data.head
       data ::= data.head
       data ::= data.head
       data ::= data.head
@@ -150,7 +167,11 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       data.foreach(pulse.input(_))
 
       Then("等待结果")
-      future map { out => assertResult("4")(out(kces.str)) }
+      future map { out =>
+        require(pulse.isCurrAllCompleted)
+
+        assertResult("20")(out(kces.str))
+      }
     }
   }
 

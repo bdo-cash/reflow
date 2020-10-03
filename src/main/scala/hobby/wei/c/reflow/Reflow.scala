@@ -365,15 +365,12 @@ abstract class Reflow private[reflow](val basis: Dependency.Basis) {
   final def start(inputs: In, feedback: Feedback)(implicit strategy: Policy, poster: Poster): Scheduler = start(inputs, feedback, strategy, poster, null)
 
   /**
-    * 启动一个流处理器`Pulse`。
+    * 启动一个流处理器[[Pulse]]。
     *
     * @return `Pulse`实例，可进行无数次的`input(In)`操作。
     */
-  final def pulse(inputs: In = null, feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse = {
-    val pulse = new Pulse(this, feedback, abortIfError, inputCapacity)
-    if (inputs.nonNull) pulse.input(inputs)
-    pulse
-  }
+  final def pulse(feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse =
+    new Pulse(this, feedback, abortIfError, inputCapacity)
 
   private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
 

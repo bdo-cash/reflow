@@ -171,7 +171,7 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
     parseDepends(this)
   }
 
-  def run(feedback: Feedback = Feedback.Log)(implicit policy: Policy, poster: Poster): Scheduler = {
+  def run(feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit policy: Policy, poster: Poster): Scheduler = {
     @scala.annotation.tailrec
     def findIn(lite: AbsLite[_, _]): In = lite match {
       case Serial(head, _) if head.isDefined => findIn(head.get)
@@ -181,6 +181,15 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
 
     resolveDepends().submit().start(findIn(this), feedback)
   }
+
+  /**
+    * 启动一个流处理器[[reflow.Pulse]]。与[[Reflow.pulse]]不同的是，这个返回的[[Pulse]]是带输入值类型的。<br>
+    * 注意：组装开头的[[Input]]值已被忽略，但保留了类型。
+    *
+    * @return `Pulse`实例，可进行无数次的`input(in)`操作。
+    */
+  final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse[IN] =
+    Pulse(new reflow.Pulse(resolveDepends().submit(), feedback, abortIfError, inputCapacity))
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
   protected def throwInputNotRequired = throw new IllegalArgumentException("`Input[]` NOT required.".tag)
@@ -197,6 +206,10 @@ final class Input[OUT <: AnyRef] private[lite](input: => OUT)(implicit out: Clas
   private[lite] lazy val in: In = Task.defKeyVType -> input
   // Don't use this.
   //private[lite] lazy val builder = Reflow.builder
+}
+
+final case class Pulse[IN <: AnyRef] private[lite](pulse: reflow.Pulse) {
+  def input(in: => IN): Unit = pulse.input(Task.defKeyVType -> in)
 }
 
 /** 单个任务。 */

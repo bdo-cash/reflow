@@ -85,7 +85,6 @@ trait Feedback extends Equals {
   def onFailed(trat: Trait, e: Exception): Unit
 
   override def equals(any: Any) = super.equals(any)
-
   override def canEqual(that: Any) = false
 }
 
@@ -108,11 +107,9 @@ object Feedback {
     require(subs.fold(true)(_.forall(_.nonNull)))
 
     lazy val main: Float = (step + sub) / sum
-
     lazy val sub: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
 
     @inline def apply(): Float = main
-
     override def toString = s"Progress(sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$.tag}" }})"
   }
 
@@ -121,13 +118,9 @@ object Feedback {
     trait Policy extends Ordering[Policy] {
       outer =>
       val priority: Int
-
       def genDelegator(feedback: Feedback): Feedback = feedback
-
       def ->(policy: Policy): Policy = new Multiply(this, policy)
-
       final def isFluentMode: Boolean = this <= Fluent
-
       def base = this
 
       /** 生成用于传递到`SubReflow`的`Policy`。 */
@@ -151,9 +144,7 @@ object Feedback {
       override val priority = (before min after).priority
 
       override def base = before.base
-
       override def toSub = base.toSub
-
       override def genDelegator(feedback: Feedback) = before.genDelegator(after.genDelegator(feedback))
     }
 
@@ -268,17 +259,11 @@ object Feedback {
       require(poster.nonNull)
 
       override def onPending(): Unit = poster.post(super.onPending())
-
       override def onStart(): Unit = poster.post(super.onStart())
-
       override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(super.onProgress(progress, out, fromDepth))
-
       override def onComplete(out: Out): Unit = poster.post(super.onComplete(out))
-
       override def onUpdate(out: Out): Unit = poster.post(super.onUpdate(out))
-
       override def onAbort(trigger: Option[Trait]): Unit = poster.post(super.onAbort(trigger))
-
       override def onFailed(trat: Trait, e: Exception): Unit = poster.post(super.onFailed(trat, e))
     }
   }
@@ -287,33 +272,21 @@ object Feedback {
     require(feedback.nonNull)
 
     override def onPending(): Unit = feedback.onPending()
-
     override def onStart(): Unit = feedback.onStart()
-
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = feedback.onProgress(progress, out, fromDepth)
-
     override def onComplete(out: Out): Unit = feedback.onComplete(out)
-
     override def onUpdate(out: Out): Unit = feedback.onUpdate(out)
-
     override def onAbort(trigger: Option[Trait]): Unit = feedback.onAbort(trigger)
-
     override def onFailed(trat: Trait, e: Exception): Unit = feedback.onFailed(trat, e)
   }
 
   class Adapter extends Feedback {
     override def onPending(): Unit = {}
-
     override def onStart(): Unit = {}
-
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {}
-
     override def onComplete(out: Out): Unit = {}
-
     override def onUpdate(out: Out): Unit = {}
-
     override def onAbort(trigger: Option[Trait]): Unit = {}
-
     override def onFailed(trat: Trait, e: Exception): Unit = {}
   }
 
@@ -347,7 +320,7 @@ object Feedback {
 
     override def onComplete(out: Out): Unit = {
       super.onComplete(out)
-      onValueGot(out.get(kce))
+      onValueGotOnComplete(out.get(kce))
     }
 
     override def onUpdate(out: Out): Unit = {
@@ -356,10 +329,40 @@ object Feedback {
     }
 
     def onValueGotOnProgress(value: Option[T], progress: Progress): Unit = {}
-
-    def onValueGot(value: Option[T]): Unit
-
+    def onValueGotOnComplete(value: Option[T]): Unit
     def onValueGotOnUpdate(value: Option[T]): Unit = {}
+  }
+
+  abstract class Lite[-T <: AnyRef](watchProgressDepth: Int = 0) extends Butt(lite.Task.defKeyVType, watchProgressDepth) {
+    @deprecated
+    override final def onValueGotOnProgress(value: Option[AnyRef], progress: Progress): Unit =
+      liteValueGotOnProgress(value.as[Option[T]], progress)
+    @deprecated
+    override final def onValueGotOnComplete(value: Option[AnyRef]): Unit = liteOnComplete(value.as[Option[T]])
+    @deprecated
+    override final def onValueGotOnUpdate(value: Option[AnyRef]): Unit = liteOnUpdate(value.as[Option[T]])
+
+    def liteValueGotOnProgress(value: Option[T], progress: Progress): Unit = {}
+    def liteOnComplete(value: Option[T]): Unit
+    def liteOnUpdate(value: Option[T]): Unit = {}
+  }
+
+  object Lite {
+    implicit final object Log extends Feedback.Lite[AnyRef] with TAG.ClassName {
+      import Reflow.{logger => log}
+
+      override def onPending(): Unit = log.i("[onPending]")
+      override def onStart(): Unit = log.i("[onStart]")
+      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, value:%s.", fromDepth, progress, out.get(lite.Task.defKeyVType))
+      override def onComplete(out: Out): Unit = super.onComplete(out)
+      override def onUpdate(out: Out): Unit = super.onUpdate(out)
+      override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
+      override def onFailed(trat: Trait, e: Exception): Unit = log.e(e, "[onFailed]trat:%s.", trat)
+
+      override def liteOnComplete(value: Option[AnyRef]): Unit = log.w("[liteOnComplete]value:%s.", value)
+      override def liteOnUpdate(value: Option[AnyRef]): Unit = log.w("[liteOnUpdate]value:%s.", value)
+    }
+
   }
 
   class Observable extends Adapter with TAG.ClassName {
@@ -370,7 +373,6 @@ object Feedback {
     private[Feedback] var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
 
     private[Feedback] def removeAll(): Unit = Locker.syncr(obs = Nil)
-
     private[Feedback] def reverse(): Unit = Locker.syncr(obs = obs.reverse)
 
     def addObservers(fbs: Feedback*): Unit = Locker.syncr {
@@ -382,35 +384,23 @@ object Feedback {
     }
 
     override def onPending(): Unit = obs.foreach { fb => eatExceptions(fb.onPending()) }
-
     override def onStart(): Unit = obs.foreach { fb => eatExceptions(fb.onStart()) }
-
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, fromDepth)) }
-
     override def onComplete(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
-
     override def onUpdate(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onUpdate(out)) }
-
     override def onAbort(trigger: Option[Trait]): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger)) }
-
     override def onFailed(trat: Trait, e: Exception): Unit = obs.foreach { fb => eatExceptions(fb.onFailed(trat, e)) }
   }
 
-  implicit object Log extends Feedback with TAG.ClassName {
+  implicit final object Log extends Feedback with TAG.ClassName {
     import Reflow.{logger => log}
 
     override def onPending(): Unit = log.i("[onPending]")
-
     override def onStart(): Unit = log.i("[onStart]")
-
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, out:%s.", fromDepth, progress, out)
-
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
-
     override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
-
     override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
-
     override def onFailed(trat: Trait, e: Exception): Unit = log.e(e, "[onFailed]trat:%s.", trat)
   }
 }
