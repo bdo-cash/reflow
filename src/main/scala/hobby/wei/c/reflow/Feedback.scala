@@ -287,7 +287,7 @@ object Feedback {
     override def onComplete(out: Out): Unit = {}
     override def onUpdate(out: Out): Unit = {}
     override def onAbort(trigger: Option[Trait]): Unit = {}
-    override def onFailed(trat: Trait, e: Exception): Unit = {}
+    override def onFailed(trat: Trait, e: Exception): Unit = Log.onFailed(trat, e)
   }
 
   /**
