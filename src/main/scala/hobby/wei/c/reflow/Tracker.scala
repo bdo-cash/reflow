@@ -216,7 +216,7 @@ private[reflow] object Tracker {
       if (isPulseMode && !isInput(runner.trat)) {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
-        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, runner.env.myCache(create = false))
+        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, outer.map(_.trat), runner.env.myCache(create = false))
       }
       runnersParallel -= runner
       // 并行任务全部结束
@@ -325,7 +325,7 @@ private[reflow] object Tracker {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
         if (runner.trat.is4Reflow) Worker.scheduleRunner(runner, bucket = false)
-        else pulse.forward(subDepth, runner.trat, () => Worker.scheduleRunner(runner, bucket = true))
+        else pulse.forward(subDepth, runner.trat, outer.map(_.trat), () => Worker.scheduleRunner(runner, bucket = true))
       } else runnersParallel.keys.foreach {
         Worker.scheduleRunner(_, bucket = false)
       }

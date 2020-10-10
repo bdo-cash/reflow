@@ -46,7 +46,8 @@ import scala.collection.concurrent.TrieMap
   * @version 1.0, 01/07/2018;
   *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）;
   *          1.7, 29/09/2020, 增加了`strategy`和`queueCapacity`实现，至此算是完美了；
-  *          1.8, 01/10/2020, 修复`Tactic.snatcher`处于不同上下文导致线程不串行而偶现异常的问题。
+  *          1.8, 01/10/2020, 修复`Tactic.snatcher`处于不同上下文导致线程不串行而偶现异常的问题；
+  *          1.9, 11/10/2020, 为`Pulse.Interact`接口方法增加`parent`参数，修复[深度]和[任务]都相同的两个并行子任务干扰的问题。
   */
 class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false,
             inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster)
@@ -159,8 +160,8 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Policy,
                                onStartCallback: Long => Unit, onCompleteCallback: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
-    private lazy val roadmap = new TrieMap[(Int, String), Out]
-    private lazy val suspend = new TrieMap[(Int, String), () => Unit]
+    private lazy val roadmap = new TrieMap[(Int, String, String), Out]
+    private lazy val suspend = new TrieMap[(Int, String, String), () => Unit]
     // @volatile private var follower: Tactic = _
     // 不可以释放实例，只可以赋值。
     @volatile var scheduler: Scheduler = _
@@ -179,7 +180,9 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     }
 
     // 应该放到`object`里，相当于`static`的。
-    private def doPushForward(snatcher: tool.Snatcher, map: TrieMap[(Int, String), () => Unit], data: TrieMap[(Int, String), Out],
+    private def doPushForward(snatcher: tool.Snatcher,
+                              map: TrieMap[(Int, String, String), () => Unit],
+                              data: TrieMap[(Int, String, String), Out],
                               serialNum: Long): Unit = snatcher.tryOn {
       // fix bug: 1.8, 01/10/2020. 加了`snatcher`变量，否则由于每个`interact`回调本方法都是在两个不同的`Tactic`实例中，不同
       // `snatcher`无法串行化以下代码块。
@@ -192,7 +195,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
         // 2. 还有一个严重影响性能的问题：如果嵌套了子层`reflow`，则必须等该层`reflow`的所有任务执行完毕才能`endRunner()`,进而
         // 调用`interact.evolve()`，而后才能推动下一个数据的该层`reflow`继续。bug fix 已对`ReflowTrait`作了忽略处理。
         if (keys.exists(_ == k)) {
-          if (debugMode) log.i("(%d)[doPushForward](%s, %s).", serialNum, k._1, k._2.s)
+          if (debugMode) log.i("(%d)[doPushForward]%s.", serialNum, k)
           map.remove(k)
           go()
         }
@@ -200,24 +203,27 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     }
 
     private lazy val interact = new Pulse.Interact {
-      override def evolve(depth: Int, trat: Trait, cache: Out): Unit = {
-        if (debugMode) log.i("(%d)[interact.evolve](%s, %s).", serialNum /* + 1*/ , depth, trat.name$.s)
-        roadmap.put((depth, trat.name$), cache)
+      override def evolve(depth: Int, trat: Trait, parent: Option[Trait], cache: Out): Unit = {
+        val key = (depth, trat.name$, parent.map(_.name$).orNull)
+        if (debugMode) log.i("(%d)[interact.evolve]%s.", serialNum /* + 1*/ , key)
+        roadmap.put(key, cache)
         doPushForward(snatcher, suspend, roadmap, serialNum + 1)
       }
 
-      override def forward(depth: Int, trat: Trait, go: () => Unit): Unit = {
-        if (debugMode) log.i("(%d)[interact.forward](%s, %s).", serialNum, depth, trat.name$.s)
+      override def forward(depth: Int, trat: Trait, parent: Option[Trait], go: () => Unit): Unit = {
+        val key = (depth, trat.name$, parent.map(_.name$).orNull)
+        if (debugMode) log.i("(%d)[interact.forward]%s.", serialNum, key)
         head.fold(go()) { tac =>
-          tac.suspend.put((depth, trat.name$), go)
+          tac.suspend.put(key, go)
           doPushForward(tac.snatcher, tac.suspend, tac.roadmap, serialNum)
         }
       }
 
-      override def getCache(depth: Int, trat: Trait): Out = {
-        if (debugMode) log.i("(%d)[interact.getCache](%s, %s).", serialNum, depth, trat.name$.s)
+      override def getCache(depth: Int, trat: Trait, parent: Option[Trait]): Out = {
+        val key = (depth, trat.name$, parent.map(_.name$).orNull)
+        if (debugMode) log.i("(%d)[interact.getCache]%s.", serialNum, key)
         head.fold[Out](null) {
-          _.roadmap.remove((depth, trat.name$)).orNull
+          _.roadmap.remove(key).orNull
         }
       }
     }
@@ -317,7 +323,6 @@ object Pulse {
       def liteValueGotOnProgress(serialNum: Long, value: Option[T], progress: Progress): Unit = {}
       def liteOnComplete(serialNum: Long, value: Option[T]): Unit
     }
-
   }
 
   private[reflow] trait Interact {
@@ -326,30 +331,33 @@ object Pulse {
       * <p>
       * 表示上一个`Tactic`反馈的最新进展（或当前`Tactic`要反馈给下一个`Tactic`的进展）。
       *
-      * @param depth `SubReflow`的嵌套深度，顶层为`0`。在同一深度下的`trat`名称不会重复。
-      * @param trat  完成的`Task`。
-      * @param cache 留给下一个路过`Task`的数据。
+      * @param depth  `SubReflow`的嵌套深度，顶层为`0`。在同一深度下的`trat`名称不会重复。
+      * @param trat   完成的`Task`。
+      * @param parent 如果是`SubReflow`，则表示其父级别。
+      * @param cache  留给下一个路过`Task`的数据。
       */
-    def evolve(depth: Int, trat: Trait, cache: Out): Unit
+    def evolve(depth: Int, trat: Trait, parent: Option[Trait], cache: Out): Unit
 
     /**
       * 当前`Tactic`的某[[Task]]询问是否可以启动执行。必须在前一条数据输入[[Pulse.input]]执行完毕该`Task`后才可以启动。
       *
-      * @param depth 同上。
-      * @param trat  同上。
-      * @param go    一个函数，调用以推进询问的`Task`启动执行。如果在询问时，前一个`Tactic`的该`Task`未执行完毕，则应该
-      *              将本参数缓存起来，以备在`evolve()`调用满足条件时，再执行本函数以推进`Task`启动。
+      * @param depth  同上。
+      * @param trat   同上。
+      * @param parent 同上。
+      * @param go     一个函数，调用以推进询问的`Task`启动执行。如果在询问时，前一个`Tactic`的该`Task`未执行完毕，则应该
+      *               将本参数缓存起来，以备在`evolve()`调用满足条件时，再执行本函数以推进`Task`启动。
       */
-    def forward(depth: Int, trat: Trait, go: () => Unit)
+    def forward(depth: Int, trat: Trait, parent: Option[Trait], go: () => Unit)
 
     /**
       * 当前`Tactic`的某`Task`执行的时候，需要获得上一个`Tactic`留下的数据。
       *
-      * @param depth 同上。
-      * @param trat  同上。
+      * @param depth  同上。
+      * @param trat   同上。
+      * @param parent 同上。
       * @return
       */
-    def getCache(depth: Int, trat: Trait): Out
+    def getCache(depth: Int, trat: Trait, parent: Option[Trait]): Out
   }
 
   implicit class WithPoster(feedback: Feedback) {

@@ -127,7 +127,7 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
           +>>
           c2abc("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
-          c2b
+          (c2b >>> b2c).toSub()
           +>>
           c2a
         ) **> { (d, c, b, a, ctx) =>
