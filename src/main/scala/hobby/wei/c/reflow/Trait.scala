@@ -50,12 +50,12 @@ trait Trait extends Equals {
   /**
     * 必须输入的参数keys及value类型(可由初始参数传入, 或者在本Task前面执行的Tasks输出{@link #outs()}而获得)。
     */
-  protected def requires(): immutable.Set[Kce[_ <: AnyRef]]
+  protected def requires(): immutable.Set[KvTpe[_ <: AnyRef]]
 
   /**
     * 该任务输出的所有key-value类型。
     */
-  protected def outs(): immutable.Set[Kce[_ <: AnyRef]]
+  protected def outs(): immutable.Set[KvTpe[_ <: AnyRef]]
 
   /**
     * 优先级。范围 [ {@link Reflow#P_HIGH P_HIGH} ~ {@link Reflow#P_LOW P_LOW} ]。
@@ -73,8 +73,8 @@ trait Trait extends Equals {
   protected def desc(): String
 
   lazy val name$: String = name().ensuring(_.nonEmpty)
-  lazy val requires$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
-  lazy val outs$: immutable.Set[Kce[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
+  lazy val requires$: immutable.Set[KvTpe[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(requires()))
+  lazy val outs$: immutable.Set[KvTpe[_ <: AnyRef]] = requireKkDiff(requireElemNonNull(outs()))
   lazy val priority$: Int = between(P_HIGH, priority(), P_LOW).toInt
   lazy val period$: Period.Tpe = period().ensuring(_.nonNull)
   lazy val desc$: String = desc().ensuring(_.nonNull /*可以是""*/)
@@ -91,8 +91,8 @@ object Trait {
   @deprecated
   def apply(_name: String,
             _period: Period.Tpe,
-            _outs: immutable.Set[Kce[_ <: AnyRef]] = none,
-            _requires: immutable.Set[Kce[_ <: AnyRef]] = none,
+            _outs: immutable.Set[KvTpe[_ <: AnyRef]] = none,
+            _requires: immutable.Set[KvTpe[_ <: AnyRef]] = none,
             _priority: Int = Reflow.P_NORMAL,
             _desc: String = null)(
              _dosth: Task.Context => Unit): Trait = new Trait {
@@ -141,7 +141,7 @@ object Trait {
     override protected def desc() = name$
   }
 
-  private[reflow] final class Input(reflow: Reflow, in: In, outsTrimmed: immutable.Set[Kce[_ <: AnyRef]]) extends Adapter {
+  private[reflow] final class Input(reflow: Reflow, in: In, outsTrimmed: immutable.Set[KvTpe[_ <: AnyRef]]) extends Adapter {
     override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
 
     override def newTask() = new Task {

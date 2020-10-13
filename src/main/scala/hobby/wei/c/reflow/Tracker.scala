@@ -27,7 +27,7 @@ import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Feedback.Progress
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
@@ -48,11 +48,11 @@ import scala.util.control.Breaks._
   *          1.6, 12/07/2020, fix bug: Progress(..trat);
   *          1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`;
   *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`.
-  * @param policy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
-  * @param pulse  流处理模式下的交互接口。可能为`null`，表示非流处理模式。
+  * @param strategy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
+  * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
-private[reflow] abstract class Tracker(val reflow: Reflow, val policy: Policy, val outer: Option[Env], val pulse: Pulse.Interact) extends TAG.ClassName {
-  require(policy.nonNull)
+private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strategy, val outer: Option[Env], val pulse: Pulse.Interact) extends TAG.ClassName {
+  require(strategy.nonNull)
   private lazy final val snatcher4Init = new Snatcher
   // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
   // 而在`Reinforce`阶段，会从外部传入。
@@ -165,15 +165,15 @@ private[reflow] class ReinforceCache {
 
 private[reflow] object Tracker {
   private[reflow] final class Impl(reflow: Reflow, traitIn: Trait, transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
-                                   state: Scheduler.State$, feedback: Feedback, policy: Policy, outer: Option[Env], pulse: Pulse.Interact)
-    extends Tracker(reflow: Reflow, policy: Policy, outer: Option[Env], pulse: Pulse.Interact) with Scheduler with TAG.ClassName {
+                                   state: Scheduler.State$, feedback: Feedback, strategy: Strategy, outer: Option[Env], pulse: Pulse.Interact)
+    extends Tracker(reflow: Reflow, strategy: Strategy, outer: Option[Env], pulse: Pulse.Interact) with Scheduler with TAG.ClassName {
     private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
-    private lazy val snatcher = new Snatcher.ActionQueue(policy.isFluentMode)
+    private lazy val snatcher = new Snatcher.ActionQueue(strategy.isFluentMode)
 
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
-    private lazy val reporter = if (debugMode && !policy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
+    private lazy val reporter = if (debugMode && !strategy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
     @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = _
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
@@ -250,7 +250,7 @@ private[reflow] object Tracker {
             } else if (isReinforceRequired /*必须放在`else`分支，即必须在`!isReinforcing`的前提下。*/ ) {
               if (isOnReinforceBegins(tratGlobal, cache))
                 if (tratGlobal.isPar) {
-                  val map = (new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: cache.begins.keySet) (_ ++= reflow.basis.dependencies(_))
+                  val map = (new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]] /: cache.begins.keySet) (_ ++= reflow.basis.dependencies(_))
                   // val keys = outFlowTrimmed._keys.keySet &~ map.keySet
                   // val out = new Out(outFlowTrimmed._keys.filterKeys(keys.contains))
                   val out = new Out(outFlowTrimmed._keys.filterNot(map contains _._1))
@@ -713,7 +713,7 @@ private[reflow] object Tracker {
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
       progress(0)
       scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(1)),
-        env.tracker.policy.toSub, null, env, env.tracker.pulse)
+        env.tracker.strategy.toSub, null, env, env.tracker.pulse)
       false // 异步。
     }
 

@@ -20,7 +20,7 @@ import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
 import java.util.concurrent.{Callable, FutureTask}
 
@@ -36,75 +36,75 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
 //    Reflow.setConfig(SINGLE_THREAD)
   }
 
-  implicit lazy val policy: Policy = Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)
+  implicit lazy val strategy: Strategy = Strategy.Depth(3) -> Strategy.Fluent -> Strategy.Interval(600)
   implicit lazy val poster: Poster = null
 
   Feature("`Pulse`脉冲步进流式数据处理") {
     Scenario("数据将流经`集成任务集（Reflow）`，并始终保持输入时的先后顺序，多组数据会排队进入同一个任务。") {
       Given("创建一个`reflowX`作为嵌套的`SubReflow`")
-      val reflowX0 = Reflow.create(Trait("pulse-0", SHORT, kces.str) { ctx =>
-        val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+      val reflowX0 = Reflow.create(Trait("pulse-0", SHORT, kvTpes.str) { ctx =>
+        val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
           Thread.sleep(200)
         }
-        ctx.cache[Integer](kces.int, times + 1)
-        ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
+        ctx.cache[Integer](kvTpes.int, times + 1)
+        ctx.output(kvTpes.str, s"name:${ctx.trat.name$}, 第${times}次。")
       })
-        .next(Trait("pulse-1", SHORT, kces.str, kces.str) { ctx =>
-          val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+        .next(Trait("pulse-1", SHORT, kvTpes.str, kvTpes.str) { ctx =>
+          val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
             Thread.sleep(500)
           }
-          ctx.cache[Integer](kces.int, times + 1)
-          ctx.output(kces.str, times + "")
+          ctx.cache[Integer](kvTpes.int, times + 1)
+          ctx.output(kvTpes.str, times + "")
         })
         .submit(none)
 
-      val reflowX1 = Reflow.create(Trait("pulse-2", SHORT, kces.str) { ctx =>
-        val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+      val reflowX1 = Reflow.create(Trait("pulse-2", SHORT, kvTpes.str) { ctx =>
+        val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
           Thread.sleep(500)
         }
-        ctx.cache[Integer](kces.int, times + 1)
-        ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
-      }).and(reflowX0.torat("pulseX0"))
-        .next(Trait("pulse-3", SHORT, kces.str, kces.str) { ctx =>
-          val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+        ctx.cache[Integer](kvTpes.int, times + 1)
+        ctx.output(kvTpes.str, s"name:${ctx.trat.name$}, 第${times}次。")
+      }).and(reflowX0.toSub("pulseX0"))
+        .next(Trait("pulse-3", SHORT, kvTpes.str, kvTpes.str) { ctx =>
+          val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
             Thread.sleep(300)
           }
-          ctx.cache[Integer](kces.int, times + 1)
-          ctx.output(kces.str, times + "")
+          ctx.cache[Integer](kvTpes.int, times + 1)
+          ctx.output(kvTpes.str, times + "")
         })
         .submit(none)
 
       Given("创建一个顶层`reflow`")
-      val reflow = Reflow.create(Trait("pulse-4", SHORT, kces.str) { ctx =>
-        val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+      val reflow = Reflow.create(Trait("pulse-4", SHORT, kvTpes.str) { ctx =>
+        val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
         println(s"再次进入任务${ctx.trat.name$}，缓存参数被累加：${times}。")
         if (times == 1) {
           println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
           Thread.sleep(100)
         }
-        ctx.cache[Integer](kces.int, times + 1)
-        ctx.output(kces.str, s"name:${ctx.trat.name$}, 第${times}次。")
-      }).and(reflowX1.torat("pulseX1"))
-        .next(Trait("pulse-5", SHORT, kces.str, kces.str) { ctx =>
-          val times: Int = ctx.input(kces.int).getOrElse[Integer](0)
+        ctx.cache[Integer](kvTpes.int, times + 1)
+        ctx.output(kvTpes.str, s"name:${ctx.trat.name$}, 第${times}次。")
+      }).and(reflowX1.toSub("pulseX1"))
+        .next(Trait("pulse-5", SHORT, kvTpes.str, kvTpes.str) { ctx =>
+          val times: Int = ctx.input(kvTpes.int).getOrElse[Integer](0)
           if (times % 2 == 0) {
             println(s"------------------->(times:$times, ${ctx.trat.name$})休眠中，后续进入的数据会等待...")
             Thread.sleep(200)
           }
-          ctx.cache[Integer](kces.int, times + 1)
-          ctx.output(kces.str, times + "")
+          ctx.cache[Integer](kvTpes.int, times + 1)
+          ctx.output(kvTpes.str, times + "")
         })
-        .submit(kces.str)
+        .submit(kvTpes.str)
 
       @volatile var callableOut: Out = null
       val future = new FutureTask[Out](new Callable[Out] {
@@ -140,7 +140,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
 //        }
 //      }
 
-      var data = (kces.str, "66666") :: Nil
+      var data = (kvTpes.str, "66666") :: Nil
       data ::= data.head
       data ::= data.head
       data ::= data.head
@@ -170,7 +170,7 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
       future map { out =>
         require(pulse.isCurrAllCompleted)
 
-        assertResult("20")(out(kces.str))
+        assertResult("20")(out(kvTpes.str))
       }
     }
   }

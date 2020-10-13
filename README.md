@@ -15,7 +15,7 @@
 
 思想的启发，我们可以将业务逻辑和控制逻辑分开，把控制逻辑抽象为框架，把业务逻辑构造为**任务（Task）**。而任务之间的关系也可进一步归纳为两类：有依赖和无依赖，即：**串行**和**并行**。用户程序员只需要专注于编写任务集（即：拆分业务逻辑），其它交给框架。Reflow 的设计便是围绕着处理这些任务的控制逻辑而展开。
 
-**Reflow** 为简化*复杂业务逻辑中*多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理的*编码复杂度*而生。通过要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)任务的[ I](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)、基于[关键字](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)和[值类型](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Kce.scala#L26)分析的智能化[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、一致的[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)及[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)接口等设计，实现了既定目标：任务[*串*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[*并联*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度。*数据*即**电流**，*任务*即**元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
+**Reflow** 为简化*复杂业务逻辑中*多[任务](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)之间的数据流转和事件处理的*编码复杂度*而生。通过要求[显式定义](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)任务的[ I](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)/[O](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)、基于[关键字](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala#L26)和[值类型](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala#L26)分析的智能化[依赖管理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)、一致的[运行调度](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26)、[事件反馈](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)及[错误处理](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)接口等设计，实现了既定目标：任务[*串*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)/[*并联*](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)组合调度。*数据*即**电流**，*任务*即**元件**。在简化编码复杂度的同时，确定的框架可以将原本杂乱无章、错综复杂的写法规范化，编码失误也极易被检测，这将大大增强程序的 **易读性**、**健壮性** 和 **可扩展性**。
 
 在 Reflow 的逻辑里，首先应将复杂业务拆分成多个**功能单一**的、没有**阻塞**等待的、**单线程**结构的一系列任务集合，并将它们包装在显式定义了任务的各种属性的`Trait`里，然后使用`Dependency`构建依赖关系并提交，最终获得一个可运行的`reflow`对象，启动它，任务流便可执行。
 
@@ -146,21 +146,22 @@ object App {
 ```Scala
 // ...
 Scenario("`【串/并】行任务`混合组装") {
-  val pars = (
-    c2d
+  val pars =
+    (
+      c2d
       +>>
-      c2abc("name#c2abc", "c2abc`串行`混入`并行`")
+      c2abc.inPar("name#c2abc", "c2abc`串行`混入`并行`")
       +>>
-      c2b
+      (c2b >>> b2c >>> c2a >>> a2b)
       +>>
       c2a
     ) **> { (d, c, b, a, ctx) =>
-    info(a.toString)
-    info(b.toString)
-    info(c.toString)
-    info(d.toString)
-    d
-  }
+      info(a.toString)
+      info(b.toString)
+      info(c.toString)
+      info(d.toString)
+      d
+    }
   Input(new Aaa) >>> a2b >>> b2c >>> pars run() sync()
 
   assert(true)
@@ -176,7 +177,7 @@ import java.util.concurrent.{Callable, FutureTask}
 import hobby.chenai.nakam.lang.J2S.future2Scala
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
 import reflow.test.enum.EnumTest
@@ -217,7 +218,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   info("-------------------- Features & 测试 --------------------")
 
   lazy val outputStr = "<<<这是输出>>>，Done。"
-  implicit lazy val policy: Policy = Policy.Fluent
+  implicit lazy val strategy: Strategy = Strategy.Fluent
   implicit lazy val poster: Poster = null
 
   info("【入门】基本功能")
@@ -253,8 +254,8 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       Given("一个任务`Task`")
       val task = new Task {
         override protected def doWork(): Unit = {
-          output(kces.outputstr.key, outputStr)
-          output(kces.int.key, 66666)
+          output(kvTpes.outputstr.key, outputStr)
+          output(kvTpes.int.key, 66666)
         }
       }
       info("任务的作用是获得`输入`并产生`输出`")
@@ -264,7 +265,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
         override protected def period() = TRANSIENT // Period.TRANSIENT
 
-        override protected def outs() = kces.str + new Kce[String]("outputstr") {} + kces.int
+        override protected def outs() = kvTpes.str + new KvTpe[String]("outputstr") {} + kvTpes.int
 
         override def newTask() = task
       }
@@ -280,38 +281,38 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         }
       })
       Then("提交这个依赖，获得任务流对象`Reflow`")
-      val reflow = dependency.submit(kces.outputstr)
+      val reflow = dependency.submit(kvTpes.outputstr)
       When("启动运行任务流")
       val scheduler = reflow.start(In.empty(), implicitly)
       info("代码被异步执行")
       Then("等待执行结果")
       info("输出：" + scheduler.sync())
-      assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
+      assertResult(outputStr)(scheduler.sync()(kvTpes.outputstr.key))
     }
 
     Scenario("[Trait 定义]也可以简写") {
-      val trat = Trait("t0", SHORT, new Kce[String]("outputstr") {}) { ctx =>
-        ctx.output(kces.outputstr.key, outputStr)
+      val trat = Trait("t0", SHORT, new KvTpe[String]("outputstr") {}) { ctx =>
+        ctx.output(kvTpes.outputstr.key, outputStr)
       }
-      val trat1 = Trait("t1", SHORT, kces.outputstr) { ctx =>
-        ctx.output(kces.outputstr.key, "abcd")
+      val trat1 = Trait("t1", SHORT, kvTpes.outputstr) { ctx =>
+        ctx.output(kvTpes.outputstr.key, "abcd")
       }
       val scheduler = Reflow.create(trat).next(Trait("t2", SHORT) { _ => })
-        .and(trat1, new Transformer[String, Integer](kces.outputstr, new Kce[Integer]("kkk") {}) {
+        .and(trat1, new Transformer[String, Integer](kvTpes.outputstr, new KvTpe[Integer]("kkk") {}) {
           override def transform(in: Option[String]) = Option(666)
-        }).next(kces.outputstr.re)
-        .submit(/*kces.outputstr*/) // 默认用最后的输出作为prefer输出
+        }).next(kvTpes.outputstr.re)
+        .submit(/*kvTpes.outputstr*/) // 默认用最后的输出作为prefer输出
         .start(none, implicitly)
       info("输出：" + scheduler.sync())
-      assertResult(outputStr)(scheduler.sync()(kces.outputstr.key))
+      assertResult(outputStr)(scheduler.sync()(kvTpes.outputstr.key))
     }
 
     Scenario("[Scala 枚举]在`In`中的 Bug") {
-      val trat = Trait("t1", SHORT, none, kces.enum) { _ => }
-      val scheduler = Reflow.create(trat).submit(kces.enum)
-        .start(kces.enum -> EnumTest.A, implicitly)
+      val trat = Trait("t1", SHORT, none, kvTpes.enum) { _ => }
+      val scheduler = Reflow.create(trat).submit(kvTpes.enum)
+        .start(kvTpes.enum -> EnumTest.A, implicitly)
       info("输出：" + scheduler.sync())
-      assertResult(EnumTest.A)(scheduler.sync()(kces.enum))
+      assertResult(EnumTest.A)(scheduler.sync()(kvTpes.enum))
     }
   }
 
@@ -323,12 +324,12 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   info("在`Reflow`里，对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
 
   Feature("组装复杂业务逻辑") {
-    val token4JobA = new Kce[Integer]("token4JobA") {}
-    val token4JobB = new Kce[Integer]("token4JobB") {}
-    val key4JobADone = new Kce[Integer]("key4JobADone") {}
-    val key4JobBDone = new Kce[Integer]("key4JobBDone") {}
-    val outkeyA = new Kce[Integer]("outkeyA") {}
-    val outkeyB = new Kce[Integer]("outkeyB") {}
+    val token4JobA = new KvTpe[Integer]("token4JobA") {}
+    val token4JobB = new KvTpe[Integer]("token4JobB") {}
+    val key4JobADone = new KvTpe[Integer]("key4JobADone") {}
+    val key4JobBDone = new KvTpe[Integer]("key4JobBDone") {}
+    val outkeyA = new KvTpe[Integer]("outkeyA") {}
+    val outkeyB = new KvTpe[Integer]("outkeyB") {}
 
     info("首先应该将复杂业务拆分为多个[功能单一]的没有[阻塞]等待的[单线程]结构的任务。")
     Given("一个业务需求：")
@@ -415,7 +416,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   Feature("便捷的[同/异]步调用切换") {
     Scenario("异步执行任务") {
       Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+      val reflow = Reflow.create(trats.int2str0).submit(kvTpes.str)
       Given("一个反馈接口")
       info("通常情况下，等待反馈接口的回调即可。")
       @volatile var callableOut: Out = null
@@ -429,16 +430,16 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         }
       }
       Then("启动执行")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback)
+      reflow.start((kvTpes.str, "66666") + trans.str2int, feedback)
       info("现在它就在异步执行了")
-      future map { out => assertResult("66666")(out(kces.str)) }
+      future map { out => assertResult("66666")(out(kvTpes.str)) }
     }
 
     Scenario("将异步转换为同步") {
       info("Reflow 是异步调用的，但也支持同步。")
       info("要想转换为同步执行，只需在启动执行的`start()`方法后面跟`sync()`即可。")
       Given("一个Reflow")
-      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+      val reflow = Reflow.create(trats.int2str0).submit(kvTpes.str)
       Given("一个反馈接口")
       info("通常情况下，等待反馈接口的回调即可。")
       @volatile var syncOut: Out = null
@@ -448,9 +449,9 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         }
       }
       Then("启动执行并后跟`sync()`")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback).sync()
+      reflow.start((kvTpes.str, "66666") + trans.str2int, feedback).sync()
       info(s"出现本行内容时已经同步执行完毕。syncOut:$syncOut。")
-      val as = assertResult("66666")(syncOut(kces.str))
+      val as = assertResult("66666")(syncOut(kvTpes.str))
       info("不过`不推荐`这样写，仅为了方便测试。")
       info("如果真有此需求，请考虑使用本框架的`顺序依赖`结构进行重构。")
       as
@@ -459,35 +460,35 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
   Feature("`Transformer`输出转换器") {
     Given("一个`Integer -> String`的转换器")
-    val transformer = new Transformer[Integer, String](kces.int, kces.str) {
+    val transformer = new Transformer[Integer, String](kvTpes.int, kvTpes.str) {
       override def transform(in: Option[Integer]) = in.map(String.valueOf)
     }
     Scenario("[局部]转换") {
       val scheduler = Reflow.create(
-        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
-          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
+        Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
         }, transformer)
-        .submit(kces.str)
-        .start(kces.str -> "00000", implicitly)
-      assertResult("00000")(scheduler.sync()(kces.str))
+        .submit(kvTpes.str)
+        .start(kvTpes.str -> "00000", implicitly)
+      assertResult("00000")(scheduler.sync()(kvTpes.str))
     }
     Scenario("[全局]转换 1") {
       val scheduler = Reflow.create(
-        Trait("int2str 1", TRANSIENT, kces.int, kces.str) { ctx =>
-          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).get))
+        Trait("int2str 1", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
         }).next(transformer)
-        .submit(kces.str)
-        .start(kces.str -> "11111", implicitly)
-      assertResult("11111")(scheduler.sync()(kces.str))
+        .submit(kvTpes.str)
+        .start(kvTpes.str -> "11111", implicitly)
+      assertResult("11111")(scheduler.sync()(kvTpes.str))
     }
     Scenario("[不]转换 2") {
       val scheduler = Reflow.create(
-        Trait("int2str 2", TRANSIENT, kces.int, kces.str) { ctx =>
-          ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).get))
+        Trait("int2str 2", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
         }, transformer).next(transformer)
-        .submit(kces.int)
-        .start(kces.str -> "22222", implicitly)
-      assertResult(22222)(scheduler.sync()(kces.int))
+        .submit(kvTpes.int)
+        .start(kvTpes.str -> "22222", implicitly)
+      assertResult(22222)(scheduler.sync()(kvTpes.int))
     }
   }
 
@@ -497,37 +498,37 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       info("也会分别有两次反馈：`onComplete()`和`onUpdate()`，结果根据实际情况而不同。")
       val feedback = new Feedback.Adapter {
         override def onComplete(out: Out): Unit = {
-          assertResult(11111)(out(kces.int))
+          assertResult(11111)(out(kvTpes.int))
         }
 
         override def onUpdate(out: Out): Unit = {
-          assertResult(12345)(out(kces.int))
+          assertResult(12345)(out(kvTpes.int))
         }
       }
       val scheduler = Reflow.create(
-        Trait("int2str", TRANSIENT, kces.int, kces.str) { ctx =>
+        Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
           if (ctx.isReinforcing) {
             // do something ...
             Thread.sleep(1000)
-            ctx.output[Integer](kces.int, ctx.input(kces.int).orNull)
+            ctx.output[Integer](kvTpes.int, ctx.input(kvTpes.int).orNull)
           } else {
-            ctx.output(kces.int, Integer.valueOf(ctx.input(kces.str).getOrElse("-1")))
+            ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
             // 申请强化运行
             ctx.requireReinforce()
-            ctx.cache[Integer](kces.int, 12345)
+            ctx.cache[Integer](kvTpes.int, 12345)
           }
         })
-        .submit(kces.int)
-        .start(kces.str -> "11111", feedback)
+        .submit(kvTpes.int)
+        .start(kvTpes.str -> "11111", feedback)
       info(s"强化运行后的最终输出。out:${scheduler.sync(/*reinforce = true*/)}")
-      assertResult(12345)(scheduler.sync(reinforce = true)(kces.int))
+      assertResult(12345)(scheduler.sync(reinforce = true)(kvTpes.int))
     }
   }
 
   Feature("跨线程回调反馈") {
     Scenario("使用`Poster`令`Feedback`在指定线程被调用") {
       Given("一个`Reflow`")
-      val reflow = Reflow.create(trats.int2str0).submit(kces.str)
+      val reflow = Reflow.create(trats.int2str0).submit(kvTpes.str)
       Given("一个反馈接口")
       @volatile var threadA: Thread = null
       @volatile var threadB: Thread = null
@@ -550,7 +551,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       }
       Then("在启动执行时传入`poster`参数")
       info("这样，所有`feedback`的回调将在指定线程执行。")
-      reflow.start((kces.str, "66666") + trans.str2int, feedback)(implicitly, poster).sync()
+      reflow.start((kvTpes.str, "66666") + trans.str2int, feedback)(implicitly, poster).sync()
       Then("等待异步执行结束")
       assertResult(threadA)(threadB)
     }
@@ -569,7 +570,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       ctx.progress(8, 10)
       ctx.progress(9, 10)
     }
-    val interval = Policy.Interval(6)
+    val interval = Strategy.Interval(6)
 
     val reflow0 = Reflow.create(trat4Progress).submit(none)
     val reflow1 = Reflow.create(trat4Progress).next(reflow0.torat("reflow0")).submit(none)
@@ -584,21 +585,21 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     info("串行任务进度测试")
     Scenario("1.全量（串行）") {
       Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9.start(none, implicitly)(Policy.FullDose, poster)
+      val scheduler = reflow9.start(none, implicitly)(Strategy.FullDose, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("2.丢弃拥挤的消息（串行）") {
       Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9.start(none, implicitly)(Policy.Fluent, poster)
+      val scheduler = reflow9.start(none, implicitly)(Strategy.Fluent, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("3.基于子进度的深度（串行）") {
       Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9.start(none, implicitly)(Policy.Depth(2), poster)
+      val scheduler = reflow9.start(none, implicitly)(Strategy.Depth(2), poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
@@ -624,21 +625,21 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     info("并行任务进度测试")
     Scenario("1.全量（并行）") {
       Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9x.start(none, implicitly)(Policy.FullDose, poster)
+      val scheduler = reflow9x.start(none, implicitly)(Strategy.FullDose, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("2.丢弃拥挤的消息（并行）") {
       Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9x.start(none, implicitly)(Policy.Fluent, poster)
+      val scheduler = reflow9x.start(none, implicitly)(Strategy.Fluent, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("3.基于子进度的深度（并行）") {
       Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
-      val scheduler = reflow9x.start(none, implicitly)(Policy.Depth(2), poster)
+      val scheduler = reflow9x.start(none, implicitly)(Strategy.Depth(2), poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
@@ -652,28 +653,28 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
     info("还可以进行多Policy叠加")
     Scenario("1. 叠加方案: Policy.Fluent -> Policy.Depth(2)") {
-      val policy = Policy.Fluent -> Policy.Depth(2)
+      val policy = Strategy.Fluent -> Strategy.Depth(2)
       val scheduler = reflow9x.start(none, implicitly)(policy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("2. 叠加方案: Policy.Depth(2) -> Policy.Fluent") {
-      val policy = Policy.Depth(2) -> Policy.Fluent
+      val policy = Strategy.Depth(2) -> Strategy.Fluent
       val scheduler = reflow9x.start(none, implicitly)(policy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("3. 叠加方案: Policy.Interval(6) -> Policy.Fluent") {
-      val policy = Policy.Interval(6) -> Policy.Fluent
+      val policy = Strategy.Interval(6) -> Strategy.Fluent
       val scheduler = reflow9x.start(none, implicitly)(policy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("4. 叠加方案: Policy.Depth(3) -> Policy.Interval(6)") {
-      val policy = Policy.Depth(3) -> Policy.Interval(6)
+      val policy = Strategy.Depth(3) -> Strategy.Interval(6)
       val scheduler = reflow9x.start(none, implicitly)(policy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
@@ -684,9 +685,9 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   Feature("`fork()`") {
     val dependency = Reflow.create(trats.int2str0).next(trats.str2int)
     info("`dependency`可以`fork`")
-    val reflow = dependency.fork().submit(kces.str)
+    val reflow = dependency.fork().submit(kvTpes.str)
     info("`reflow`也可以`fork`")
-    reflow.fork().start(kces.int -> Integer.valueOf(66666), implicitly)
+    reflow.fork().start(kvTpes.int -> Integer.valueOf(66666), implicitly)
     assert(true)
   }
 

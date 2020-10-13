@@ -22,7 +22,7 @@ import hobby.chenai.nakam.basis.TAG.ShortMsg
 import hobby.chenai.nakam.lang.J2S.{NonNull, Obiter}
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Feedback.Progress
-import hobby.wei.c.reflow.Feedback.Progress.Policy.{Depth, Fluent}
+import hobby.wei.c.reflow.Feedback.Progress.Strategy.{Depth, Fluent}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.tool.Locker
 
@@ -110,16 +110,16 @@ object Feedback {
     lazy val sub: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
 
     @inline def apply(): Float = main
-    override def toString = s"Progress(sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$}" }}, trigger:${trigger.trat.fold(s"(${trigger.main})") { t => s"${t.name$}(${trigger.main})" }})"
+    override def toString = s"Progress(sum:$sum, step:$step, p:$main, name:${trat.map(_.name$).orNull}, trigger:${trigger.trat.map(_.name$).orNull}(${trigger.main}))"
   }
 
   object Progress {
     /** 进度反馈的优化策略。 */
-    trait Policy extends Ordering[Policy] {
+    trait Strategy extends Ordering[Strategy] {
       outer =>
       val priority: Int
       def genDelegator(feedback: Feedback): Feedback = feedback
-      def ->(policy: Policy): Policy = new Multiply(this, policy)
+      def ->(strategy: Strategy): Strategy = new Multiply(this, strategy)
       final def isFluentMode: Boolean = this <= Fluent
       def base = this
 
@@ -129,18 +129,18 @@ object Feedback {
         case p => p
       }
 
-      final def revise(policy: Policy): Policy = if (policy.base equiv this.base) { // 如果相等，其中一个必然是`Depth`。
-        policy match {
-          case _: Depth => policy
+      final def revise(strategy: Strategy): Strategy = if (strategy.base equiv this.base) { // 如果相等，其中一个必然是`Depth`。
+        strategy match {
+          case _: Depth => strategy
           case _ => this
         }
-      } else if (policy.base > this.base) policy else this
+      } else if (strategy.base > this.base) strategy else this
 
       // 优先级越高，数值越小。
-      override def compare(x: Policy, y: Policy) = if (x.priority > y.priority) -1 else if (x.priority < y.priority) 1 else 0
+      override def compare(x: Strategy, y: Strategy) = if (x.priority > y.priority) -1 else if (x.priority < y.priority) 1 else 0
     }
 
-    class Multiply(val before: Policy, val after: Policy) extends Policy {
+    class Multiply(val before: Strategy, val after: Strategy) extends Strategy {
       override val priority = (before min after).priority
 
       override def base = before.base
@@ -148,14 +148,14 @@ object Feedback {
       override def genDelegator(feedback: Feedback) = before.genDelegator(after.genDelegator(feedback))
     }
 
-    object Policy {
+    object Strategy {
       /** 全量。不错过任何进度细节。 */
-      object FullDose extends Policy {
+      object FullDose extends Strategy {
         override val priority = 0
       }
 
       /** 流畅的。即：丢弃拥挤的消息。（注意：仅适用于`Poster`之类有队列的）。 */
-      object Fluent extends Policy {
+      object Fluent extends Strategy {
         override val priority = 1
 
         // 虽然`Tracker`内部已经实现，但仍需增强。
@@ -178,7 +178,7 @@ object Feedback {
         *
         * @param level 子进度的深度水平。`0`表示放弃顶层进度；`1`表示放弃子层进度；`2`表示放弃次子层进度。以此类推。
         */
-      case class Depth(level: Int) extends Policy {
+      case class Depth(level: Int) extends Strategy {
         override val priority = Fluent.priority - (level max 0)
 
         final def isMind(level: Int) = this.level > level
@@ -206,7 +206,7 @@ object Feedback {
         *
         * @param minGap 最小时间间隔，单位：毫秒。
         */
-      case class Interval(minGap: Int) extends Policy {
+      case class Interval(minGap: Int) extends Strategy {
         override val priority = 2
 
         override def genDelegator(feedback: Feedback) = if (minGap <= 0) super.genDelegator(feedback)
@@ -311,7 +311,7 @@ object Feedback {
     * @param watchProgressDepth 如果同时关注进度中的反馈值的话，会涉及到 Reflow 嵌套深度的问题。
     *                           本参数表示关注第几层的进度（即：是第几层的哪个任务会输出`kce`值，Reflow 要求不同层任务的`kce`可以相同）。
     **/
-  abstract class Butt[T >: Null <: AnyRef](kce: Kce[T], watchProgressDepth: Int = 0) extends Adapter {
+  abstract class Butt[T >: Null <: AnyRef](kce: KvTpe[T], watchProgressDepth: Int = 0) extends Adapter {
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
       super.onProgress(progress, out, fromDepth)
       if (fromDepth == watchProgressDepth && out.keysDef().contains(kce))

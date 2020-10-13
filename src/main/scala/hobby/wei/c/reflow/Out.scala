@@ -27,16 +27,16 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 26/06/2016
   */
-class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
-  private[reflow] def this() = this(Map.empty[String, Kce[_ <: AnyRef]])
+class Out private[reflow](map: Map[String, KvTpe[_ <: AnyRef]]) {
+  private[reflow] def this() = this(Map.empty[String, KvTpe[_ <: AnyRef]])
 
-  def this(keys: Set[Kce[_ <: AnyRef]]) = this((new mutable.AnyRefMap[String, Kce[_ <: AnyRef]] /: keys) { (m, k) => m += (k.key, k) })
+  def this(keys: Set[KvTpe[_ <: AnyRef]]) = this((new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]] /: keys) { (m, k) => m += (k.key, k) })
 
   // 仅读取
-  private[reflow] val _keys = map.toMap[String, Kce[_ <: AnyRef]]
+  private[reflow] val _keys = map.toMap[String, KvTpe[_ <: AnyRef]]
   // 由于并行的任务，不可能有相同的key, 没有必要让本类的整个方法调用都进行sync, 因此用并行库是最佳方案。
   private[reflow] val _map = new concurrent.TrieMap[String, Any]
-  private[reflow] val _nullValueKeys = new concurrent.TrieMap[String, Kce[_ <: AnyRef]]
+  private[reflow] val _nullValueKeys = new concurrent.TrieMap[String, KvTpe[_ <: AnyRef]]
 
   private[reflow] def fillWith(out: Out, fullVerify: Boolean = true): Unit = putWith(out._map, out._nullValueKeys, ignoreDiffType = true, fullVerify)
 
@@ -52,7 +52,7 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
     *                       但在使用上一个任务的输出填充当前对象的时候，如果`k.key`相同但类型不匹配，会抛出异常。为了简化起见，设置了本参数。
     * @param fullVerify     检查`_keys`是否全部输出。
     */
-  private[reflow] def putWith(map: Map[String, Any], nulls: Map[String, Kce[_ <: AnyRef]],
+  private[reflow] def putWith(map: Map[String, Any], nulls: Map[String, KvTpe[_ <: AnyRef]],
                               ignoreDiffType: Boolean = false, fullVerify: Boolean = false): Unit = {
     _keys.values.foreach { k =>
       if (map.contains(k.key)) {
@@ -112,7 +112,7 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
 
   def apply[T >: Null](key: String): T = get[T](key).orNull
 
-  def apply[T >: Null <: AnyRef](kce: Kce[T]): T = get[T](kce).orNull
+  def apply[T >: Null <: AnyRef](kce: KvTpe[T]): T = get[T](kce).orNull
 
   /**
     * 取得key对应的value。
@@ -131,21 +131,21 @@ class Out private[reflow](map: Map[String, Kce[_ <: AnyRef]]) {
     * @tparam T
     * @return
     */
-  def get[T <: AnyRef](key: Kce[T]): Option[T] = key.takeValue(_map)
+  def get[T <: AnyRef](key: KvTpe[T]): Option[T] = key.takeValue(_map)
 
   /**
     * 取得预定义的keys及类型。即: 希望输出的keys。
     *
     * @return
     */
-  def keysDef(): immutable.Set[Kce[_ <: AnyRef]] = _keys.values.toSet
+  def keysDef(): immutable.Set[KvTpe[_ <: AnyRef]] = _keys.values.toSet
 
   /**
     * 取得实际输出的keys。
     *
     * @return
     */
-  def keys(): immutable.Set[Kce[_ <: AnyRef]] = _keys.values.filter { k => _map.contains(k.key) || _nullValueKeys.contains(k.key) }.toSet
+  def keys(): immutable.Set[KvTpe[_ <: AnyRef]] = _keys.values.filter { k => _map.contains(k.key) || _nullValueKeys.contains(k.key) }.toSet
 
   override def toString = "keys:" + _keys.values + ", values:" + _map + (if (_nullValueKeys.isEmpty) "" else ", null:" + _nullValueKeys.values)
 }

@@ -25,20 +25,20 @@ import scala.collection._
   * @version 1.0, 14/08/2016
   */
 object Helper {
-  object Kces {
-    def empty(): immutable.Set[Kce[_ <: AnyRef]] = immutable.Set.empty
+  object KvTpes {
+    def empty(): immutable.Set[KvTpe[_ <: AnyRef]] = immutable.Set.empty
 
-    def +(ks: Kce[_ <: AnyRef]*): Builder = new Builder + (ks: _*)
+    def +(ks: KvTpe[_ <: AnyRef]*): Builder = new Builder + (ks: _*)
 
     class Builder private[reflow]() {
-      private val keys = new mutable.HashSet[Kce[_ <: AnyRef]]
+      private val keys = new mutable.HashSet[KvTpe[_ <: AnyRef]]
 
-      def +(ks: Kce[_ <: AnyRef]*): this.type = {
+      def +(ks: KvTpe[_ <: AnyRef]*): this.type = {
         keys ++= ks.ensuring(_.forall(_.nonNull))
         this
       }
 
-      def ok(): immutable.Set[Kce[_ <: AnyRef]] = keys.toSet
+      def ok(): immutable.Set[KvTpe[_ <: AnyRef]] = keys.toSet
     }
   }
 
@@ -46,7 +46,7 @@ object Helper {
     /**
       * 将任务的某个输出在转换之后仍然保留。通过增加一个[输出即输入]转换。
       */
-    def retain[O <: AnyRef](kce: Kce[O]): Transformer[O, O] = new Transformer[O, O](kce, kce) {
+    def retain[O <: AnyRef](kce: KvTpe[O]): Transformer[O, O] = new Transformer[O, O](kce, kce) {
       override def transform(in: Option[O]) = in
     }
 
@@ -60,7 +60,7 @@ object Helper {
         this
       }
 
-      def retain[O <: AnyRef](kce: Kce[O]): this.type = this + Transformers.retain[O](kce)
+      def retain[O <: AnyRef](kce: KvTpe[O]): this.type = this + Transformers.retain[O](kce)
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }

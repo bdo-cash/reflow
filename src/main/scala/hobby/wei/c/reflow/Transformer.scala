@@ -28,13 +28,13 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/07/2016
   */
-abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] private(_in: Kce[IN], _out: Kce[OUT], _keyIn: String, _keyOut: String) extends Equals {
+abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] private(_in: KvTpe[IN], _out: KvTpe[OUT], _keyIn: String, _keyOut: String) extends Equals {
   protected def this(keyIn: String, keyOut: String) = this(null, null, keyIn, keyOut)
 
-  protected def this(in: Kce[IN], out: Kce[OUT]) = this(in, out, null, null)
+  protected def this(in: KvTpe[IN], out: KvTpe[OUT]) = this(in, out, null, null)
 
-  lazy val in: Kce[IN] = if (_in.nonNull) _in else new Kce[IN](_keyIn, this.getClass, 0) {}
-  lazy val out: Kce[OUT] = if (_out.nonNull) _out else new Kce[OUT](_keyOut, this.getClass, 1) {}
+  lazy val in: KvTpe[IN] = if (_in.nonNull) _in else new KvTpe[IN](_keyIn, this.getClass, 0) {}
+  lazy val out: KvTpe[OUT] = if (_out.nonNull) _out else new KvTpe[OUT](_keyOut, this.getClass, 1) {}
 
   final def transform(input: Map[String, _]): Option[OUT] = transform(in.takeValue(input))
 

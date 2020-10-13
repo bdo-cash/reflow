@@ -16,7 +16,7 @@
 
 package reflow.test
 
-import hobby.wei.c.reflow.{Kce, _}
+import hobby.wei.c.reflow.{KvTpe, _}
 import hobby.wei.c.reflow.implicits._
 import reflow.test.enum._
 
@@ -24,13 +24,13 @@ import reflow.test.enum._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 23/03/2018
   */
-object kces {
-  lazy val anyRef = new Kce[AnyRef]("anyr") {}
-  lazy val int = new Kce[Integer]("int") {}
-  lazy val str = new Kce[String]("str") {}
-  lazy val outputstr = new Kce[String]("outputstr") {}
-  lazy val seq = new Kce[Seq[_]]("seq") {}
-  lazy val enum = new Kce[EnumTest.Tpe]("enum") {}
+object kvTpes {
+  lazy val anyRef = new KvTpe[AnyRef]("anyr") {}
+  lazy val int = new KvTpe[Integer]("int") {}
+  lazy val str = new KvTpe[String]("str") {}
+  lazy val outputstr = new KvTpe[String]("outputstr") {}
+  lazy val seq = new KvTpe[Seq[_]]("seq") {}
+  lazy val enum = new KvTpe[EnumTest.Tpe]("enum") {}
 }
 
 object enum {
@@ -50,7 +50,7 @@ object trans {
 }
 
 object trats {
-  import kces._
+  import kvTpes._
 
   lazy val int2str0 = new Trait.Adapter {
     override protected def period() = TRANSIENT

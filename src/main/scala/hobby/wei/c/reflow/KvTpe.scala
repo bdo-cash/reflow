@@ -30,7 +30,7 @@ import scala.collection._
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 21/07/2016
   */
-abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], _index: Int = 0, _raw: Boolean = false) extends Equals {
+abstract class KvTpe[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], _index: Int = 0, _raw: Boolean = false) extends Equals {
   protected def this(_key: String) = this(_key, null)
 
   final val key: String = _key.ensuring(_.nonEmpty)
@@ -103,20 +103,20 @@ abstract class Kce[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_], 
     * @param key
     * @return
     */
-  def isAssignableFrom(key: Kce[_ <: AnyRef]): Boolean = {
+  def isAssignableFrom(key: KvTpe[_ <: AnyRef]): Boolean = {
     if (!rawType.isAssignableFrom(key.rawType)) false
     else if (subTypes.length != key.subTypes.length) false
     else subTypes.indices.forall(i => subTypes(i) == key.subTypes(i))
   }
 
   override def equals(any: scala.Any) = any match {
-    case that: Kce[_] if that.canEqual(this) => that.key == this.key && that.tpe == this.tpe
+    case that: KvTpe[_] if that.canEqual(this) => that.key == this.key && that.tpe == this.tpe
     case _ => false
   }
 
-  override def canEqual(that: Any) = that.isInstanceOf[Kce[T]]
+  override def canEqual(that: Any) = that.isInstanceOf[KvTpe[T]]
 
   override def hashCode = key.hashCode * 41 + tpe.hashCode
 
-  override def toString = s"${classOf[Kce[_]].getSimpleName}[$key -> $tpe]"
+  override def toString = s"${classOf[KvTpe[_]].getSimpleName}[$key -> $tpe]"
 }

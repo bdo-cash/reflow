@@ -25,7 +25,7 @@ import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Dependency._
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
@@ -309,14 +309,14 @@ object Reflow {
   //********************************** Reflow  Impl **********************************//
 
   private[reflow] class Impl private[reflow](override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
-    Kce[_ <: AnyRef]]) extends Reflow(basis: Dependency.Basis) with TAG.ClassName {
-    override private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl = {
+    KvTpe[_ <: AnyRef]]) extends Reflow(basis: Dependency.Basis) with TAG.ClassName {
+    override private[reflow] def start(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl = {
       require(feedback.nonNull)
-      require(policy.nonNull)
+      require(strategy.nonNull)
       // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
       val required = inputRequired.mutable
       val tranSet = inputs.trans.mutable
-      val realIn = putAll(new mutable.AnyRefMap[String, Kce[_ <: AnyRef]], inputs.keys)
+      val realIn = putAll(new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]], inputs.keys)
       consumeTranSet(tranSet, required, realIn, check = true, trim = true)
       val reqSet = required.values.toSet
       if (debugMode) {
@@ -328,11 +328,11 @@ object Reflow {
       val traitIn = new Trait.Input(this, inputs, reqSet)
       // 全局记录跟踪
       val feedback4track = new Feedback4GlobalTrack
-      val trackPolicy = Policy.Depth(2) -> Policy.Fluent
+      val trackStrategy = Strategy.Depth(2) -> Strategy.Fluent
       val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet,
         /*子Reflow还会再次走到这里，所以仅关注两层进度即可。*/
-        trackPolicy.genDelegator(feedback4track).join(policy.genDelegator(feedback.wizh(poster))),
-        policy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
+        trackStrategy.genDelegator(feedback4track).join(strategy.genDelegator(feedback.wizh(poster))),
+        strategy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat)))
       Reflow.submit$ {
@@ -341,7 +341,7 @@ object Reflow {
       scheduler
     }
 
-    override def torat(_name: String, _desc: String = null): ReflowTrait = new ReflowTrait(this) {
+    override def toSub(_name: String, _desc: String = null): ReflowTrait = new ReflowTrait(this) {
       override protected def name() = if (_name.isNull) super.name() else _name
       override protected def requires() = inputRequired.values.toSet
       override protected def outs() = reflow.basis.outs
@@ -362,25 +362,22 @@ abstract class Reflow private[reflow](val basis: Dependency.Basis) {
     * @param poster   转移`feedback`的调用线程, 可为`null`。
     * @return `true`启动成功，`false`正在运行。
     */
-  final def start(inputs: In, feedback: Feedback)(implicit strategy: Policy, poster: Poster): Scheduler = start(inputs, feedback, strategy, poster, null)
+  final def start(inputs: In, feedback: Feedback)(implicit strategy: Strategy, poster: Poster): Scheduler = start(inputs, feedback, strategy, poster, null)
 
   /**
     * 启动一个流处理器[[Pulse]]。
     *
     * @return `Pulse`实例，可进行无数次的`input(In)`操作。
     */
-  final def pulse(feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse =
+  final def pulse(feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster): Pulse =
     new Pulse(this, feedback, abortIfError, inputCapacity)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, policy: Policy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
-
-  @deprecated
-  def torat(name: String, desc: String = null): ReflowTrait
+  private[reflow] def start(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。
     */
-  def toSub(name: String, desc: String = null): Trait = torat(name, desc)
+  def toSub(name: String, desc: String = null): ReflowTrait
 
   def fork(): Reflow
 }

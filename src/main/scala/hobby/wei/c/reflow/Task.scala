@@ -59,7 +59,7 @@ abstract class Task protected() {
     */
   final def input[T >: Null](key: String): Option[T] = env$.input.get(key)
 
-  final def input[T >: Null <: AnyRef](kce: Kce[T]): Option[T] = input(kce.key)
+  final def input[T >: Null <: AnyRef](kce: KvTpe[T]): Option[T] = input(kce.key)
 
   /**
     * 输出结果。
@@ -70,7 +70,7 @@ abstract class Task protected() {
     */
   final def output[T](key: String, value: T): Unit = env$.out.put(key, value)
 
-  final def output[T <: AnyRef](kce: Kce[T], value: T): Unit = output(kce.key, value)
+  final def output[T <: AnyRef](kce: KvTpe[T], value: T): Unit = output(kce.key, value)
 
   final def output(map: Map[String, Any]): Unit = map.foreach { m: (String, Any) => output(m._1, m._2) }
 
@@ -88,7 +88,7 @@ abstract class Task protected() {
     env$.cache(key, value)
   }
 
-  final def cache[T <: AnyRef](kce: Kce[T], value: T): Unit = cache(kce.key, value)
+  final def cache[T <: AnyRef](kce: KvTpe[T], value: T): Unit = cache(kce.key, value)
 
   /**
     * 发送一个进度。

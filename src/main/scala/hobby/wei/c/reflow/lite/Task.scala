@@ -26,7 +26,7 @@ import hobby.wei.c.reflow
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.Task.Context
 import hobby.wei.c.reflow.implicits._
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
 import java.util.concurrent.atomic.AtomicLong
@@ -38,8 +38,8 @@ import scala.reflect.ClassTag
   */
 object Task {
   lazy val KEY_DEF = getClass.getName + "." + macros.valName
-  lazy val defKeyVType = new Kce[AnyRef](Task.KEY_DEF) {}
-  lazy val defKeyVTypes: Set[Kce[_ <: AnyRef]] = defKeyVType
+  lazy val defKeyVType = new KvTpe[AnyRef](Task.KEY_DEF) {}
+  lazy val defKeyVTypes: Set[KvTpe[_ <: AnyRef]] = defKeyVType
   private[lite] lazy val serialInParIndex = new AtomicLong(Byte.MinValue)
 
   def apply[OUT <: AnyRef](input: => OUT)(implicit out: ClassTag[OUT]): Input[OUT] = Input[OUT](input)
@@ -64,7 +64,7 @@ object Task {
       lite =>
       lazy val outKeyIndexed = lite.OUT_KEY(index)
       override protected[lite] val func = f
-      override protected[lite] def outs() = new KeyVType[AnyRef](outKeyIndexed) {}
+      override protected[lite] def outs() = new KvTpe[AnyRef](outKeyIndexed) {}
       override protected[lite] def newTask() = new reflow.Task.Context {
         protected final def input(): IN = input[IN](Task.KEY_DEF).get
         protected final def output(vo: OUT): Unit = output(outKeyIndexed, vo)
@@ -97,7 +97,7 @@ object Task {
 
   private[lite] def end[Next <: AnyRef]
   (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
-  (inputs: Set[KeyVType[_ <: AnyRef]])(task: () => reflow.Task)(implicit nxt: ClassTag[Next]): Lite[AnyRef, Next] =
+  (inputs: Set[KvTpe[_ <: AnyRef]])(task: () => reflow.Task)(implicit nxt: ClassTag[Next]): Lite[AnyRef, Next] =
     new Lite[AnyRef, Next](_period, _priority, _name, _desc) {
       override def classTags = (merge, nxt :: Nil)
       override protected[lite] lazy val func = throwFuncShouldNotBeUsed
@@ -172,7 +172,7 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
     parseDepends(this)
   }
 
-  def run(feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit policy: Policy, poster: Poster): Scheduler = {
+  def run(feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit strategy: Strategy, poster: Poster): Scheduler = {
     @scala.annotation.tailrec
     def findIn(lite: AbsLite[_, _]): In = lite match {
       case Serial(head, _) if head.isDefined => findIn(head.get)
@@ -189,7 +189,7 @@ abstract class AbsLite[IN <: AnyRef, OUT <: AnyRef] private[lite](implicit in: C
     *
     * @return `Pulse`实例，可进行无数次的`input(in)`操作。
     */
-  final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster): Pulse[IN] =
+  final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
     Pulse(new reflow.Pulse(resolveDepends().submit(), feedback, abortIfError, inputCapacity))
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
@@ -232,8 +232,8 @@ abstract class Lite[IN <: AnyRef, OUT <: AnyRef] private[lite]
   }
 
   protected[lite] def name$(): String = if (_name.isNull) lite.name else _name
-  protected[lite] def requires(): Set[Kce[_ <: AnyRef]] = Task.defKeyVTypes
-  protected[lite] def outs(): Set[Kce[_ <: AnyRef]] = Task.defKeyVTypes
+  protected[lite] def requires(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
+  protected[lite] def outs(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
   protected[lite] def newTask(): reflow.Task
 }
 
@@ -249,12 +249,12 @@ final case class Serial[IN <: AnyRef, OUT <: AnyRef] private[lite]
 (implicit in: ClassTag[IN], out: ClassTag[OUT]) extends AbsLite[IN, OUT] {
   /** 作为并行的其中一个子任务时，需要转换。 */
   def inPar(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
-    toSubWithKey(new KeyVType[AnyRef](OUT_KEY(Task.serialInParIndex.getAndIncrement)) {}, _name, _desc)
+    toSubWithKey(new KvTpe[AnyRef](OUT_KEY(Task.serialInParIndex.getAndIncrement)) {}, _name, _desc)
 
   def toSub(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
     toSubWithKey(Task.defKeyVType, _name, _desc)
 
-  private def toSubWithKey(_key: KeyVType[_ <: AnyRef], _name: String, _desc: String): Lite[IN, OUT] = {
+  private def toSubWithKey(_key: KvTpe[_ <: AnyRef], _name: String, _desc: String): Lite[IN, OUT] = {
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) => if (head.isEmpty) Reflow.builder else parseDepends(head.get).next(tail.intent)
       case lite: Lite[_, _] => Reflow.create(lite.intent)
@@ -274,7 +274,7 @@ protected[lite] trait AbsPar extends ClassTags2Name {
   protected final def parseDepends(pars: Seq[Parel[_, _]] = seq): Dependency = (Reflow.builder /: pars) { (dep, par) => dep.and(par.intent) }
 
   protected final def allOuts(pars: Seq[Parel[_, _]] = seq) =
-    (Set.newBuilder[KeyVType[_ <: AnyRef]] /: pars) { (set, par) => set ++= par.intent.outs$ }.result()
+    (Set.newBuilder[KvTpe[_ <: AnyRef]] /: pars) { (set, par) => set ++= par.intent.outs$ }.result()
 
   protected final def toIntent(pars: Seq[Parel[_, _]] = seq, tag: String = getClass.getSimpleName): Intent = {
     parseDepends(pars).submit(allOuts(pars)).toSub(name(tag))

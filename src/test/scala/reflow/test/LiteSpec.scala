@@ -38,10 +38,10 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
         if (!current.isSubReflow && current.scheduler.getState == State.EXECUTING) {
-//          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState}")
+          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState}")
 //          items().foreach(println)
-//          println(current)
-//          println("--------------------]]]")
+          println(current)
+          println("--------------------]]]")
         }
       }
     })(null)

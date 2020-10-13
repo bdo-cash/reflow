@@ -41,22 +41,20 @@ object implicits {
 
   lazy val SINGLE_THREAD = Config.SINGLE_THREAD
 
-  lazy val Strategy = Feedback.Progress.Policy
+  lazy val Strategy = Feedback.Progress.Strategy
   lazy val FullDose = Strategy.FullDose
   lazy val Fluent = Strategy.Fluent
   lazy val Depth = Strategy.Depth
   lazy val Interval = Strategy.Interval
 
-  // TODO:
-  type KeyVType[T <: AnyRef] = Kce[T]
   type Intent = Trait
   val Intent = Trait
 
-  def none[A]: immutable.Set[Kce[_ <: AnyRef]] = Helper.Kces.empty()
+  def none[A]: immutable.Set[KvTpe[_ <: AnyRef]] = Helper.KvTpes.empty()
 
   def none: In = In.empty()
 
-  implicit class TransformerRetain(kce: Kce[_ <: AnyRef]) {
+  implicit class TransformerRetain(kce: KvTpe[_ <: AnyRef]) {
     @inline def re: Transformer[_ <: AnyRef, _ <: AnyRef] = Helper.Transformers.retain(kce)
   }
 
@@ -72,11 +70,11 @@ object implicits {
   implicit lazy val f2 = kceKv2Bdr _
   implicit lazy val f3 = strKv2Bdr _
 
-  implicit def kce2Bdr(kce: Kce[_ <: AnyRef]): Helper.Kces.Builder = Helper.Kces + kce
+  implicit def kce2Bdr(kce: KvTpe[_ <: AnyRef]): Helper.KvTpes.Builder = Helper.KvTpes + kce
 
-  implicit def kce2Ok(kce: Kce[_ <: AnyRef]): immutable.Set[Kce[_ <: AnyRef]] = kce ok()
+  implicit def kce2Ok(kce: KvTpe[_ <: AnyRef]): immutable.Set[KvTpe[_ <: AnyRef]] = kce ok()
 
-  implicit def kceBdr2Ok(kb: Helper.Kces.Builder): immutable.Set[Kce[_ <: AnyRef]] = kb ok()
+  implicit def kceBdr2Ok(kb: Helper.KvTpes.Builder): immutable.Set[KvTpe[_ <: AnyRef]] = kb ok()
 
   implicit def trans2Bdr(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Helper.Transformers.Builder = Helper.Transformers + trans
 
@@ -84,9 +82,9 @@ object implicits {
 
   implicit def transBdr2Ok(tb: Helper.Transformers.Builder): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = tb ok()
 
-  implicit def kceKv2Bdr[V <: AnyRef](kv: (Kce[V], V)): In.Builder = In + kv
+  implicit def kceKv2Bdr[V <: AnyRef](kv: (KvTpe[V], V)): In.Builder = In + kv
 
-  implicit def kceKv2Ok[V <: AnyRef](kv: (Kce[V], V)): In = kv ok()
+  implicit def kceKv2Ok[V <: AnyRef](kv: (KvTpe[V], V)): In = kv ok()
 
   implicit def strKv2Bdr[V](kv: (String, V)): In.Builder = In + (kv._1, kv._2)
 

@@ -65,7 +65,7 @@ object Assist {
   /**
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
-  def requireKkDiff[C <: Iterable[Kce[_ <: AnyRef]]](keys: C): C = {
+  def requireKkDiff[C <: Iterable[KvTpe[_ <: AnyRef]]](keys: C): C = {
     if (debugMode && keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
@@ -106,29 +106,29 @@ object Assist {
   private[reflow] object Throws {
     def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`$name`的Task已存在, 请确认或尝试重写其name()方法。")
 
-    def sameOutKeyParallel(key: Kce[_ <: AnyRef], trat: Trait) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
+    def sameOutKeyParallel(key: KvTpe[_ <: AnyRef], trat: Trait) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
 
-    def sameCacheKey(key: Kce[_ <: AnyRef]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
+    def sameCacheKey(key: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
 
-    def sameKey$k(key: Kce[_ <: AnyRef]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
+    def sameKey$k(key: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
 
-    def lackIOKey(key: Kce[_ <: AnyRef], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
+    def lackIOKey(key: KvTpe[_ <: AnyRef], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
 
     def lackOutKeys() = throw new IllegalStateException("所有任务的输出都没有提供最终输出, 请检查。")
 
-    def typeNotMatch(key: Kce[_ <: AnyRef], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
+    def typeNotMatch(key: KvTpe[_ <: AnyRef], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
 
-    def typeNotMatch4Trans(from: Kce[_ <: AnyRef], to: Kce[_ <: AnyRef]) = typeNotMatch(to, from, "转换。")
+    def typeNotMatch4Trans(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "转换。")
 
-    def typeNotMatch4Consume(from: Kce[_ <: AnyRef], to: Kce[_ <: AnyRef]) = typeNotMatch(to, from, "消化需求。")
+    def typeNotMatch4Consume(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "消化需求。")
 
-    def typeNotMatch4Required(from: Kce[_ <: AnyRef], to: Kce[_ <: AnyRef]) = typeNotMatch(to, from, "新增初始输入。")
+    def typeNotMatch4Required(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "新增初始输入。")
 
-    def typeNotMatch4RealIn(from: Kce[_ <: AnyRef], to: Kce[_ <: AnyRef]) = typeNotMatch(to, from, "实际输入。")
+    def typeNotMatch4RealIn(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "实际输入。")
 
-    private def typeNotMatch(from: Kce[_ <: AnyRef], to: Kce[_ <: AnyRef], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
+    private def typeNotMatch(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
 
-    def tranSameKeyButDiffType(one: Kce[_ <: AnyRef], another: Kce[_ <: AnyRef]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
+    def tranSameKeyButDiffType(one: KvTpe[_ <: AnyRef], another: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
 
     def assertError(msg: String) = throw new AssertionError(msg)
   }

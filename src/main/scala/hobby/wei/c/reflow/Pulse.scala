@@ -23,7 +23,7 @@ import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Feedback.Progress
-import hobby.wei.c.reflow.Feedback.Progress.Policy
+import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Pulse.Reporter
 import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
 import hobby.wei.c.reflow.State._
@@ -50,7 +50,7 @@ import scala.collection.concurrent.TrieMap
   *          1.9, 11/10/2020, 为`Pulse.Interact`接口方法增加`parent`参数，修复[深度]和[任务]都相同的两个并行子任务干扰的问题。
   */
 class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false,
-            inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Policy, poster: Poster)
+            inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster)
   extends Scheduler with TAG.ClassName {
   private lazy val snatcher4Input = new tool.Snatcher
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
@@ -157,7 +157,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
     abortHead(thd) // 尾递归
   }
 
-  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Policy,
+  private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Strategy,
                                onStartCallback: Long => Unit, onCompleteCallback: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
     private lazy val roadmap = new TrieMap[(Int, String, String), Out]
@@ -295,7 +295,7 @@ object Pulse {
       override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {}
     }
 
-    abstract class Butt[T >: Null <: AnyRef](kce: Kce[T], watchProgressDepth: Int = 0) extends Adapter {
+    abstract class Butt[T >: Null <: AnyRef](kce: KvTpe[T], watchProgressDepth: Int = 0) extends Adapter {
       override def onProgress(serialNum: Long, progress: Progress, out: Out, fromDepth: Int): Unit = {
         super.onProgress(serialNum, progress, out, fromDepth)
         if (fromDepth == watchProgressDepth && out.keysDef().contains(kce))
