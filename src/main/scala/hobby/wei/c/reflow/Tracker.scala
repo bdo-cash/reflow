@@ -48,7 +48,7 @@ import scala.util.control.Breaks._
   *          1.6, 12/07/2020, fix bug: Progress(..trat);
   *          1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`;
   *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`.
-  * @param strategy 当前`Reflow`启动时传入的`Policy`。由于通常要考虑到父级`Reflow`的`Policy`，因此通常使用`policyRevised`以取代本参数；
+  * @param strategy 当前`Reflow`启动时传入的`Strategy`。由于通常要考虑到父级`Reflow`的`Strategy`，因此通常使用`strategyRevised`以取代本参数；
   * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
 private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strategy, val outer: Option[Env], val pulse: Pulse.Interact) extends TAG.ClassName {

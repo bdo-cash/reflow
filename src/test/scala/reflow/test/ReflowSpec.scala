@@ -401,7 +401,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   }
 
   Feature("`Progress`进度反馈策略") {
-    info("有四种策略（Policy）")
+    info("有四种策略（Strategy）")
     val trat4Progress = Trait("trat 4 progress", TRANSIENT) { ctx =>
       ctx.progress(1, 10)
       ctx.progress(2, 10)
@@ -427,21 +427,21 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     val reflow9 = Reflow.create(trat4Progress).next(reflow8.toSub("reflow8")).submit(none)
     info("串行任务进度测试")
     Scenario("1.全量（串行）") {
-      Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.FullDose`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9.start(none, implicitly)(Strategy.FullDose, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("2.丢弃拥挤的消息（串行）") {
-      Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.Fluent`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9.start(none, implicitly)(Strategy.Fluent, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("3.基于子进度的深度（串行）") {
-      Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.Depth(2)`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9.start(none, implicitly)(Strategy.Depth(2), poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
@@ -467,21 +467,21 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     val reflow9x = Reflow.create(trat4Progress).and(reflow8x.toSub("reflow8x")).submit(none)
     info("并行任务进度测试")
     Scenario("1.全量（并行）") {
-      Given("传入参数`Policy.FullDose`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.FullDose`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9x.start(none, implicitly)(Strategy.FullDose, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("2.丢弃拥挤的消息（并行）") {
-      Given("传入参数`Policy.Fluent`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.Fluent`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9x.start(none, implicitly)(Strategy.Fluent, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
     Scenario("3.基于子进度的深度（并行）") {
-      Given("传入参数`Policy.Depth(2)`，启动多层嵌套的 Reflow：")
+      Given("传入参数`Strategy.Depth(2)`，启动多层嵌套的 Reflow：")
       val scheduler = reflow9x.start(none, implicitly)(Strategy.Depth(2), poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
@@ -494,31 +494,31 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
       scheduler.sync()
       assert(true)
     }
-    info("还可以进行多Policy叠加")
-    Scenario("1. 叠加方案: Policy.Fluent -> Policy.Depth(2)") {
-      val policy = Strategy.Fluent -> Strategy.Depth(2)
-      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+    info("还可以进行多Strategy叠加")
+    Scenario("1. 叠加方案: Strategy.Fluent -> Strategy.Depth(2)") {
+      val strategy = Strategy.Fluent -> Strategy.Depth(2)
+      val scheduler = reflow9x.start(none, implicitly)(strategy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
-    Scenario("2. 叠加方案: Policy.Depth(2) -> Policy.Fluent") {
-      val policy = Strategy.Depth(2) -> Strategy.Fluent
-      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+    Scenario("2. 叠加方案: Strategy.Depth(2) -> Strategy.Fluent") {
+      val strategy = Strategy.Depth(2) -> Strategy.Fluent
+      val scheduler = reflow9x.start(none, implicitly)(strategy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
-    Scenario("3. 叠加方案: Policy.Interval(6) -> Policy.Fluent") {
-      val policy = Strategy.Interval(6) -> Strategy.Fluent
-      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+    Scenario("3. 叠加方案: Strategy.Interval(6) -> Strategy.Fluent") {
+      val strategy = Strategy.Interval(6) -> Strategy.Fluent
+      val scheduler = reflow9x.start(none, implicitly)(strategy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)
     }
-    Scenario("4. 叠加方案: Policy.Depth(3) -> Policy.Interval(6)") {
-      val policy = Strategy.Depth(3) -> Strategy.Interval(6)
-      val scheduler = reflow9x.start(none, implicitly)(policy, poster)
+    Scenario("4. 叠加方案: Strategy.Depth(3) -> Strategy.Interval(6)") {
+      val strategy = Strategy.Depth(3) -> Strategy.Interval(6)
+      val scheduler = reflow9x.start(none, implicitly)(strategy, poster)
       Then("观察输出的`Progress`日志")
       scheduler.sync()
       assert(true)

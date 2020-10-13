@@ -123,7 +123,7 @@ object Feedback {
       final def isFluentMode: Boolean = this <= Fluent
       def base = this
 
-      /** 生成用于传递到`SubReflow`的`Policy`。 */
+      /** 生成用于传递到`SubReflow`的`Strategy`。 */
       def toSub = this match {
         case Depth(level) => Depth(level - 1) // 每加深一层即递减
         case p => p

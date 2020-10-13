@@ -332,7 +332,7 @@ object Reflow {
       val scheduler = new Scheduler.Impl(this, traitIn, tranSet.toSet,
         /*子Reflow还会再次走到这里，所以仅关注两层进度即可。*/
         trackStrategy.genDelegator(feedback4track).join(strategy.genDelegator(feedback.wizh(poster))),
-        strategy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackPolicy。*/ , outer, pulse)
+        strategy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackStrategy。*/ , outer, pulse)
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat)))
       Reflow.submit$ {
@@ -358,7 +358,7 @@ abstract class Reflow private[reflow](val basis: Dependency.Basis) {
     *
     * @param inputs   输入内容的加载器。
     * @param feedback 事件反馈回调接口。
-    * @param strategy 进度反馈的优化策略。可以叠加使用，如：`Policy.Depth(3) -> Policy.Fluent -> Policy.Interval(600)`。
+    * @param strategy 进度反馈的优化策略。可以叠加使用，如：`Strategy.Depth(3) -> Strategy.Fluent -> Strategy.Interval(600)`。
     * @param poster   转移`feedback`的调用线程, 可为`null`。
     * @return `true`启动成功，`false`正在运行。
     */
