@@ -26,7 +26,10 @@ import hobby.wei.c.reflow.Feedback.Progress
   * @version 1.0, 03/04/2018
   */
 final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[Trait]) extends Equals with ClassName {
-  @volatile private var _progress: Progress = Progress(reflow.basis.traits.size, 0)
+  @volatile private var _progress: Progress = {
+    val pgr = Progress(reflow.basis.traits.size, 0, reflow.basis.traits.headOption)
+    pgr.copy(trigger = pgr)
+  }
 
   private[reflow] def progress(progress: Progress): GlobalTrack = {
     _progress = progress
