@@ -123,11 +123,13 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Scenario("带有输入类型的 `Pulse` 流处理器") {
       val pars =
         (
-          c2d
-          +>>
-          c2abc //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
+//          c2d
+//          +>>
+          (c2abc >>> c2d) //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
           (c2b >>> b2c >>> c2a >>> a2b)
+          +>>
+          c2b
           +>>
           c2a
         ) **> { (d, c, b, a, ctx) =>

@@ -18,7 +18,7 @@ package hobby.wei.c.reflow
 
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.reflow.Reflow.Period
-import hobby.wei.c.reflow.lite.{Lite, Par, Serial}
+import hobby.wei.c.reflow.lite.{Lite, Par, Par2, Serial}
 import scala.collection.immutable
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -63,6 +63,13 @@ object implicits {
 
   implicit def serialInPar[IN <: AnyRef, OUT <: AnyRef]
   (serial: Serial[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Lite[IN, OUT] = serial.inPar()
+
+  implicit class SerialInPar2Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
+  (serial: Serial[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]) {
+    def +>>[OUT1 >: Null <: AnyRef](lite: Lite[IN, OUT1])(implicit out1: ClassTag[OUT1]): Par2[IN, OUT, OUT1] = par(lite)
+    def par[OUT1 >: Null <: AnyRef](lite: Lite[IN, OUT1])(implicit out1: ClassTag[OUT1]): Par2[IN, OUT, OUT1] =
+      serialInPar(serial) +>> lite
+  }
 
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _
