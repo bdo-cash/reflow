@@ -38,10 +38,10 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Reflow.GlobalTrack.registerObserver(new GlobalTrackObserver {
       override def onUpdate(current: GlobalTrack, items: All): Unit = {
         if (!current.isSubReflow && current.scheduler.getState == State.EXECUTING) {
-          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState}")
-          items().foreach(println)
-          println(current)
-          println("--------------------]]]")
+//          println(s"++++++++++++++++++++[[[current.state:${current.scheduler.getState}")
+//          items().foreach(println)
+//          println(current)
+//          println("--------------------]]]")
         }
       }
     })(null)
@@ -72,7 +72,7 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
   implicit lazy val c2d   = Task[Ccc, Ddd]() { (ccc, ctx) => new Ddd(ccc) }
   implicit lazy val c2abc = c2a >>> a2b >>> b2c
 
-  implicit lazy val strategy       = Fluent
+  implicit lazy val strategy       = FullDose
   implicit lazy val poster: Poster = null
 
   lazy val feedback = new reflow.Feedback.Adapter
@@ -103,9 +103,9 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
         (
           c2d
           +>>
-          c2abc("name#c2abc", "c2abc`串行`混入`并行`")
+          c2abc.inPar("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
-          c2b
+          (c2b >>> b2c >>> c2a >>> a2b).inPar()
           +>>
           c2a
         ) **> { (d, c, b, a, ctx) =>
@@ -125,9 +125,9 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
         (
           c2d
           +>>
-          c2abc("name#c2abc", "c2abc`串行`混入`并行`")
+          c2abc //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
-          (c2b >>> b2c).toSub()
+          (c2b >>> b2c >>> c2a >>> a2b)
           +>>
           c2a
         ) **> { (d, c, b, a, ctx) =>

@@ -18,8 +18,7 @@ package hobby.wei.c.reflow
 
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.reflow.Reflow.Period
-import hobby.wei.c.reflow.lite.{Lite, Par}
-
+import hobby.wei.c.reflow.lite.{Lite, Par, Serial}
 import scala.collection.immutable
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -48,6 +47,7 @@ object implicits {
   lazy val Depth = Strategy.Depth
   lazy val Interval = Strategy.Interval
 
+  // TODO:
   type KeyVType[T <: AnyRef] = Kce[T]
   type Intent = Trait
   val Intent = Trait
@@ -62,6 +62,9 @@ object implicits {
 
   implicit def lite2Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (lite: Lite[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Par[IN, OUT] = Par(lite)
+
+  implicit def serialInPar[IN <: AnyRef, OUT <: AnyRef]
+  (serial: Serial[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Lite[IN, OUT] = serial.inPar()
 
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _

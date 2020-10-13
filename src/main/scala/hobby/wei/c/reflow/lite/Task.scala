@@ -20,6 +20,7 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.ThrowMsg
 import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.lang.TypeBring.AsIs
+import hobby.chenai.nakam.tool.macros
 import hobby.wei.c.anno.proguard.Keep$
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow._
@@ -28,7 +29,7 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Policy
 import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
-
+import java.util.concurrent.atomic.AtomicLong
 import scala.reflect.ClassTag
 
 /**
@@ -36,9 +37,10 @@ import scala.reflect.ClassTag
   * @version 1.0, 14/06/2020
   */
 object Task {
-  lazy val KEY_DEF = getClass.getName
+  lazy val KEY_DEF = getClass.getName + "." + macros.valName
   lazy val defKeyVType = new Kce[AnyRef](Task.KEY_DEF) {}
   lazy val defKeyVTypes: Set[Kce[_ <: AnyRef]] = defKeyVType
+  private[lite] lazy val serialInParIndex = new AtomicLong(Byte.MinValue)
 
   def apply[OUT <: AnyRef](input: => OUT)(implicit out: ClassTag[OUT]): Input[OUT] = Input[OUT](input)
 
@@ -114,24 +116,23 @@ protected[lite] trait ClassTags2Name extends TAG.ClassName {
 
   override final def toString = super.toString
   override final def hashCode = super.hashCode
-  final def short = {
-    val s = toString
+  final def short(s: String = toString) = {
     val i = s.lastIndexOf('.')
     if (i > 0) s.substring(i + 1) else s
   }
   final def classTag = "[" +
     (if (classTags._1.isNull) "" else classTags._1.map { ct =>
-      if (ct.isNull) "" else if (ct.runtimeClass == classOf[Merge]) "..." else ct.runtimeClass.getSimpleName
+      if (ct.isNull) "" else if (ct.runtimeClass == classOf[Merge]) "…" else ct.runtimeClass.getSimpleName
     }.mkString("|")) + "->" + classTags._2.map { ct =>
     if (ct.isNull) "" else ct.runtimeClass.getSimpleName
   }.mkString("|") + "]"
   final def name(tag: String): String = s"[${tag.toUpperCase}]$name"
-  final lazy val name: String = s"$short$classTag"
+  final lazy val name: String = s"${short()}$classTag"
 
-  final def OUT_KEY(index: Int): String = name + index
-  final def parseIndex(outKey: String): Int = {
+  final def OUT_KEY(index: Long): String = s"${short(className.toString)}$classTag" + index
+  final def parseIndex(outKey: String): Long = {
     if (debugMode) log.i("parseIndex: %s", outKey)
-    outKey.substring(outKey.lastIndexOf(']') + 1).toInt
+    outKey.substring(outKey.lastIndexOf(']') + 1).toLong
   }
 }
 
@@ -212,7 +213,7 @@ final case class Pulse[IN <: AnyRef] private[lite](pulse: reflow.Pulse) {
   def input(in: => IN): Unit = pulse.input(Task.defKeyVType -> in)
 }
 
-/** 单个任务。 */
+/** 单个任务。用于组装到并行或串行。 */
 abstract class Lite[IN <: AnyRef, OUT <: AnyRef] private[lite]
 (_period: Period.Tpe, _priority: Int, _name: String, _desc: String)(implicit in: ClassTag[IN], out: ClassTag[OUT])
   extends AbsLite[IN, OUT] {
@@ -246,16 +247,26 @@ abstract class Parel[IN <: AnyRef, OUT <: AnyRef] private[lite]
 final case class Serial[IN <: AnyRef, OUT <: AnyRef] private[lite]
 (head: Option[AbsLite[IN, _]], tail: Lite[_ <: AnyRef, OUT])
 (implicit in: ClassTag[IN], out: ClassTag[OUT]) extends AbsLite[IN, OUT] {
-  def apply(_name: String = this.name, _desc: String = null): Lite[IN, OUT] = toSub(_name, _desc)
-  /** 作为并行的其中一个子任务时，需要转换。即使：它本身是串行的。 */
-  def toSub(_name: String = this.name, _desc: String = null): Lite[IN, OUT] = {
+  /** 作为并行的其中一个子任务时，需要转换。 */
+  def inPar(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
+    toSubWithKey(new KeyVType[AnyRef](OUT_KEY(Task.serialInParIndex.getAndIncrement)) {}, _name, _desc)
+
+  def toSub(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
+    toSubWithKey(Task.defKeyVType, _name, _desc)
+
+  private def toSubWithKey(_key: KeyVType[_ <: AnyRef], _name: String, _desc: String): Lite[IN, OUT] = {
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) => if (head.isEmpty) Reflow.builder else parseDepends(head.get).next(tail.intent)
       case lite: Lite[_, _] => Reflow.create(lite.intent)
       case _ => throwInputNotRequired
     }
-
-    Task.sub[IN, OUT](parseDepends(this).submit(Task.defKeyVTypes).toSub(_name, _desc))
+    val reflow =
+      if (_key == Task.defKeyVType) parseDepends(this).submit(Task.defKeyVTypes)
+      else parseDepends(this).next(
+        new Transformer[AnyRef, AnyRef](Task.defKeyVType.key, _key.key) {
+          override def transform(in: Option[AnyRef]) = in
+        }).submit(_key)
+    Task.sub[IN, OUT](reflow.toSub(_name, _desc))
   }
 }
 
@@ -440,7 +451,6 @@ final case class Par6[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     par(lite)
   def par[OUT6 >: Null <: AnyRef](lite: Lite[IN, OUT6])(implicit out6: ClassTag[OUT6]): Par7[IN, OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6] =
     Par7(l, l1, l2, l3, l4, l5, Task.par(6, lite))
-
 
   def **>[Next <: AnyRef](f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] =
     merge()(f)(next)

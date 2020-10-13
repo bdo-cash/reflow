@@ -92,17 +92,17 @@ object Feedback {
   /**
     * 表示任务的进度。由于任务可以嵌套，所以进度也需要嵌套，以便实现更精确的管理。
     *
-    * @param sum  当前进度的总步数。
-    * @param step 当前进度走到了第几步。
-    * @param trat 当前`step`对应的 top level `Trait`。分为3种情况：
-    *             1. 若`subs`为`None`，则`trat`一定也为`None`，表示某`Task.progress(step, sum)`出来的进度；
-    *             2. 若当前是一个具体的（顺序依赖的）任务触发出的进度，则`trat`表示该任务，同时`subs`中会有唯一一个进度
-    *             与之对应，其性质同 1；
-    *             3. 若`trat`是并行的（`_.isPar == true`），则`subs`代表了所有当前正在并行执行的任务。
-    *             注意：`subs`中的进度同样分为以上3种情况。
-    * @param subs 子任务。可以是并行的，所以用了`Seq`。
+    * @param sum     当前进度的总步数。
+    * @param step    当前进度走到了第几步。
+    * @param trat    当前`step`对应的 top level `Trait`。分为3种情况：
+    *                1. 若`subs`为`None`，则`trat`一定也为`None`，表示某`Task.progress(step, sum)`出来的进度；
+    *                2. 若当前是一个具体的（顺序依赖的）任务触发出的进度，则`trat`表示该任务，同时`subs`中会有唯一一个进度与之对应，该进度其性质同 1；
+    *                3. 若`trat`是并行的（`_.isPar == true`），则`subs`代表了所有当前正在并行执行的任务。
+    *                注意：`subs`中的进度同样分为以上3种情况。
+    * @param trigger 表示触发进度反馈的那个进度，以便知道哪个任务是开始还是完成。注意：不能再关注递归的[[trigger]]属性（13/10/2020 增加）。
+    * @param subs    子任务。可以是并行的，所以用了`Seq`。
     */
-  final case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, subs: Option[Seq[Progress]] = None) {
+  final case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, trigger: Progress = null, subs: Option[Seq[Progress]] = None) {
     require(step < sum || (step == sum && subs.isEmpty))
     require(subs.fold(true)(_.forall(_.nonNull)))
 
@@ -110,7 +110,7 @@ object Feedback {
     lazy val sub: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
 
     @inline def apply(): Float = main
-    override def toString = s"Progress(sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$.tag}" }})"
+    override def toString = s"Progress(sum:$sum, step:$step, p-main:$main, p-sub:$sub${trat.fold("") { t => s", name:${t.name$}" }}, trigger:${trigger.trat.fold(s"(${trigger.main})") { t => s"${t.name$}(${trigger.main})" }})"
   }
 
   object Progress {
@@ -353,7 +353,7 @@ object Feedback {
 
       override def onPending(): Unit = log.i("[onPending]")
       override def onStart(): Unit = log.i("[onStart]")
-      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, value:%s.", fromDepth, progress, out.get(lite.Task.defKeyVType))
+      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, value:%s.", fromDepth, progress, out/*.get(lite.Task.defKeyVType)*/)
       override def onComplete(out: Out): Unit = super.onComplete(out)
       override def onUpdate(out: Out): Unit = super.onUpdate(out)
       override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
