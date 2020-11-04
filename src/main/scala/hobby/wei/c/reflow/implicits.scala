@@ -61,7 +61,7 @@ object implicits {
   implicit def lite2Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (lite: Lite[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Par[IN, OUT] = Par(lite)
 
-  implicit def serialInPar[IN <: AnyRef, OUT <: AnyRef]
+  implicit def serialInPar[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (serial: Serial[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Lite[IN, OUT] = serial.inPar()
 
   implicit class SerialInPar2Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
@@ -70,6 +70,10 @@ object implicits {
     def par[OUT1 >: Null <: AnyRef](lite: Lite[IN, OUT1])(implicit out1: ClassTag[OUT1]): Par2[IN, OUT, OUT1] =
       serialInPar(serial) +>> lite
   }
+
+  def +|-[IN >: Null <: AnyRef, Next >: Null <: AnyRef]
+  (f: IN => Next)(implicit in: ClassTag[IN], nxt: ClassTag[Next]): Lite[IN, Next] =
+    lite.Task[IN, Next](TRANSIENT, P_HIGH)((in, _) => f(in))
 
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _
