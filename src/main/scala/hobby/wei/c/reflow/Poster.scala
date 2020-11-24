@@ -19,6 +19,8 @@ package hobby.wei.c.reflow
 /**
   * 用于将`Feedback`传送到目标线程（如：UI 线程）去运行的时光机。
   *
+  * 类似于[[scala.concurrent.ExecutionContext]]。
+  *
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 23/07/2016
   */

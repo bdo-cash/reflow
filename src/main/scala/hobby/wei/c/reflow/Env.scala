@@ -67,8 +67,7 @@ private[reflow] trait Env extends TAG.ClassName {
 
   final def isPulseMode: Boolean = tracker.isPulseMode
 
-  // 本`Env`的存在就说明是subReflow。
-  // final def isSubReflow: Boolean = tracker.isSubReflow
+  final def isSubReflow: Boolean = tracker.isSubReflow
 }
 
 private[reflow] object Env {

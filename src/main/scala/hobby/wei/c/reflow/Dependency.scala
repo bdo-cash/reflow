@@ -646,7 +646,7 @@ object Dependency {
   }
 
   private[reflow] def requireRealInEnough(requires: Set[KvTpe[_ <: AnyRef]], realIn: Map[String, KvTpe[_ <: AnyRef]]): Unit =
-    if (debugMode) requires.foreach { k =>
+    requires.foreach { k =>
       realIn.get(k.key).fold(Throws.lackIOKey(k, in$out = true)) { kIn =>
         if (!k.isAssignableFrom(kIn)) Throws.typeNotMatch4RealIn(kIn, k)
       }

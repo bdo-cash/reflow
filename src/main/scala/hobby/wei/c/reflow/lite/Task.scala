@@ -196,8 +196,9 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     *
     * @return `Pulse`实例，可进行无数次的`input(in)`操作。
     */
-  final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
-    Pulse(new reflow.Pulse(resolveDepends().submit(), feedback, abortIfError, inputCapacity))
+  final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3,
+                  execCapacity: Int = 3)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
+    Pulse(new reflow.Pulse(resolveDepends().submit(), feedback, abortIfError, inputCapacity, execCapacity))
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
   protected def throwInputNotRequired = throw new IllegalArgumentException("`Input[]` NOT required.".tag)
@@ -217,7 +218,7 @@ final class Input[OUT >: Null <: AnyRef] private[lite](input: => OUT)(implicit o
 }
 
 final case class Pulse[IN <: AnyRef] private[lite](pulse: reflow.Pulse) {
-  def input(in: => IN): Unit = pulse.input(Task.defKeyVType -> in)
+  def input(in: => IN): Boolean = pulse.input(Task.defKeyVType -> in)
 }
 
 /** 单个任务。用于组装到并行或串行。 */

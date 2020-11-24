@@ -19,10 +19,10 @@ package hobby.wei.c.reflow
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
 import hobby.chenai.nakam.basis.TAG
-import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.lang.J2S.{NonFlat$, NonNull}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
+import hobby.wei.c.log.Logger._
 import hobby.wei.c.tool.Snatcher
-
 import scala.util.control.Breaks._
 
 /**
@@ -68,9 +68,12 @@ object Worker extends TAG.ClassName {
     new ThreadPoolExecutor(config.corePoolSize, config.maxPoolSize,
       config.keepAliveTime, TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory, new RejectedExecutionHandler {
         override def rejectedExecution(r: Runnable, executor: ThreadPoolExecutor): Unit = {
-          Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
           try {
-            sPoolWorkQueue.offer(r, 0, TimeUnit.MILLISECONDS)
+            while(!sPoolWorkQueue.offer(r, 0, TimeUnit.MILLISECONDS)) {
+              if (debugMode) log.w("[sPoolWorkQueue]########## times loop offer(%s, 0, TimeUnit.MILLISECONDS).", r)
+              Thread.`yield`()
+            }
+            Assist.Monitor.threadPool(sThreadPoolExecutor, addThread = false, reject = true)
           } catch {
             case ignore: InterruptedException /*不可能出现*/ =>
               throw ignore
@@ -117,7 +120,11 @@ object Worker extends TAG.ClassName {
   private val sSnatcher = new Snatcher
 
   def scheduleRunner(runner: Runner, bucket: Boolean = true): Unit = {
-    sPreparedBuckets.queue4(runner.trat.period$).offer(runner)
+    if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> runner:%s.", runner)
+    while(!sPreparedBuckets.queue4(runner.trat.period$).offer(runner)) {
+      if (debugMode) log.w("[scheduleBuckets]########## times loop offer(%s).", runner)
+      Thread.`yield`()
+    }
     if (bucket) scheduleBuckets()
   }
 
@@ -131,6 +138,7 @@ object Worker extends TAG.ClassName {
     val executor = sThreadPoolExecutor
     breakable {
       while (true) {
+        if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> bucket queues sizes:%s.", sPreparedBuckets.sQueues.map(_.size).mkString$.s)
         val allowRunLevel = {
           val maxPoolSize = executor.getMaximumPoolSize
           // sTransient和sShort至少会有一个线程，策略就是拼优先级了。不过如果线程已经满载，
@@ -153,7 +161,7 @@ object Worker extends TAG.ClassName {
         }
         var runner: Runner = null
         var index = -1
-        for (i <- 0 to Math.min(allowRunLevel, sPreparedBuckets.sQueues.length - 1)) {
+        for (i <- 0 to (allowRunLevel min (sPreparedBuckets.sQueues.length - 1))) {
           val r = sPreparedBuckets.sQueues(i).peek()
           if (r.nonNull && (runner.isNull || // 值越小优先级越大
             ((r.trat.priority$ + r.trat.period$.weight /*采用混合优先级*/)
@@ -169,25 +177,26 @@ object Worker extends TAG.ClassName {
             break
           }
         } else {
-          // 队列结构可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
-          if (sPreparedBuckets.sQueues(index).remove(runner)) {
-            sExecuting.sCounters(index).incrementAndGet
-            executor.execute(new Runnable {
-              override def run(): Unit = {
-                resetThread(Thread.currentThread, beforeOrOfterWork = true, runOnCurrentThread = true)
-                try {
-                  runner.run()
-                } catch {
-                  case ignore: Throwable => Assist.Monitor.threadPoolError(ignore)
-                } finally {
-                  // runner.run()里的endMe()会触发本调度方法，但发生在本句递减计数之前，因此调度几乎无效，已删。
-                  sExecuting.sCounters(index).decrementAndGet
-                  resetThread(Thread.currentThread, beforeOrOfterWork = false, runOnCurrentThread = true)
-                  scheduleBuckets()
-                }
-              }
-            })
+          // 队列元素的顺序可能发生改变，不能用poll(); 而remove()是安全的：runner都是重新new出来的，不会出现重复。
+          while (!sPreparedBuckets.sQueues(index).remove(runner)) {
+            if (debugMode) log.w("[scheduleBuckets]########## times loop remove(%s).", runner)
+            Thread.`yield`()
           }
+          sExecuting.sCounters(index).incrementAndGet
+          executor.execute(() => {
+            resetThread(Thread.currentThread, beforeOrOfterWork = true, runOnCurrentThread = true)
+            try {
+              runner.run()
+            } catch {
+              case ignore: Throwable => Assist.Monitor.threadPoolError(ignore)
+            } finally {
+              // runner.run()里的endMe()会触发本调度方法，但发生在本句递减计数之前，因此调度几乎无效，已删。
+              sExecuting.sCounters(index).decrementAndGet
+              if (debugMode) log.i("[scheduleBuckets]<<<<<<<<<< exec counters:%s.", sExecuting.sCounters.map(_.get).mkString$.s)
+              resetThread(Thread.currentThread, beforeOrOfterWork = false, runOnCurrentThread = true)
+              scheduleBuckets()
+            }
+          })
         }
       }
     }

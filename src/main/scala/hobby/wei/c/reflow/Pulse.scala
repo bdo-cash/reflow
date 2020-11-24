@@ -20,13 +20,13 @@ import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
-import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist.eatExceptions
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Pulse.Reporter
 import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
 import hobby.wei.c.reflow.State._
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicLong
@@ -39,64 +39,76 @@ import scala.collection.concurrent.TrieMap
   * 特意留下的标记。无论在任何深度的子任务中，也无论前一个数据在某子任务中停留的时间是否远大于后一个。
   *
   * @param reflow        每个`流处理器`都`Base`在一个主`Reflow`上。
-  * @param abortIfError  当有一次输入出现错误时，是否中断。默认为`false`。
+  * @param abortIfError  当某次`input`出现错误时，是否中断。默认为`false`（无法保证出错的任务留下的路标在下一个`input`成功读取到）。
   * @param inputCapacity 输入数据的缓冲容量。
+  * @param execCapacity  不能一直无限制地[[reflow.start]]，也不能让`onStart`和`onComplete`的计数差值过大，会导致任务对象大量堆积、内存占用升高等问题。
   *
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 01/07/2018;
   *          1.5, 04/10/2019, fix 了一个很重要的 bug（版本号与`Tracker`保持一致：`Tracker`也作了修改）;
   *          1.7, 29/09/2020, 增加了`strategy`和`queueCapacity`实现，至此算是完美了；
   *          1.8, 01/10/2020, 修复`Tactic.snatcher`处于不同上下文导致线程不串行而偶现异常的问题；
-  *          1.9, 11/10/2020, 为`Pulse.Interact`接口方法增加`parent`参数，修复[深度]和[任务]都相同的两个并行子任务干扰的问题。
+  *          1.9, 11/10/2020, 为`Pulse.Interact`接口方法增加`parent`参数，修复[深度]和[任务]都相同的两个并行子任务干扰的问题；
+  *          2.1, 18/12/2020, bug fix: 支持`Pulse.abortIfError = false`的定义（在异常出错时也能正常前进）。
   */
-class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean = false,
-            inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster)
+class Pulse(val reflow: Reflow, feedback: Pulse.Feedback,
+            val abortIfError: Boolean = false, val inputCapacity: Int = Config.DEF.maxPoolSize * 3,
+            val execCapacity: Int = 3)(implicit strategy: Strategy, poster: Poster)
   extends Scheduler with TAG.ClassName {
   private lazy val snatcher4Input = new tool.Snatcher
   private lazy val snatcher = new tool.Snatcher.ActionQueue()
   private lazy val reporter = new Reporter(feedback.wizh(poster))
   private lazy val state = new Scheduler.State$()
-  private lazy val serialNum = new AtomicLong(0)
   private lazy val inputQueue = new LinkedBlockingQueue[In](inputCapacity)
+  private val serialNum = new AtomicLong(-1)
+  private val startedSNum = new AtomicLong(-1)
+  private val completedSNum = new AtomicLong(-1)
   @volatile private var head: Option[Tactic] = None
-  @volatile private var maxStartedSNum: Long = -1
-  @volatile private var maxCompletedSNum: Long = -1
 
   /**
-    * 流式数据输入。应使用单线程输入，如果要用多线程，应自行保证线程安全。
-    * 注意：输入数据`in`会首先存入[[LinkedBlockingQueue]]，如果达到了[[inputCapacity]] size, 则会阻塞。
+    * 流式数据输入。应自行保证多线程输入时的顺序性（如果需要）。
+    * 输入数据`in`会首先存入[[LinkedBlockingQueue]]，如果达到了[[inputCapacity]] size, 则会返回`false`。
+    * 需要关注返回值。
     */
-  @throws[InterruptedException]
-  def input(in: In): Unit = if (!isDone) {
-    inputQueue.put(in)
-    consumeInputQueue(maxStartedSNum)
-  }
+  def input(in: In): Boolean = if (!isDone) {
+    val succeed = inputQueue.offer(in)
+    if (succeed) consumeInputQueue()
+    asyncDebug()
+    succeed
+  } else false
 
-  private def consumeInputQueue(onStartedSNum: Long): Unit = {
-    // 注意：不要把这行包裹进`tryOn`，详见实现。
-    this.synchronized { // 其实这里不需要串行
-      if (onStartedSNum > maxStartedSNum) maxStartedSNum = onStartedSNum
+  private def consumeInputQueue(): Unit = {
+    def updateMum(num: Long, to: AtomicLong): Unit = {
+      var n = to.get
+      while (num > n && !to.compareAndSet(n, num)) {
+        n = to.get
+      }
     }
+    if (debugMode) log.i("[consumeInputQueue](0)serialNum:%d, startedSNum:%d, completedSNum:%d, inputQueue.size:%s.", serialNum.get, startedSNum.get, completedSNum.get, inputQueue.size)
     snatcher4Input.tryOn {
-      if (debugMode) log.i("[consumeInputQueue]maxStartedSNum:%d.", maxStartedSNum)
-      while (!isDone && maxStartedSNum + 3 >= serialNum.get && !inputQueue.isEmpty) {
-        if (debugMode) log.i("[consumeInputQueue]serialNum:%d, maxStartedSNum: %d.", serialNum.get, maxStartedSNum)
+      while (canForward
+        && startedSNum.get - completedSNum.get < execCapacity
+        && startedSNum.get > serialNum.get - execCapacity /*允许比已`onStart`的超前`execCapacity`个。*/
+        && !inputQueue.isEmpty) {
+        if (debugMode) log.i("[consumeInputQueue](1)serialNum:%d, startedSNum:%d, completedSNum:%d, inputQueue.size:%s.", serialNum.get, startedSNum.get, completedSNum.get, inputQueue.size)
         state.forward(PENDING)
         // 无论我是不是第一个，原子交换。
-        head = Some(new Tactic(head, this, serialNum.getAndIncrement, strategy, { sn =>
-          consumeInputQueue(sn)
-        }, { sn =>
-          this.synchronized {
-            if (sn > maxCompletedSNum) maxCompletedSNum = sn
-          }
-        }))
-        head.get.start(inputQueue.take())
+        head = Some(new Tactic(head, this, serialNum.incrementAndGet, strategy,
+          { sn =>
+            updateMum(sn, startedSNum)
+            consumeInputQueue()
+          }, { sn =>
+            updateMum(sn, completedSNum)
+            consumeInputQueue()
+          })
+        )
+        head.get.start(inputQueue.poll().ensuring(_.nonNull))
       }
     }
   }
 
-  def currentScheduledSize = serialNum.get
-  def currentCompletedSize = maxCompletedSNum + 1
+  def currentScheduledSize = serialNum.get + 1
+  def currentCompletedSize = completedSNum.get + 1
   def inputQueueSize = inputQueue.size()
 
   /** 当前所有的输入是否都已成功运行。瞬时状态，即使当前返回`true`了，可能后续会再次输入，就又返回`false`了。*/
@@ -114,6 +126,8 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
   override def getState = state.get
 
+  private[reflow] def canForward = !isDone
+
   @deprecated
   override def sync(reinforce: Boolean = false) = ??? // head.get.scheduler.sync(reinforce)
   @deprecated
@@ -121,28 +135,22 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
 
   override def abort(): Unit = snatcher.queAc {
     if (state.forward(PENDING)) { // 说明还没有开始
-      if (state.forward(ABORTED)) {
-        // reporter.reportOnAbort(serialNum.get, None)
-      }
+      if (state.forward(ABORTED)) {}
     }
     abortHead(head)
     head = None
   }
 
-  private[reflow] def onFailed(trat: Trait, e: Exception): Unit = snatcher.queAc {
+  private[reflow] def onFailed(): Unit = snatcher.queAc {
     if (abortIfError) {
-      if (state.forward(FAILED)) {
-        // reporter.reportOnFailed(serialNum.get, trat, e)
-      }
+      state.forward(FAILED)
       // 后面的`state.forward()`是不起作用的。
       abort()
     }
   }
 
-  private[reflow] def onAbort(trigger: Option[Trait]): Unit = snatcher.queAc {
-    if (state.forward(ABORTED)) {
-      // reporter.reportOnAbort(serialNum.get, trigger)
-    }
+  private[reflow] def onAbort(): Unit = snatcher.queAc {
+    state.forward(ABORTED)
     abort()
   }
 
@@ -158,64 +166,58 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
   }
 
   private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Strategy,
-                               onStartCallback: Long => Unit, onCompleteCallback: Long => Unit) extends TAG.ClassName {
+                               onStartCallback: Long => Unit, onCompleteCall: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
     private lazy val roadmap = new TrieMap[(Int, String, String), Out]
     private lazy val suspend = new TrieMap[(Int, String, String), () => Unit]
-    // @volatile private var follower: Tactic = _
     // 不可以释放实例，只可以赋值。
     @volatile var scheduler: Scheduler = _
+    @volatile var failed: Boolean = false
 
     // `in`参数放在这里以缩小作用域。
-    def start(in: In): Unit = {
-      head.foreach(follow)
-      scheduler = pulse.reflow.start(in, feedback, strategy,
+    def start(in: In): Unit = scheduler = pulse.reflow.start(in, feedback, strategy,
         /*不使用外部客户代码提供的`poster`，以确保`feedback`和`cacheBack`反馈顺序问题。*/
         null, null, interact)
-    }
 
-    private def follow(tac: Tactic): Unit = {
-      // require(tac.follower.isNull)
-      // tac.follower = this
-    }
-
-    // 应该放到`object`里，相当于`static`的。
-    private def doPushForward(snatcher: tool.Snatcher,
-                              map: TrieMap[(Int, String, String), () => Unit],
-                              data: TrieMap[(Int, String, String), Out],
-                              serialNum: Long): Unit = snatcher.tryOn {
+    private def doPushForward(): Unit = if (pulse.canForward) snatcher.tryOn {
       // fix bug: 1.8, 01/10/2020. 加了`snatcher`变量，否则由于每个`interact`回调本方法都是在两个不同的`Tactic`实例中，不同
       // `snatcher`无法串行化以下代码块。
-      lazy val keys = data.keys
-      for ((k, go) <- map) { // 放到`map`中的肯定是并行的任务或单个任务，因此遍历时不用管它们放进去的顺序。
+      lazy val keys = roadmap.keys
+      for ((k, go) <- suspend) { // 放到`map`中的肯定是并行的任务或单个任务，因此遍历时不用管它们放进去的顺序。
         // bug fix: 1.5, 04/10/2019.
         // 切记不能用`contains`，不然如果`value eq null`，则`contains`返回`false`，即使`keySet`也一样。
         // 前一版的 bug：
         // 1. 主要是这个原因导致的；
         // 2. 还有一个严重影响性能的问题：如果嵌套了子层`reflow`，则必须等该层`reflow`的所有任务执行完毕才能`endRunner()`,进而
         // 调用`interact.evolve()`，而后才能推动下一个数据的该层`reflow`继续。bug fix 已对`ReflowTrait`作了忽略处理。
-        if (keys.exists(_ == k)) {
+        if (failed || keys.exists(_ == k)) {
           if (debugMode) log.i("(%d)[doPushForward]%s.", serialNum, k)
-          map.remove(k)
+          suspend.remove(k)
           go()
         }
       }
     }
 
     private lazy val interact = new Pulse.Interact {
-      override def evolve(depth: Int, trat: Trait, parent: Option[Trait], cache: Out): Unit = {
+      override def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Out, failed: Boolean): Unit = {
         val key = (depth, trat.name$, parent.map(_.name$).orNull)
-        if (debugMode) log.i("(%d)[interact.evolve]%s.", serialNum /* + 1*/ , key)
+        if (debugMode) log.i("(%d)[interact.evolve]%s.", serialNum, key)
+        if (failed && !pulse.abortIfError) {
+          Tactic.this.failed = true
+        }
         roadmap.put(key, cache)
-        doPushForward(snatcher, suspend, roadmap, serialNum + 1)
+        doPushForward()
       }
 
-      override def forward(depth: Int, trat: Trait, parent: Option[Trait], go: () => Unit): Unit = {
+      override def forward(depth: Int, trat: Trait, parent: Option[ReflowTrait], go: () => Unit): Unit = {
         val key = (depth, trat.name$, parent.map(_.name$).orNull)
         if (debugMode) log.i("(%d)[interact.forward]%s.", serialNum, key)
         head.fold(go()) { tac =>
-          tac.suspend.put(key, go)
-          doPushForward(tac.snatcher, tac.suspend, tac.roadmap, serialNum)
+          if (tac.failed) go()
+          else {
+            tac.suspend.put(key, go)
+            tac.doPushForward()
+          }
         }
       }
 
@@ -244,7 +246,8 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
         pulse.reporter.reportOnProgress(serialNum, progress, out, depth)
 
       override def onComplete(out: Out): Unit = {
-        onCompleteCallback(serialNum)
+        onCompleteCall(serialNum)
+        onCompleteDebug()
         pulse.reporter.reportOnComplete(serialNum, out)
         // 释放`head`。由于总是会引用前一个，会造成内存泄露。
         head = None
@@ -255,18 +258,61 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, abortIfError: Boolean 
         assert(assertion = false, "对于`Pulse`中的`Reflow`，不应该走到`onUpdate`这里。".tag)
       }
 
-      override def onAbort(trigger: Option[Trait]): Unit = {
-        pulse.reporter.reportOnAbort(serialNum, trigger)
-        pulse.onAbort(trigger)
+      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {
+        pulse.onAbort()
+        pulse.reporter.reportOnAbort(serialNum, trigger, parent, depth)
         // 放到最后
         head = None
       }
 
-      override def onFailed(trat: Trait, e: Exception): Unit = {
-        pulse.reporter.reportOnFailed(serialNum, trat, e)
-        pulse.onFailed(trat, e)
+      override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
+        if (!pulse.abortIfError) {
+          onCompleteCall(serialNum)
+          onCompleteDebug()
+          // 需要告诉下一个`input`虽然当前`input`的后续任务都不会执行了，但它还是应该继续。
+          // 需要注意的是：本`feedback`是最外层的，如果是`SubReflow`触发的`onFailed()`，就不能保证以下语句在`interact.evolve()`之前。
+          // 就会出现一种情况：
+          // 本`serialNum`层`Reflow`排在失败任务后面的任务，永远不会`interact.evolve()`，但下一个`input`（即：`serialNum + 1`层）
+          // 的该任务`interact.forward()`的时候，`failed`标志还未被置为`true`，就会出现`serialNum + 1`层及以后的该任务永远得不到执行的情况。
+          // 复现该 bug: 启用下面一句，注释掉`interact.evolve()`中对`failed`的判断，并打开`onCompleteDebug()`和`asyncDebug()`里的`debugMode`开关。
+          //failed = true
+          // 解决：在`interact.evolve()`接口中增加`failed`字段。
+        }
+        pulse.onFailed()
+        pulse.reporter.reportOnFailed(serialNum, trat, parent, depth, e)
         // 放到最后
         head = None
+      }
+    }
+
+    private def onCompleteDebug(): Unit = {
+      if (debugMode) {
+        debugFuncMap.put((System.currentTimeMillis + 10 * 1000, serialNum), (time, sn) => {
+          if (time <= System.currentTimeMillis)
+            (suspend.keys.size, sn, suspend.keys.toList)
+          else (-1, sn, Nil)
+        })
+      }
+    }
+  }
+
+  private val debugFuncMap = new TrieMap[(Long, Long), (Long, Long) => (Int, Long, List[(Int, String, String)])]()
+  private def asyncDebug(): Unit = {
+    if (debugMode) {
+      var list: List[(Long, (Int, String, String))] = Nil
+      debugFuncMap.snapshot().foreach { case (k, v) =>
+        val t = v(k._1, k._2)
+        if (t._1 >= 0) {
+          if (t._1 == 0) debugFuncMap.remove(k)
+          else list :::= t._3.map(x => (t._2, x))
+        }
+      }
+      if (list.nonEmpty) {
+        log.i("========== ========== ========== ========== ========== ========== ========== ========== ========== ==========")
+        list.foreach{ seq =>
+          log.i("========== %s", seq)
+        }
+        throw new IllegalStateException(s"%%%%%%%%%% %%%%%%%%%% %%%%%%%%%% 异常情况：累积了 ${list.size} 个没有推进的任务。%%%%%%%%%% %%%%%%%%%% %%%%%%%%%%")
       }
     }
   }
@@ -278,8 +324,8 @@ object Pulse {
     def onStart(serialNum: Long): Unit
     def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit
     def onComplete(serialNum: Long, out: Out): Unit
-    def onAbort(serialNum: Long, trigger: Option[Trait]): Unit
-    def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit
+    def onAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit
+    def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit
 
     override def equals(any: Any) = super.equals(any)
     override def canEqual(that: Any) = false
@@ -291,8 +337,8 @@ object Pulse {
       override def onStart(serialNum: Long): Unit = {}
       override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = {}
       override def onComplete(serialNum: Long, out: Out): Unit = {}
-      override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = {}
-      override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {}
+      override def onAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {}
+      override def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {}
     }
 
     abstract class Butt[T >: Null <: AnyRef](kce: KvTpe[T], watchProgressDepth: Int = 0) extends Adapter {
@@ -335,8 +381,9 @@ object Pulse {
       * @param trat   完成的`Task`。
       * @param parent 如果是`SubReflow`，则表示其父级别。
       * @param cache  留给下一个路过`Task`的数据。
+      * @param failed 当前`Task`是否异常失败了。
       */
-    def evolve(depth: Int, trat: Trait, parent: Option[Trait], cache: Out): Unit
+    def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Out, failed: Boolean): Unit
 
     /**
       * 当前`Tactic`的某[[Task]]询问是否可以启动执行。必须在前一条数据输入[[Pulse.input]]执行完毕该`Task`后才可以启动。
@@ -347,7 +394,7 @@ object Pulse {
       * @param go     一个函数，调用以推进询问的`Task`启动执行。如果在询问时，前一个`Tactic`的该`Task`未执行完毕，则应该
       *               将本参数缓存起来，以备在`evolve()`调用满足条件时，再执行本函数以推进`Task`启动。
       */
-    def forward(depth: Int, trat: Trait, parent: Option[Trait], go: () => Unit)
+    def forward(depth: Int, trat: Trait, parent: Option[ReflowTrait], go: () => Unit)
 
     /**
       * 当前`Tactic`的某`Task`执行的时候，需要获得上一个`Tactic`留下的数据。
@@ -367,8 +414,8 @@ object Pulse {
       override def onStart(serialNum: Long): Unit = poster.post(feedback.onStart(serialNum))
       override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = poster.post(feedback.onProgress(serialNum, progress, out, depth))
       override def onComplete(serialNum: Long, out: Out): Unit = poster.post(feedback.onComplete(serialNum, out))
-      override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = poster.post(feedback.onAbort(serialNum, trigger))
-      override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = poster.post(feedback.onFailed(serialNum, trat, e))
+      override def onAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = poster.post(feedback.onAbort(serialNum, trigger, parent, depth))
+      override def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = poster.post(feedback.onFailed(serialNum, trat, parent, depth, e))
     }
   }
 
@@ -377,7 +424,7 @@ object Pulse {
     private[reflow] def reportOnStart(serialNum: Long): Unit = eatExceptions(feedback.onStart(serialNum))
     private[reflow] def reportOnProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = eatExceptions(feedback.onProgress(serialNum, progress, out, depth))
     private[reflow] def reportOnComplete(serialNum: Long, out: Out): Unit = eatExceptions(feedback.onComplete(serialNum, out))
-    private[reflow] def reportOnAbort(serialNum: Long, trigger: Option[Trait]): Unit = eatExceptions(feedback.onAbort(serialNum, trigger))
-    private[reflow] def reportOnFailed(serialNum: Long, trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(serialNum, trat, e))
+    private[reflow] def reportOnAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = eatExceptions(feedback.onAbort(serialNum, trigger, parent, depth))
+    private[reflow] def reportOnFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = eatExceptions(feedback.onFailed(serialNum, trat, parent, depth, e))
   }
 }

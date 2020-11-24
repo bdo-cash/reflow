@@ -18,14 +18,13 @@ package hobby.wei.c.reflow
 
 import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
-import hobby.chenai.nakam.basis.TAG.ShortMsg
 import hobby.chenai.nakam.lang.J2S.{NonNull, Obiter}
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Strategy.{Depth, Fluent}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
-
 import scala.collection._
 
 /**
@@ -69,9 +68,10 @@ trait Feedback extends Equals {
   /**
     * 任务流中断。
     *
-    * @param trigger 触发失败的`Trait`，为`None`表示客户代码通过`scheduler`主动触发。
+    * @param trigger 触发中断的`Trait`，为`None`表示客户代码通过`scheduler`主动触发。
+    * @param depth 若`< 0`表示客户代码通过`scheduler`主动触发。
     */
-  def onAbort(trigger: Option[Trait]): Unit
+  def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit
 
   /**
     * 任务失败。
@@ -82,7 +82,7 @@ trait Feedback extends Equals {
     *             第二类是由客户代码质量问题导致的 RuntimeException, 如`NullPointerException`等,
     *             这些异常被包装在`CodeException`里, 可以通过`CodeException#getCause()`方法取出具体异对象。
     */
-  def onFailed(trat: Trait, e: Exception): Unit
+  def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit
 
   override def equals(any: Any) = super.equals(any)
   override def canEqual(that: Any) = false
@@ -263,8 +263,8 @@ object Feedback {
       override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(super.onProgress(progress, out, fromDepth))
       override def onComplete(out: Out): Unit = poster.post(super.onComplete(out))
       override def onUpdate(out: Out): Unit = poster.post(super.onUpdate(out))
-      override def onAbort(trigger: Option[Trait]): Unit = poster.post(super.onAbort(trigger))
-      override def onFailed(trat: Trait, e: Exception): Unit = poster.post(super.onFailed(trat, e))
+      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = poster.post(super.onAbort(trigger, parent, depth))
+      override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = poster.post(super.onFailed(trat, parent, depth, e))
     }
   }
 
@@ -276,8 +276,8 @@ object Feedback {
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = feedback.onProgress(progress, out, fromDepth)
     override def onComplete(out: Out): Unit = feedback.onComplete(out)
     override def onUpdate(out: Out): Unit = feedback.onUpdate(out)
-    override def onAbort(trigger: Option[Trait]): Unit = feedback.onAbort(trigger)
-    override def onFailed(trat: Trait, e: Exception): Unit = feedback.onFailed(trat, e)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = feedback.onAbort(trigger, parent, depth)
+    override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = feedback.onFailed(trat, parent, depth, e)
   }
 
   class Adapter extends Feedback {
@@ -286,8 +286,8 @@ object Feedback {
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {}
     override def onComplete(out: Out): Unit = {}
     override def onUpdate(out: Out): Unit = {}
-    override def onAbort(trigger: Option[Trait]): Unit = {}
-    override def onFailed(trat: Trait, e: Exception): Unit = Log.onFailed(trat, e)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {}
+    override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = Log.onFailed(trat, parent, depth, e)
   }
 
   /**
@@ -353,11 +353,11 @@ object Feedback {
 
       override def onPending(): Unit = log.i("[onPending]")
       override def onStart(): Unit = log.i("[onStart]")
-      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, value:%s.", fromDepth, progress, out/*.get(lite.Task.defKeyVType)*/)
+      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, value:%s.", depth, progress, out/*.get(lite.Task.defKeyVType)*/)
       override def onComplete(out: Out): Unit = super.onComplete(out)
       override def onUpdate(out: Out): Unit = super.onUpdate(out)
-      override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
-      override def onFailed(trat: Trait, e: Exception): Unit = log.e(e, "[onFailed]trat:%s.", trat)
+      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
+      override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = log.e(e, "[onFailed]depth:%s, trat:%s, parent:%s.", depth, trat, parent)
 
       override def liteOnComplete(value: Option[AnyRef]): Unit = log.w("[liteOnComplete]value:%s.", value)
       override def liteOnUpdate(value: Option[AnyRef]): Unit = log.w("[liteOnUpdate]value:%s.", value)
@@ -388,8 +388,8 @@ object Feedback {
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, fromDepth)) }
     override def onComplete(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
     override def onUpdate(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onUpdate(out)) }
-    override def onAbort(trigger: Option[Trait]): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger)) }
-    override def onFailed(trat: Trait, e: Exception): Unit = obs.foreach { fb => eatExceptions(fb.onFailed(trat, e)) }
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger, parent, depth)) }
+    override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = obs.foreach { fb => eatExceptions(fb.onFailed(trat, parent, depth, e)) }
   }
 
   implicit final object Log extends Feedback with TAG.ClassName {
@@ -397,10 +397,10 @@ object Feedback {
 
     override def onPending(): Unit = log.i("[onPending]")
     override def onStart(): Unit = log.i("[onStart]")
-    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = log.i("[onProgress]fromDepth:%s, progress:%s, out:%s.", fromDepth, progress, out)
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, out:%s.", depth, progress, out)
     override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
     override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
-    override def onAbort(trigger: Option[Trait]): Unit = log.w("[onAbort]trigger:%s.", trigger)
-    override def onFailed(trat: Trait, e: Exception): Unit = log.e(e, "[onFailed]trat:%s.", trat)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
+    override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = log.e(e, "[onFailed]depth:%s, trat:%s, parent:%s.", depth, trat, parent)
   }
 }

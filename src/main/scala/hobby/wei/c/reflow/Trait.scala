@@ -117,7 +117,7 @@ object Trait {
 
     private[reflow] def traits() = _traits
     private[reflow] def add(t: Trait): Unit = {
-      assertf(!t.isInstanceOf[Parallel])
+      require(!t.isInstanceOf[Parallel])
       _traits += t
     }
 
@@ -153,7 +153,7 @@ object Trait {
     override protected def period() = Period.TRANSIENT
   }
 
-  private[reflow] abstract class ReflowTrait(val reflow: Reflow) extends Trait {
+  abstract class ReflowTrait private[reflow](val reflow: Reflow) extends Trait {
     override final val is4Reflow = true
 
     override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()

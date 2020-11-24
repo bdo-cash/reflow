@@ -18,6 +18,7 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG.ClassName
 import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Trait.ReflowTrait
 
 /**
   * 全局跟踪器。跟踪当前正在运行的任务流。可用于构建全局`任务管理器`。
@@ -25,7 +26,7 @@ import hobby.wei.c.reflow.Feedback.Progress
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 03/04/2018
   */
-final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[Trait]) extends Equals with ClassName {
+final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[ReflowTrait]) extends Equals with ClassName {
   @volatile private var _progress: Progress = {
     val pgr = Progress(reflow.basis.traits.size, 0, reflow.basis.traits.headOption)
     pgr.copy(trigger = pgr)

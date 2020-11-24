@@ -16,11 +16,8 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent._
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.{Condition, ReentrantLock}
 import hobby.chenai.nakam.basis.TAG
-import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
+import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.log.Logger._
@@ -32,10 +29,13 @@ import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
-import hobby.wei.c.tool.{Locker, Snatcher}
-
+import hobby.wei.c.tool.Snatcher
+import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.{Condition, ReentrantLock}
 import scala.collection.{mutable, _}
 import scala.util.control.Breaks._
+import scala.util.control.NonFatal
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -47,7 +47,9 @@ import scala.util.control.Breaks._
   *          1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug;
   *          1.6, 12/07/2020, fix bug: Progress(..trat);
   *          1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`;
-  *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`.
+  *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`;
+  *          2.1, 18/12/2020, bug fix: 支持`Pulse.abortIfError = false`的定义（在异常出错时也能正常前进）；
+  *          2.2, 22/12/2020, `sync()`的实现去掉了`Locker`，改为原生用法，并对`interruptSyn()`作了小优化。
   * @param strategy 当前`Reflow`启动时传入的`Strategy`。由于通常要考虑到父级`Reflow`的`Strategy`，因此通常使用`strategyRevised`以取代本参数；
   * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -137,10 +139,10 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strateg
     * @param forError
     * @param e
     */
-  private[reflow] def performAbort(trigger: Option[Trait], trat: Trait, forError: Boolean, e: Exception): Unit
+  private[reflow] def performAbort(trigger: Option[Trait], curr: Trait, parent: Option[ReflowTrait], depth: Int, forError: Boolean, e: Exception): Unit
 
   /** 先于`endRunner(Runner)`执行。 */
-  private[reflow] def innerError(runner: Runner, e: Exception): Unit
+  private[reflow] def innerError(runner: Runner, t: Throwable): Unit
 
   /** `Task`完全运行完毕（意味着线程在执行本方法体之后，`Task`的代码即全部处理完毕，线程将会结束或者接着处理下一个执行体）。 */
   private[reflow] def endRunner(runner: Runner): Unit
@@ -167,15 +169,16 @@ private[reflow] object Tracker {
   private[reflow] final class Impl(reflow: Reflow, traitIn: Trait, transIn: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
                                    state: Scheduler.State$, feedback: Feedback, strategy: Strategy, outer: Option[Env], pulse: Pulse.Interact)
     extends Tracker(reflow: Reflow, strategy: Strategy, outer: Option[Env], pulse: Pulse.Interact) with Scheduler with TAG.ClassName {
-    private lazy val lockSync: ReentrantLock = Locker.getLockr(new AnyRef)
     private lazy val snatcher = new Snatcher.ActionQueue(strategy.isFluentMode)
+    private lazy val syncLock: ReentrantLock = new ReentrantLock
+    @volatile private var condition: Condition = _
 
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
     private lazy val reporter = if (debugMode && !strategy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
     @volatile private var remaining = reflow.basis.traits
-    @volatile private var normalDone, reinforceDone: Boolean = _
+    @volatile private var normalDone, reinforceDone: Boolean = false
     @volatile private var outFlowTrimmed, prevOutFlow: Out = _
     @volatile private var timeStart = 0L
 
@@ -208,7 +211,7 @@ private[reflow] object Tracker {
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
-      if (debugMode) log.w("[endRunner]trait:%s.", runner.trat.name$.s)
+      if (debugMode) log.i("[endRunner]depth:%s, trait:%s, parent:%s.", subDepth, runner.trat.name$.s, outer.map(_.trat.name$.s).orNull)
       // 拿到父级`trait`（注意：如果当前是并行的任务，则`runner.trat`是子级）。
       val (tratGlobal, veryBeginning) = if (isInput(runner.trat)) (traitIn, true) else (remaining.head, false)
       // 断言`trat`与`remaining`的一致性。
@@ -217,7 +220,7 @@ private[reflow] object Tracker {
       if (isPulseMode && !isInput(runner.trat)) {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
-        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, outer.map(_.trat), runner.env.myCache(create = false))
+        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, outer.map(_.trat.as[ReflowTrait]), runner.env.myCache(create = false), state.get$ == FAILED)
       }
       runnersParallel -= runner
       // 并行任务全部结束
@@ -326,17 +329,17 @@ private[reflow] object Tracker {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
         if (runner.trat.is4Reflow) Worker.scheduleRunner(runner, bucket = false)
-        else pulse.forward(subDepth, runner.trat, outer.map(_.trat), () => Worker.scheduleRunner(runner, bucket = true))
+        else pulse.forward(subDepth, runner.trat, outer.map(_.trat.as[ReflowTrait]), () => Worker.scheduleRunner(runner, bucket = true))
       } else runnersParallel.keys.foreach {
         Worker.scheduleRunner(_, bucket = false)
       }
       Worker.scheduleBuckets()
     }
 
-    override private[reflow] def innerError(runner: Runner, e: Exception): Unit = {
+    override private[reflow] def innerError(runner: Runner, t: Throwable): Unit = {
       if (debugMode) log.e("[innerError]trait:%s.", runner.trat.name$.s)
       // 正常情况下是不会走的，仅用于测试。
-      performAbort(Some(runner.trat), runner.trat, forError = true, e)
+      //performAbort(Some(runner.trat), runner.trat, outer.map(_.trat.as[ReflowTrait]), subDepth, forError = true, e)
     }
 
     override private[reflow] def getPrevOutFlow = prevOutFlow
@@ -415,15 +418,15 @@ private[reflow] object Tracker {
 
     private def verifyOutFlow(): Unit = if (debugMode) outFlowTrimmed.verify()
 
-    override private[reflow] def performAbort(trigger: Option[Trait], trat: Trait, forError: Boolean, e: Exception): Unit = {
+    override private[reflow] def performAbort(trigger: Option[Trait], curr: Trait, parent: Option[ReflowTrait], depth: Int, forError: Boolean, e: Exception): Unit = {
       if (state.forward(if (forError) FAILED else ABORTED)) {
         // 如果能走到这里，那么总是先于endRunner之前执行，也就意味着runnersParallel不可能为empty。
         // 但是也有可能由外部scheduler触发，runnersParallel还是会empty。
-        Monitor.abortion(trigger.fold[String](null)(_.name$), trat.name$, forError)
+        Monitor.abortion(trigger.fold[String](null)(_.name$), curr.name$, forError)
         runnersParallel.foreach(_._1.abort())
         snatcher.queAc {
-          if (forError) reporter.reportOnFailed(trigger.get /*为null时不会走到这里*/ , e)
-          else reporter.reportOnAbort(trigger /*为null时说明是外部scheduler主动触发*/)
+          if (forError) reporter.reportOnFailed(trigger.get /*为`None`时不会走到这里*/, parent, depth, e)
+          else reporter.reportOnAbort(trigger /*为`None`时说明是外部scheduler主动触发*/, parent, depth)
         }
       } else if (state.abort()) {
         // 已经到达COMPLETED/REINFORCE阶段了
@@ -440,57 +443,58 @@ private[reflow] object Tracker {
     override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
       // 1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`。
       val start = System.nanoTime
-      Locker.sync$(new Locker.CodeC[Option[Out]](1) {
-        @throws[InterruptedException]
-        override protected def exec(cons: Array[Condition]) = {
-          breakable {
-            // 不去判断`state`是因为任务流可能会失败
-            while (!(if (reinforce) reinforceDone else normalDone)) {
-              if (debugMode) log.i("[sync]++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++>>>")
-              if (milliseconds == -1) {
-                cons(0).await()
-                if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 0.")
-              } else {
-                val delta = milliseconds - ((System.nanoTime - start) / 1e6).toLong
-                if (delta <= 0 || !cons(0).await(delta, TimeUnit.MILLISECONDS)) {
-                  if (debugMode) log.i("[sync]+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++done, 1.")
-                  break
-                } else Thread.`yield`() // throw new InterruptedException()
-              }
+      // 2.2, 22/12/2020, 去掉了`Locker`，改为原生用法。
+      syncLock.lock()
+      try {
+        breakable {
+          // 不去判断`state`是因为任务流可能会失败
+          while (!(if (reinforce) reinforceDone else normalDone)) {
+            if (condition.isNull) condition = syncLock.newCondition()
+            if (debugMode) log.i("[sync]++++++++++>>>")
+            if (milliseconds == -1) {
+              condition.await()
+              if (debugMode) log.i("[sync]++++++++++done, 0.")
+            } else {
+              val delta = milliseconds - ((System.nanoTime - start) / 1e6).toLong
+              if (delta <= 0 || !condition.await(delta, TimeUnit.MILLISECONDS)) {
+                if (debugMode) log.i("[sync]++++++++++done, 1.")
+                break
+              } else Thread.`yield`()
             }
           }
-          val state = getState
-          Option(
-            if (reinforce) {
-              if (state == UPDATED) outFlowTrimmed else null
-            } else {
-              if (state == COMPLETED || state.group > COMPLETED.group) outFlowTrimmed else null
-            })
         }
-      }, lockSync, interruptable = false)
+      } finally {
+        syncLock.unlock()
+      }
+      val state = getState
+      Option(if (reinforce) {
+        if (state == UPDATED) outFlowTrimmed else null // 可能中断了，所以为`null`。
+      } else {
+        if (state == COMPLETED || state.group > COMPLETED.group) outFlowTrimmed else null // 可能中断了，所以为`null`。
+      })
     }
 
     private def interruptSync(reinforce: Boolean) {
       Monitor.duration(this, timeStart, System.currentTimeMillis, state.get, state.get$, isSubReflow)
-      if (debugMode) log.i("[interruptSync]------------------------------------------------------------------------------reinforce:%s.", reinforce)
-      normalDone = true
-      if (reinforce) reinforceDone = true
-      try {
-        Locker.sync$(new Locker.CodeC[Unit](1) {
-          @throws[InterruptedException]
-          override protected def exec(cons: Array[Condition]): Unit = {
-            cons(0).signalAll()
-            if (debugMode) log.i("[interruptSync]----------------------------------------------------------------------------------signalAll.")
+      if (!normalDone || (reinforce && !reinforceDone)) { // 不加这行判断也没问题
+        if (debugMode) log.i("[interruptSync]----------reinforce:%s.", reinforce)
+        normalDone = true
+        if (reinforce) reinforceDone = true
+        syncLock.lock()
+        try {
+          if (condition.nonNull) {
+            condition.signalAll()
+            if (debugMode) log.i("[interruptSync]----------signalAll.")
           }
-        }, lockSync, interruptable = false)
-      } catch {
-        case _: Exception => // 不可能抛异常
+        } finally {
+          syncLock.unlock()
+        }
       }
     }
 
     override def abort(): Unit = {
       val rem = remaining
-      if (rem.nonEmpty) performAbort(outer.map(_.trat), outer.fold(rem.head)(_.trat), forError = false, null)
+      if (rem.nonEmpty) performAbort(outer.map(_.trat), rem.head, outer.map(_.trat.as[ReflowTrait]), subDepth - 1, forError = false, null)
     }
 
     override def getState = state.get
@@ -572,19 +576,18 @@ private[reflow] object Tracker {
 
     private lazy val workDone = new AtomicBoolean(false)
     private lazy val runnerDone = new AtomicBoolean(false)
-    @volatile private var aborted = false
+    // 24/12/2020, fix bug 时重构了，但不影响下面 JSR-133 用法。
+    private lazy val aborted = new AtomicBoolean(false)
     @volatile private var task: Task = _
     private var timeBegin: Long = _
 
-    override def equals(any: scala.Any) = super.equals(any)
+    override final def equals(any: scala.Any) = super.equals(any)
+    override final def canEqual(that: Any) = super.equals(that)
+    override final def hashCode() = super.hashCode()
 
-    override def canEqual(that: Any) = super.equals(that)
-
-    override def hashCode() = super.hashCode()
-
-    // 该用法遵循 JSR-133
-    def abort(): Unit = if (!aborted) {
-      aborted = true
+    // 该用法遵循 JSR-133。
+    def abort(): Unit = if ( /*!aborted*/ aborted.compareAndSet(false, true)) {
+      //aborted = true
       if (task.nonNull) task.abort()
     }
 
@@ -593,19 +596,22 @@ private[reflow] object Tracker {
       var working = false
       try {
         task = trat.newTask()
-        // 判断放在task的创建后面, 配合abort()中的顺序。
-        if (aborted) onAbort(null)
-        else {
+        // 判断放在`task`的创建后面, 配合`abort()`中的顺序。
+        if (aborted.get) {
+          onAbort()
+          onWorkEnd()
+        } else {
           onStart()
           working = true
           if (task.exec(env, this)) {
             working = false
             onWorkDone()
-          } else if (aborted) {
+          } else if (aborted.get) {
             working = false
-            onAbort(null)
+            onAbort()
+            onWorkEnd()
           } else {
-            // SubReflowTask的异步
+            // `SubReflowTask`的异步
           }
         }
       } catch {
@@ -615,14 +621,22 @@ private[reflow] object Tracker {
               case _: AbortException => // 框架抛出的, 表示成功中断。
                 onAbort(Some(trat))
               case e: FailedException =>
-                onFailed(e.getCause.as[Exception])
+                onFailed(e = e.getCause.as[Exception])
               case e: CodeException => // 客户代码问题
-                onException(e)
+                onFailed(e = e)
               case _ =>
-                onException(new CodeException(e))
+                onFailed(e = new CodeException(e))
             }
+            // 这里能够`catch`住的异常，必然是同步执行的。
+            onWorkEnd()
           } else {
             innerError(e)
+          }
+        case NonFatal(t) =>
+          if (working) {
+            throw t // `AssertionError` 之类的，必须崩溃中断，不应处理。
+          } else {
+            innerError(t)
           }
       } finally {
         runnerDone.set(true)
@@ -651,21 +665,25 @@ private[reflow] object Tracker {
     private def afterWork(flow: Out) {
       if (debugMode) log.i("[afterWork]")
       onComplete(env.out, flow)
-      if (aborted) onAbort(null)
+      if (aborted.get) onAbort()
     }
 
-    /** 仅在`成功`执行任务之后才可以调用本方法。 */
+    /** 仅在任务`成功`执行之后才可以调用本方法。 */
     def onWorkDone(): Unit = onWorkEnd(afterWork(transOutput()))
 
-    /** 在执行任务`失败`后应该调用本方法。 */
+    /** 在任务执行`失败`后应该调用本方法。 */
     def onWorkEnd(doSth: => Unit) {
-      if (debugMode) log.i("[onWorkEnd]")
-      require(!workDone.getAndSet(true), "如果`task.exec()`返回`true`, `task`不可以再次回调`workDone()。`".tag)
-      doSth
-      endMe()
+      if (debugMode) log.i("[onWorkEnd]workDone:%s, runner:%s.", workDone.get, this)
+      if (workDone.compareAndSet(false, true)) {
+        doSth
+        endMe()
+      }
     }
 
-    def endMe(): Unit = if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
+    private def endMe(): Unit = {
+      if (debugMode) log.i("[endMe]workDone:%s, runnerDone:%s, runner:%s.", workDone.get, runnerDone.get, this)
+      if (workDone.get && runnerDone.compareAndSet(true, false)) env.tracker.endRunner(this)
+    }
 
     def onStart() {
       if (debugMode) log.i("[onStart]")
@@ -673,37 +691,30 @@ private[reflow] object Tracker {
       timeBegin = System.currentTimeMillis
     }
 
-    def onComplete(out: Out, flow: Out) {
+    private def onComplete(out: Out, flow: Out) {
       if (debugMode) log.i("[onComplete]")
       Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
       env.tracker.onTaskComplete(trat, out, flow)
     }
 
-    // 人为触发，表示任务失败
-    def onFailed(e: Exception, trat: Trait = trat) {
-      if (debugMode) log.e(e, "[onFailed]trait:%s.", trat.name$.s)
-      withAbort(Some(trat), e)
-    }
-
-    // 客户代码异常
-    def onException(e: CodeException) {
-      if (debugMode) log.e(e, "[onException].")
-      withAbort(Some(trat), e)
-    }
-
-    def onAbort(trigger: Option[Trait]) {
+    def onAbort(trigger: Option[Trait] = Some(trat) /*与`parent`保持一致*/ , parent: Option[ReflowTrait] = env.tracker.outer.map(_.trat.as[ReflowTrait]), depth: Int = env.subDepth) {
       if (debugMode) log.e("[onAbort]")
-      env.tracker.performAbort(trigger, trat, forError = false, null)
+      withAbort(trigger, parent, depth, null)
     }
 
-    def withAbort(trigger: Option[Trait], e: Exception) {
-      if (!aborted) aborted = true
-      env.tracker.performAbort(trigger, trat, forError = true, e)
+    def onFailed(trat: Trait = trat, parent: Option[ReflowTrait] = env.tracker.outer.map(_.trat.as[ReflowTrait]), depth: Int = env.subDepth, e: Exception) {
+      if (debugMode) log.e(e, "[onFailed]aborted:%s.", aborted)
+      withAbort(Some(trat), parent, depth, e)
     }
 
-    def innerError(e: Exception) {
-      env.tracker.innerError(this, e)
-      throw new InnerError(e)
+    private def withAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int, e: Exception) {
+      aborted.compareAndSet(false, true)
+      env.tracker.performAbort(trigger, trat, parent, depth, forError = e.nonNull, e)
+    }
+
+    private def innerError(t: Throwable) {
+      env.tracker.innerError(this, t)
+      throw new InnerError(t)
     }
   }
 
@@ -746,13 +757,13 @@ private[reflow] object Tracker {
 
     override def onUpdate(out: Out): Unit = onComplete(out)
 
-    override def onAbort(trigger: Option[Trait]): Unit = {
-      runner.onAbort(trigger)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {
+      runner.onAbort(trigger, parent, depth)
       runner.onWorkEnd()
     }
 
-    override def onFailed(trat: Trait, e: Exception): Unit = {
-      runner.onFailed(e, trat)
+    override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
+      runner.onFailed(trat, parent, depth, e)
       runner.onWorkEnd()
     }
   }
@@ -775,9 +786,9 @@ private[reflow] object Tracker {
 
     private[reflow] def reportOnUpdate(out: Out): Unit = eatExceptions(feedback.onUpdate(out))
 
-    private[reflow] def reportOnAbort(trigger: Option[Trait]): Unit = eatExceptions(feedback.onAbort(trigger))
+    private[reflow] def reportOnAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = eatExceptions(feedback.onAbort(trigger, parent, depth))
 
-    private[reflow] def reportOnFailed(trat: Trait, e: Exception): Unit = eatExceptions(feedback.onFailed(trat, e))
+    private[reflow] def reportOnFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = eatExceptions(feedback.onFailed(trat, parent, depth, e))
   }
 
   private class Reporter4Debug(reflow: Reflow, feedback: Feedback, sum: Int)(implicit tag: LogTag) extends Reporter(feedback) {

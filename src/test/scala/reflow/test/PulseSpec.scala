@@ -21,6 +21,7 @@ import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
 import java.util.concurrent.{Callable, FutureTask}
 
@@ -124,11 +125,11 @@ class PulseSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter 
           }
         }
 
-        override def onAbort(serialNum: Long, trigger: Option[Trait]): Unit = {
+        override def onAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {
           println("[onAbort]trigger:" + trigger.map(_.name$).orNull)
         }
 
-        override def onFailed(serialNum: Long, trat: Trait, e: Exception): Unit = {
+        override def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
           println("[onFailed]trat:" + trat.name$.s + ", e:" + (e.getClass.getName + ":" + e.getMessage))
         }
       }

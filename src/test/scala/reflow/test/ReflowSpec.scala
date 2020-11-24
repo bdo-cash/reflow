@@ -363,7 +363,9 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         })
         .submit(kvTpes.int)
         .start(kvTpes.str -> "11111", feedback)
-      info(s"强化运行后的最终输出。out:${scheduler.sync(/*reinforce = true*/)}")
+      // info(s"强化运行后的最终输出。out:${scheduler.sync()}")
+      assertResult(null)(scheduler.sync(reinforce = true, 600).map(_(kvTpes.int)).orNull)
+      assertResult(12345)(scheduler.sync(reinforce = true, 60 * 1000).map(_(kvTpes.int)).orNull)
       assertResult(12345)(scheduler.sync(reinforce = true)(kvTpes.int))
     }
   }

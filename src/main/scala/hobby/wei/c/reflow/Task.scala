@@ -128,9 +128,9 @@ abstract class Task protected() {
   final def isReinforcing: Boolean = env$.isReinforcing
 
   /**
-    * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（即：被包装在一个`Trait`里面被再次组装运行）。
+    * @return 当前任务所在的沙盒`Reflow`是否是`子``Reflow`（被包装在一个`Trait`里面被再次组装运行）。
     */
-  final def isSubReflow: Boolean = env$.tracker.isSubReflow
+  final def isSubReflow: Boolean = env$.isSubReflow
 
   final def isAborted: Boolean = aborted
 

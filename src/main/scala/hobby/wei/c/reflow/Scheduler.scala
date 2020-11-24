@@ -80,7 +80,7 @@ object Scheduler {
           state.reset()
           permit = true
         } else {
-          permit = !state.isOverrided
+          permit = !state.isOverridden
         }
       }
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
@@ -139,13 +139,13 @@ object Scheduler {
 
     @volatile private var state = State.IDLE
     @volatile private var state$ = State.IDLE
-    @volatile private var overrided = false
+    @volatile private var overridden = false
 
     def forward(state: State.Tpe): Boolean = Locker.syncr {
       if (this.state.canOverrideWith(state)) {
         this.state = state
         this.state$ = state
-        if (!overrided) overrided = true
+        if (!overridden) overridden = true
         true
       } else false
     }
@@ -178,6 +178,6 @@ object Scheduler {
     /**
       * 可用于标识是否启动过。
       */
-    private[reflow] def isOverrided: Boolean = overrided
+    private[reflow] def isOverridden: Boolean = overridden
   }
 }

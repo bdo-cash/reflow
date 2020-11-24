@@ -136,6 +136,7 @@ object Assist {
   private[reflow] object Monitor extends TAG.ClassName {
     private def tag(name: String): LogTag = new LogTag(className + "/" + name)
 
+    @Burden
     def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe) {
       val duration = end - begin
       val avg = period.average(duration)
@@ -146,9 +147,11 @@ object Assist {
       }
     }
 
+    @Burden
     def duration(reflow: TAG.ClassName, begin: Long, end: Long, state: State.Tpe, state$: State.Tpe, subReflow: Boolean): Unit = if (!subReflow)
       if (debugMode) log.w("[Reflow Time Duration]>>>>>>>>>> duration:%fs, state:%s/%s <<<<<<<<<<.", (end - begin) / 1000f, state, state$)(reflow.className)
 
+    @Burden
     def abortion(trigger: String, task: String, forError: Boolean): Unit = if (debugMode) log.i("trigger:%1$s, task:%2$s, forError:%3$s.", trigger.s, task.s, forError)(tag("abortion"))
 
     @Burden
@@ -162,10 +165,11 @@ object Assist {
     @Burden
     def complete(step: => Int, out: Out, flow: Out, trimmed: Out): Unit = if (debugMode) log.i("step:%d, out:%s, flow:%s, trimmed:%s.", step, out, flow, trimmed)(tag("complete"))
 
+    @Burden
     def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean): Unit = if (debugMode) log.i(
-      "{ThreadPool}%s, active/core/max:(%d/%d/%d), taskCount:%d, largestPool:%d.",
+      "{ThreadPool}%s, active/core/max:(%d/%d/%d), queueSize:%d, taskCount:%d, largestPool:%d.",
       if (reject) "reject runner".s else if (addThread) "add thread".s else "offer queue".s,
-      pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize,
+      pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize, pool.getQueue.size(),
       pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
 
     def threadPoolError(t: Throwable): Unit = log.e(t)(tag("threadPoolError"))
