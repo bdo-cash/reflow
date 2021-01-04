@@ -31,6 +31,7 @@ import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
 import java.util.concurrent.atomic.AtomicLong
 import scala.reflect.ClassTag
+import scala.language.implicitConversions
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -42,33 +43,36 @@ object Task {
   lazy val defKeyVTypes: Set[KvTpe[_ <: AnyRef]] = defKeyVType
   private[lite] lazy val serialInParIndex = new AtomicLong(Byte.MinValue)
 
+  def isLiteName(name: String) = name.contains('[') && name.contains("->") && name.contains(']')
+
   def apply[OUT >: Null <: AnyRef](input: => OUT)(implicit out: ClassTag[OUT]): Input[OUT] = Input[OUT](input)
 
   def apply[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (IN, Context) => OUT)(implicit in: ClassTag[IN], out: ClassTag[OUT]): Lite[IN, OUT] =
-    new Lite[IN, OUT](_period, _priority, _name, _desc) {
+    new Lite[IN, OUT](period, priority, name, desc, visible) {
       override protected[lite] val func = f
-      override protected[lite] def newTask() = new reflow.Task.Context {
+      override protected[lite] def newTask$() = new reflow.Task.Context {
         protected final def input(): IN = input[IN](Task.KEY_DEF).get
         protected final def output(vo: OUT): Unit = output(Task.KEY_DEF, vo)
-
         override protected def doWork(): Unit = output(func(input(), this))
+        override protected def autoProgress = autoProgress$
       }
     }
 
   private[lite] def par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe, priority: Int, name: String, desc: String, visible: Boolean)
   (index: Int, f: (IN, Context) => OUT)(implicit in: ClassTag[IN], out: ClassTag[OUT]): Parel[IN, OUT] =
-    new Parel[IN, OUT](_period, _priority, _name, _desc) {
+    new Parel[IN, OUT](period, priority, name, desc, visible) {
       lite =>
       lazy val outKeyIndexed = lite.OUT_KEY(index)
       override protected[lite] val func = f
-      override protected[lite] def outs() = new KvTpe[AnyRef](outKeyIndexed) {}
-      override protected[lite] def newTask() = new reflow.Task.Context {
+      override protected[lite] def outs$() = new KvTpe[AnyRef](outKeyIndexed) {}
+      override protected[lite] def newTask$() = new reflow.Task.Context {
         protected final def input(): IN = input[IN](Task.KEY_DEF).get
         protected final def output(vo: OUT): Unit = output(outKeyIndexed, vo)
         override protected def doWork(): Unit = output(func(input(), this))
+        override protected def autoProgress = autoProgress$
       }
     }
 
@@ -76,34 +80,34 @@ object Task {
   (index: Int, le: Lite[IN, OUT])(implicit in: ClassTag[IN], out: ClassTag[OUT]): Parel[IN, OUT] = {
     if (le.isInstanceOf[Parel[_, _]] && le.parseIndex(le.intent.outs$.head.key) == index) le.as[Parel[IN, OUT]]
     else if (le.intent.is4Reflow) par(le.intent)
-    else par[IN, OUT](le.intent.period$, le.intent.priority$, le.intent.name$, le.intent.desc$)(index, le.func)
+    else par[IN, OUT](le.intent.period$, le.intent.priority$, le.intent.name$, le.intent.desc$, le.autoProgress$)(index, le.func)
   }
 
   private[lite] def par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (_intent: Intent)(implicit in: ClassTag[IN], out: ClassTag[OUT]): Parel[IN, OUT] =
-    new Parel[IN, OUT](TRANSIENT /*仅占位*/ , P_NORMAL, null, null) {
+    new Parel[IN, OUT](TRANSIENT /*仅占位*/ , P_NORMAL, null, null, false) {
       override protected[lite] lazy val func = throwFuncShouldNotBeUsed
-      override protected[lite] def newTask() = null
+      override protected[lite] def newTask$() = null
       override lazy val intent = _intent
     }
 
   private[lite] def sub[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (_intent: Intent)(implicit in: ClassTag[IN], out: ClassTag[OUT]): Lite[IN, OUT] =
-    new Lite[IN, OUT](TRANSIENT /*仅占位*/ , P_NORMAL, null, null) {
+    new Lite[IN, OUT](TRANSIENT /*仅占位*/ , P_NORMAL, null, null, false) {
       override protected[lite] lazy val func = throwFuncShouldNotBeUsed
-      override protected[lite] def newTask() = null
+      override protected[lite] def newTask$() = null
       override lazy val intent = _intent
     }
 
   private[lite] def end[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe, priority: Int, name: String, desc: String, visible: Boolean)
   (inputs: Set[KvTpe[_ <: AnyRef]])(task: () => reflow.Task)(implicit nxt: ClassTag[Next]): Lite[AnyRef, Next] =
-    new Lite[AnyRef, Next](_period, _priority, _name, _desc) {
+    new Lite[AnyRef, Next](period, priority, name, desc, visible) {
       override def classTags = (merge, nxt :: Nil)
       override protected[lite] lazy val func = throwFuncShouldNotBeUsed
-      override protected[lite] def name$(): String = if (_name.isNull) name("merge") else _name
-      override protected[lite] def requires() = inputs
-      override protected[lite] def newTask() = task()
+      override protected[lite] def name$(): String = if (name.isNull) _name("merge") else name
+      override protected[lite] def requires$() = inputs
+      override protected[lite] def newTask$() = task()
     }
 
   private lazy val merge = ClassTag(classOf[Merge])
@@ -126,8 +130,8 @@ protected[lite] trait ClassTags2Name extends TAG.ClassName {
     }.mkString("|")) + "->" + classTags._2.map { ct =>
     if (ct.isNull) "" else ct.runtimeClass.getSimpleName
   }.mkString("|") + "]"
-  final def name(tag: String): String = s"[${tag.toUpperCase}]$name"
-  final lazy val name: String = s"${short()}$classTag"
+  final def _name(tag: String): String = s"[${tag.toUpperCase}]${_name}"
+  final lazy val _name: String = s"${short()}$classTag"
 
   final def OUT_KEY(index: Long): String = s"${short(className.toString)}$classTag" + index
   final def parseIndex(outKey: String): Long = {
@@ -164,9 +168,9 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
 
   @deprecated(message = "Use `>>> task` instead.")
   def transform[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = false)
   (f: (OUT, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = this >>> Task[OUT, Next](
-    _period = _period, _priority = _priority, _name = _name, _desc = _desc
+    period = period, priority = priority, name = name, desc = desc, visible = visible
   )(f)
 
   /** 去掉了[[Input]]的。*/
@@ -223,67 +227,72 @@ final case class Pulse[IN <: AnyRef] private[lite](pulse: reflow.Pulse) {
 
 /** 单个任务。用于组装到并行或串行。 */
 abstract class Lite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
-(_period: Period.Tpe, _priority: Int, _name: String, _desc: String)(implicit in: ClassTag[IN], out: ClassTag[OUT])
+(period: Period.Tpe, priority: Int, name: String, desc: String, visible: Boolean)(implicit in: ClassTag[IN], out: ClassTag[OUT])
   extends AbsLite[IN, OUT] {
   lite =>
 
   /** 如果是[[Serial]]，会自动通过[[Serial.inPar]]隐式转换变为当前类型。*/
   def +|-[Next >: Null <: AnyRef](f: (IN, OUT) => Next)(implicit nxt: ClassTag[Next]): Serial[IN, Next] = clip[Next]()(f)
   def clip[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = TRANSIENT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = TRANSIENT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = false)
   (f: (IN, OUT) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] =
     (Task[IN, IN](TRANSIENT, P_HIGH)((in, _) => in) +>> this /*对于`Serial`，这里的确要用`inPar()`。*/)
-      .merge[Next](_period, _priority, _name, _desc) { (in, out, _) => f(in, out) }
+      .merge[Next](period, priority, name, desc, visible) { (in, out, _) => f(in, out) }
 
   // 如果是并行，需要重写 intent，会用到。
   protected[lite] val func: (IN, Context) => OUT
+  // 虽然理论上要在`newTask()`中重写，但也要在这里记录，因为在组装并行任务时需要再次重写`newTask()`。
+  protected[lite] def autoProgress$: Boolean = visible
 
   lazy val intent: Intent = new Trait.Adapter {
     override protected def name() = lite.name$()
-    override protected def requires() = lite.requires()
-    override protected def outs() = lite.outs()
-    override protected def priority() = _priority
-    override protected def period() = _period
-    override protected def desc() = if (_desc.isNull) name$ else _desc
-    override def newTask() = lite.newTask()
+    override protected def requires() = lite.requires$()
+    override protected def outs() = lite.outs$()
+    override protected def period() = lite.period$()
+    override protected def priority() = lite.priority$()
+    override protected def desc() = lite.desc$()
+    override def newTask() = lite.newTask$()
   }
 
-  protected[lite] def name$(): String = if (_name.isNull) lite.name else _name
-  protected[lite] def requires(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
-  protected[lite] def outs(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
-  protected[lite] def newTask(): reflow.Task
+  protected[lite] def name$(): String = if (name.isNull) lite._name else name
+  protected[lite] def requires$(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
+  protected[lite] def outs$(): Set[KvTpe[_ <: AnyRef]] = Task.defKeyVTypes
+  protected[lite] def period$(): Period.Tpe = period
+  protected[lite] def priority$(): Int = priority
+  protected[lite] def desc$(): String = if (desc.isNull) name$() else desc
+  protected[lite] def newTask$(): reflow.Task
 }
 
 /** 单个[并行]的任务。 */
 // This class compiled to AbsLite$$anon$`${i}` because of not `final`.
 abstract class Parel[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
-(_period: Period.Tpe, _priority: Int, _name: String, _desc: String)(implicit in: ClassTag[IN], out: ClassTag[OUT])
-  extends Lite[IN, OUT](_period, _priority, _name, _desc)
+(period: Period.Tpe, priority: Int, name: String, desc: String, visible: Boolean)(implicit in: ClassTag[IN], out: ClassTag[OUT])
+  extends Lite[IN, OUT](period, priority, name, desc, visible)
 
 /** 一列[串行]的任务。 */
 final case class Serial[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
 (head: Option[AbsLite[IN, _ >: Null <: AnyRef]], tail: Lite[_ >: Null <: AnyRef, OUT])
 (implicit in: ClassTag[IN], out: ClassTag[OUT]) extends AbsLite[IN, OUT] {
   /** 作为并行的其中一个子任务时，需要转换。 */
-  def inPar(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
-    toSubWithKey(new KvTpe[AnyRef](OUT_KEY(Task.serialInParIndex.getAndIncrement)) {}, _name, _desc)
+  def inPar(name: String = this._name, desc: String = null): Lite[IN, OUT] =
+    toSubWithKey(new KvTpe[AnyRef](OUT_KEY(Task.serialInParIndex.getAndIncrement)) {}, name, desc)
 
-  def toSub(_name: String = this.name, _desc: String = null): Lite[IN, OUT] =
-    toSubWithKey(Task.defKeyVType, _name, _desc)
+  def toSub(name: String = this._name, desc: String = null): Lite[IN, OUT] =
+    toSubWithKey(Task.defKeyVType, name, desc)
 
-  private def toSubWithKey(_key: KvTpe[_ <: AnyRef], _name: String, _desc: String): Lite[IN, OUT] = {
+  private def toSubWithKey(kvt: KvTpe[_ <: AnyRef], name: String, desc: String): Lite[IN, OUT] = {
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) => if (head.isEmpty) Reflow.builder else parseDepends(head.get).next(tail.intent)
       case lite: Lite[_, _] => Reflow.create(lite.intent)
       case _ => throwInputNotRequired
     }
     val reflow =
-      if (_key == Task.defKeyVType) parseDepends(this).submit(Task.defKeyVTypes)
+      if (kvt == Task.defKeyVType) parseDepends(this).submit(Task.defKeyVTypes)
       else parseDepends(this).next(
-        new Transformer[AnyRef, AnyRef](Task.defKeyVType.key, _key.key) {
+        new Transformer[AnyRef, AnyRef](Task.defKeyVType.key, kvt.key) {
           override def transform(in: Option[AnyRef]) = in
-        }).submit(_key)
-    Task.sub[IN, OUT](reflow.toSub(_name, _desc))
+        }).submit(kvt)
+    Task.sub[IN, OUT](reflow.toSub(name, desc))
   }
 }
 
@@ -294,7 +303,7 @@ protected[lite] trait AbsPar extends ClassTags2Name {
     (Set.newBuilder[KvTpe[_ <: AnyRef]] /: pars) { (set, par) => set ++= par.intent.outs$ }.result()
 
   protected final def toIntent(pars: Seq[Parel[_, _]] = seq, tag: String = getClass.getSimpleName): Intent = {
-    parseDepends(pars).submit(allOuts(pars)).toSub(name(tag))
+    parseDepends(pars).submit(allOuts(pars)).toSub(_name(tag))
   }
 
   def seq: Seq[Parel[_, _]]
@@ -315,9 +324,9 @@ final case class Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
-    implicit val lite = Task[OUT, Next](_period, _priority, _name, _desc)(f)
+    implicit val lite = Task[OUT, Next](period, priority, name, desc, visible)(f)
     l.next[Next]
   }
 }
@@ -339,11 +348,12 @@ final case class Par2[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -372,11 +382,12 @@ final case class Par3[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -405,11 +416,12 @@ final case class Par4[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -439,11 +451,12 @@ final case class Par5[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -473,11 +486,12 @@ final case class Par6[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -509,11 +523,12 @@ final case class Par7[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -546,11 +561,12 @@ final case class Par8[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -584,11 +600,12 @@ final case class Par9[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -623,11 +640,12 @@ final case class Par10[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -663,11 +681,12 @@ final case class Par11[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -704,11 +723,12 @@ final case class Par12[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -746,11 +766,12 @@ final case class Par13[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -789,11 +810,12 @@ final case class Par14[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -833,11 +855,12 @@ final case class Par15[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -878,11 +901,12 @@ final case class Par16[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -924,11 +948,12 @@ final case class Par17[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, OUT16, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -971,11 +996,12 @@ final case class Par18[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, OUT16, OUT17, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -1019,11 +1045,12 @@ final case class Par19[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, OUT16, OUT17, OUT18, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -1068,11 +1095,12 @@ final case class Par20[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, OUT16, OUT17, OUT18, OUT19, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,
@@ -1112,11 +1140,12 @@ final case class Par21[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
     merge[Next]()(f)(next)
 
   def merge[Next >: Null <: AnyRef]
-  (_period: Period.Tpe = SHORT, _priority: Int = P_NORMAL, _name: String = null, _desc: String = null)
+  (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, OUT1, OUT2, OUT3, OUT4, OUT5, OUT6, OUT7, OUT8, OUT9, OUT10, OUT11, OUT12, OUT13, OUT14, OUT15, OUT16, OUT17, OUT18, OUT19, OUT20, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     val pars = seq
-    implicit val end: Lite[AnyRef, Next] = Task.end[Next](_period, _priority, _name, _desc)(allOuts(pars)) { () =>
+    implicit val end: Lite[AnyRef, Next] = Task.end[Next](period, priority, name, desc, visible)(allOuts(pars)) { () =>
       new reflow.Task.Context {
+        override protected def autoProgress = visible
         override protected def doWork(): Unit = output(Task.KEY_DEF, f(
           input[OUT](l.intent.outs$.head.key).get,
           input[OUT1](l1.intent.outs$.head.key).get,

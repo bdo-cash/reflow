@@ -49,7 +49,8 @@ import scala.util.control.NonFatal
   *          1.7, 29/09/2020, 小优化：`System.currentTimeMillis` -> `System.nanoTime`;
   *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`;
   *          2.1, 18/12/2020, bug fix: 支持`Pulse.abortIfError = false`的定义（在异常出错时也能正常前进）；
-  *          2.2, 22/12/2020, `sync()`的实现去掉了`Locker`，改为原生用法，并对`interruptSyn()`作了小优化。
+  *          2.2, 22/12/2020, `sync()`的实现去掉了`Locker`，改为原生用法，并对`interruptSync()`作了小优化；
+  *          2.3, 04/01/2021, 增加`autoProgress`控制。
   * @param strategy 当前`Reflow`启动时传入的`Strategy`。由于通常要考虑到父级`Reflow`的`Strategy`，因此通常使用`strategyRevised`以取代本参数；
   * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -722,8 +723,8 @@ private[reflow] object Tracker {
     @volatile private var scheduler: Scheduler.Impl = _
 
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
-      progress(0)
-      scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(1)),
+      if (autoProgress) progress(0)
+      scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, if (autoProgress) progress(1)),
         env.tracker.strategy.toSub, null, env, env.tracker.pulse)
       false // 异步。
     }

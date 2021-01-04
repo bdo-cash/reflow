@@ -30,7 +30,8 @@ import scala.collection._
   * 这里用于编写客户任务代码（重写`doWork()`方法）。注意不可以写异步任务和线程挂起等操作。
   *
   * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 26/06/2016
+  * @version 1.0, 26/06/2016;
+  *          2.3, 04/01/2021, 增加`autoProgress`控制。
   */
 abstract class Task protected() {
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
@@ -185,9 +186,9 @@ abstract class Task protected() {
     */
   private[reflow] def exec$(_env: Env, _runner: Runner): Boolean = {
     // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
-    progress(0)
+    if (autoProgress) progress(0)
     doWork()
-    progress(1)
+    if (autoProgress) progress(1)
     true
   }
 
@@ -207,6 +208,9 @@ abstract class Task protected() {
       }
     }
   }
+
+  /**某些任务只在满足条件时运行，其它情况下隐藏。*/
+  protected def autoProgress: Boolean = true
 
   /**
     * 客户代码的扩展位置。<br>
