@@ -18,7 +18,9 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
+import hobby.wei.c.reflow.Trait.ReflowTrait
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -30,7 +32,7 @@ private[reflow] trait Env extends TAG.ClassName {
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
     in.fillWith(tracker.getPrevOutFlow)
-    val cached = if (isPulseMode && !tracker.isInput(trat)) tracker.pulse.getCache(subDepth, trat, tracker.outer.map(_.trat)) else myCache(create = false)
+    val cached = if (isPulseMode && !tracker.isInput(trat)) tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
     if (cached.nonNull) in.cache(cached)
     if (debugMode) log.i("input: %s.", in)
     in
@@ -60,14 +62,11 @@ private[reflow] trait Env extends TAG.ClassName {
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
   final def requireReinforce(t: Trait = trat): Boolean = tracker.requireReinforce(t)
-
   final def isReinforceRequired: Boolean = tracker.isReinforceRequired
-
   final def isReinforcing: Boolean = tracker.isReinforcing
-
   final def isPulseMode: Boolean = tracker.isPulseMode
-
   final def isSubReflow: Boolean = tracker.isSubReflow
+  final def parent: Option[ReflowTrait] = tracker.outer.map(_.trat.as[ReflowTrait])
 }
 
 private[reflow] object Env {

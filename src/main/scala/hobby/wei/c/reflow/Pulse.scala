@@ -221,7 +221,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback,
         }
       }
 
-      override def getCache(depth: Int, trat: Trait, parent: Option[Trait]): Out = {
+      override def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Out = {
         val key = (depth, trat.name$, parent.map(_.name$).orNull)
         if (debugMode) log.i("(%d)[interact.getCache]%s.", serialNum, key)
         head.fold[Out](null) {
@@ -404,7 +404,7 @@ object Pulse {
       * @param parent 同上。
       * @return
       */
-    def getCache(depth: Int, trat: Trait, parent: Option[Trait]): Out
+    def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Out
   }
 
   implicit class WithPoster(feedback: Feedback) {
