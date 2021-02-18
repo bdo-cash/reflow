@@ -21,7 +21,7 @@ import hobby.chenai.nakam.basis.TAG.{LogTag, ThrowMsg}
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.reflow.Assist.eatExceptions
-import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Feedback.{Log, Progress}
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Pulse.Reporter
 import hobby.wei.c.reflow.Reflow.{debugMode, logger => log}
@@ -338,7 +338,7 @@ object Pulse {
       override def onProgress(serialNum: Long, progress: Progress, out: Out, depth: Int): Unit = {}
       override def onComplete(serialNum: Long, out: Out): Unit = {}
       override def onAbort(serialNum: Long, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {}
-      override def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {}
+      override def onFailed(serialNum: Long, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = Log.onFailed(trat, parent, depth, e)
     }
 
     abstract class Butt[T >: Null <: AnyRef](kce: KvTpe[T], watchProgressDepth: Int = 0) extends Adapter {
