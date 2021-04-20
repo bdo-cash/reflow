@@ -158,7 +158,8 @@ object Assist {
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {
       if (!success) {
         log.e("illegal state override! prev:%s, state:%s.", prev, state)(tag("abortion"))
-        assertx(success)
+        // 允许`success = false`, 不用中止。
+        //assertx(success)
       }
     }
 
