@@ -45,7 +45,7 @@ object Task {
 
   def isLiteName(name: String) = name.contains('[') && name.contains("->") && name.contains(']')
 
-  def apply[OUT >: Null <: AnyRef](input: => OUT)(implicit out: ClassTag[OUT]): Input[OUT] = Input[OUT](input)
+  def apply[OUT >: Null <: AnyRef](implicit out: ClassTag[OUT]): Input[OUT] = Input[OUT]
 
   def apply[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
@@ -183,15 +183,15 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     parseDepends(this)
   }
 
-  def run(feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit strategy: Strategy, poster: Poster): Scheduler = {
-    @scala.annotation.tailrec
+  def run(input: IN, feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit strategy: Strategy, poster: Poster): Scheduler = {
+    /*@scala.annotation.tailrec
     def findIn(lite: AbsLite[_, _]): In = lite match {
       case Serial(head, _) if head.isDefined => findIn(head.get)
       case input: Input[_] => input.in
       case _ => throwInputRequired
-    }
-
-    resolveDepends().submit().start(findIn(this), feedback)
+    }*/
+    def findIn: In = Task.defKeyVType -> input
+    resolveDepends().submit().start(findIn, feedback)
   }
 
   /**
@@ -211,12 +211,12 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
 }
 
 object Input {
-  def apply[OUT >: Null <: AnyRef](input: => OUT)(implicit out: ClassTag[OUT]): Input[OUT] = new Input(input)(out)
+  def apply[OUT >: Null <: AnyRef](implicit out: ClassTag[OUT]): Input[OUT] = new Input[OUT]()(out)
 }
 
-final class Input[OUT >: Null <: AnyRef] private[lite](input: => OUT)(implicit out: ClassTag[OUT])
+final class Input[OUT >: Null <: AnyRef] private[lite](/*input: => OUT*/)(implicit out: ClassTag[OUT])
   extends AbsLite[OUT, OUT]()(null, out) {
-  private[lite] lazy val in: In = Task.defKeyVType -> input
+  //private[lite] lazy val in: In = Task.defKeyVType -> input
   // Don't use this.
   //private[lite] lazy val builder = Reflow.builder
 }

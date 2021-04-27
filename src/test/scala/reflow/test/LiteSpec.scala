@@ -87,15 +87,15 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Scenario("简单`【串】行任务`组装") {
       info("以上定义了一些任务")
       info("再定义一个输入：")
-      val input = Task(new Aaa)
+      val input = Task[Aaa]
 
       Then("组装任务：")
       info("1. 利用`类型匹配 + 隐世转换`自动组装；")
 
-      input.next[Bbb].next[Ccc].next[Ddd].run() sync ()
+      input.next[Bbb].next[Ccc].next[Ddd].run(new Aaa) sync ()
 
       info("2. 直接用任务的`引用`组装；")
-      input >>> a2b >>> b2c >>> c2d run () sync ()
+      input >>> a2b >>> b2c >>> c2d run (new Aaa) sync ()
 
       info("这两种方法是等价的，后面跟`run()`即可运行。")
 
@@ -121,7 +121,7 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
           info(d.toString)
           d
         }
-      Input(new Aaa) >>> a2b >>> b2c >>> pars run () sync ()
+      Input[Aaa] >>> a2b >>> b2c >>> pars run (new Aaa) sync ()
 
       assert(true)
     }
@@ -139,7 +139,7 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
               ctx.cache("flag", "")
               new Ddd(ccc)
             }
-            // 一个串行的里面不能有重名的。
+          // 一个串行的里面不能有重名的。
           } >>> d2b >>> b2a >>> a2d) //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
           +>>
           (c2b >>> b2c >>> Task[Ccc, Aaa]() { (ccc, ctx) =>
@@ -168,9 +168,9 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
         override def call() = callableOut
       })
 
-      val repeatCount = Int.MaxValue
+      val repeatCount = 1000 // Int.MaxValue
 
-      val pulse = (Input(new Aaa) >>> a2b >>> b2c >>> pars) pulse (new reflow.Pulse.Feedback.Lite[Ddd] {
+      val pulse = (Input[Aaa] >>> a2b >>> b2c >>> pars) pulse (new reflow.Pulse.Feedback.Lite[Ddd] {
         override def onStart(serialNum: Long): Unit = println(
           s"[onStart] |||||||||||||||||||||||||||||||||||||||||||| $serialNum ||||||||||||||||||||||||||||||||||||||||||||"
         )
