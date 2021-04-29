@@ -89,6 +89,7 @@ trait Feedback extends Equals {
 }
 
 object Feedback {
+  import Progress.Weight
   /**
     * 表示任务的进度。由于任务可以嵌套，所以进度也需要嵌套，以便实现更精确的管理。
     *
@@ -99,21 +100,24 @@ object Feedback {
     *                2. 若当前是一个具体的（顺序依赖的）任务触发出的进度，则`trat`表示该任务，同时`subs`中会有唯一一个进度与之对应，该进度其性质同 1；
     *                3. 若`trat`是并行的（`_.isPar == true`），则`subs`代表了所有当前正在并行执行的任务。
     *                注意：`subs`中的进度同样分为以上3种情况。
-    * @param trigger 表示触发进度反馈的那个进度，以便知道哪个任务是开始还是完成。注意：不能再关注递归的[[trigger]]属性（13/10/2020 增加）。
+    * @param trigger 表示触发进度反馈的那个进度，以便知道哪个任务是开始还是完成。注意：深层的[[trigger]]总是会被提到顶层（总是有值），不需要再关注递归的[[trigger]]属性（可能为`null`）（13/10/2020 增加）。
     * @param subs    子任务。可以是并行的，所以用了`Seq`。
+    * @param weight  根据`Period`得到的加权参数（29/04/2021 增加）。
     */
-  final case class Progress(sum: Int, step: Int, trat: Option[Trait] = None, trigger: Progress = null, subs: Option[Seq[Progress]] = None) {
+  final case class Progress(sum: Int, step: Int, weight: Weight, trat: Option[Trait] = None, trigger: Progress = null, subs: Option[Seq[Progress]] = None) {
     require(step < sum || (step == sum && subs.isEmpty))
     require(subs.fold(true)(_.forall(_.nonNull)))
 
-    lazy val main: Float = (step + sub) / sum
-    lazy val sub: Float = subs.fold[Float](0) { p => p.map(_ ()).sum / p.size }
+    lazy val main: Float = (weight.serial + sub * weight.rate) / sum
+    lazy val sub: Float = subs.fold[Float](0) { seq => seq.map(p => p() * p.weight.par).sum / seq.map(_.weight.par).sum }
 
     @inline def apply(): Float = main
-    override def toString = s"Progress(sum:$sum, step:$step, p:$main, name:${trat.map(_.name$).orNull}, trigger:${trigger.trat.map(_.name$).orNull}(${trigger.main}))"
+    override def toString = s"Progress(sum:$sum, step:$step, weight:$weight, p:$main, sub:$sub, name:${trat.map(_.name$).orNull}, trigger:${if (trigger.isNull) null else {trigger.trat.map(_.name$).orNull + "(" + trigger.main+")"}})"
   }
 
   object Progress {
+    final case class Weight(serial: Float, rate: Float, par: Int = 10)
+
     /** 进度反馈的优化策略。 */
     trait Strategy extends Ordering[Strategy] {
       outer =>

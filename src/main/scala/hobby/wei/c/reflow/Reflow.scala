@@ -93,16 +93,16 @@ object Reflow {
   @KeepVp$
   @KeepMp$
   object Period extends Enumeration {
-    type Tpe = Period
+    type Tpe = Period$
     /**
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
-    private[reflow] case class Period(weight: Int) extends Val with Ordering[Period] {
+    private[reflow] case class Period$(weight: Int) extends Val with Ordering[Period$] {
       private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
       private var average = 0L
       private var count = 0L
 
-      override def compare(x: Period, y: Period) = if (x.weight < y.weight) -1 else if (x.weight == y.weight) 0 else 1
+      override def compare(x: Period$, y: Period$) = if (x.weight < y.weight) -1 else if (x.weight == y.weight) 0 else 1
 
       def average(duration: Long): Long = Locker.syncr {
         if (duration > 0) {
@@ -119,15 +119,15 @@ object Reflow {
     /**
       * 任务执行时间：瞬间。
       */
-    val TRANSIENT = Period(1)
+    val TRANSIENT = Period$(1)
     /**
       * 任务执行时间：很短。
       */
-    val SHORT = Period(2)
+    val SHORT = Period$(2)
     /**
       * 任务执行时间：很长。
       */
-    val LONG = Period(5)
+    val LONG = Period$(5)
     /**
       * 任务执行时间：无限长。
       * <p>
@@ -137,7 +137,7 @@ object Reflow {
       *
       * @see #weight
       */
-    val INFINITE = Period(20)
+    val INFINITE = Period$(20)
   }
 
   private var _debugMode = true

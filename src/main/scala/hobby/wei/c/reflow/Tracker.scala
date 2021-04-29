@@ -24,6 +24,7 @@ import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Feedback.Progress.Weight
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
@@ -50,7 +51,8 @@ import scala.util.control.NonFatal
   *          2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`;
   *          2.1, 18/12/2020, bug fix: 支持`Pulse.abortIfError = false`的定义（在异常出错时也能正常前进）；
   *          2.2, 22/12/2020, `sync()`的实现去掉了`Locker`，改为原生用法，并对`interruptSync()`作了小优化；
-  *          2.3, 04/01/2021, 增加`autoProgress`控制。
+  *          2.3, 04/01/2021, 增加`autoProgress`控制；
+  *          2.4, 30/04/2021, 增加`Progress.Weight`，优化`autoProgress = false`时子进度的更新问题。
   * @param strategy 当前`Reflow`启动时传入的`Strategy`。由于通常要考虑到父级`Reflow`的`Strategy`，因此通常使用`strategyRevised`以取代本参数；
   * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
@@ -130,7 +132,7 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strateg
 
   private[reflow] def onTaskStart(trat: Trait): Unit
 
-  private[reflow] def onTaskProgress(trat: Trait, progress: Progress, out: Out, depth: Int): Unit
+  private[reflow] def onTaskProgress(trat: Trait, progress: Progress, out: Out, depth: Int, publish: Boolean): Unit
 
   private[reflow] def onTaskComplete(trat: Trait, out: Out, flow: Out): Unit
 
@@ -177,6 +179,7 @@ private[reflow] object Tracker {
     private lazy val sum = reflow.basis.traits.length
     private lazy val runnersParallel = new concurrent.TrieMap[Runner, Any]
     private lazy val progress = new concurrent.TrieMap[String, Progress]
+    private lazy val weightes = reflow.basis.weightedPeriods()
     private lazy val reporter = if (debugMode && !strategy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
     @volatile private var remaining = reflow.basis.traits
     @volatile private var normalDone, reinforceDone: Boolean = false
@@ -315,12 +318,12 @@ private[reflow] object Tracker {
       if (trat.isPar) {
         val cache = getCache
         val begin = isReinforcing && isOnReinforceBegins(trat, cache)
-        lazy val p4init = Progress(1, 0)
         trat.asPar.traits().filter { t => // 过滤掉没有申请reinforce的
           if (begin) cache.begins.contains(t.name$) else true
         }.foreach { t =>
-          runnersParallel += ((new Runner(Env(t, this)), None))
-          progress.put(t.name$, p4init) // 把并行的任务put进去，不然计算子进度会有问题。
+          val env = Env(t, this)
+          runnersParallel += ((new Runner(env), None))
+          progress.put(t.name$, Progress(1, 0, Weight(0, 1, env.weightPar))) // 把并行的任务put进去，不然计算子进度会有问题。
         }
       } else {
         //progress.put(trat.name$, 0f)
@@ -523,43 +526,39 @@ private[reflow] object Tracker {
       }
     }
 
-    override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, depth: Int): Unit = {
+    override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, depth: Int, publish: Boolean): Unit = {
       if (!isInput(trat)) {
         // 跟上面onTaskStart()保持一致（包在外面），否则会出现顺序问题。
         snatcher.queAc(canAbandon = true) {
           subProgress(trat, sub) // 在abandon之前必须要做的
         } { subs =>
           // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
-          if (state.get == EXECUTING) {
+          if (publish && state.get == EXECUTING) {
             val top = remaining.head
+            val step = reflow.basis.stepOf(top)
             // 1.6, 12/07/2020, fix bug: Progress(..trat)。
             // 2.0, 13/10/2020, fallback `Progress(..trat)` -> `Progress(..top)`, and add `Progress(..trigger)`.
-            reporter.reportOnProgress(Progress(sum, reflow.basis.stepOf(top), Option(top), if(sub.trigger.isNull)sub.copy(trat = Option(trat)) else sub.trigger, Option(subs)), out, depth)
+            reporter.reportOnProgress(Progress(sum, step, resolveWeight(step), Option(top), if (sub.trigger.isNull) sub.copy(trat = Option(trat)) else sub.trigger, Option(subs)), out, depth)
           }
         }
       }
     }
 
+    private def resolveWeight(step: Int): Weight = {
+      val weightSum = weightes.sum
+      Weight(
+        serial = (sum * weightes.take(step).sum * 10000f / weightSum).round / 10000f,
+        rate = (sum * weightes(step) * 10000f / weightSum).round / 10000f,
+        par = weightSum // 仅在`subReflow`向外反馈时起作用，如果是顶层，则会闲置。
+      )
+    }
+
     // 注意：本方法为单线程操作。
     private def subProgress(trat: Trait, sub: Progress): Seq[Progress] = {
-      // def result: Float = progress.values.sum /*reduce(_ + _)*/ / progress.size
-      // val value = between(0, pogres, 1)
-      // 如果只有一个任务，单线程，不需要同步；
-      // 而如果是多个任务，那对于同一个trat，总是递增的（即单线程递增），所以
-      // 总体上，即使是并行，那也是发生在不同的trat之间（即不同的trat并行递增），推导出
-      // progress.values.sum也是递增的，因此也不需要全局同步。
-      /*if (progress.size <= 1) value
-      else {
-        if (pogres > 0) {
-          assert(progress.contains(trat.name$))
-          progress.put(trat.name$, value)
-          result
-        } else result
-      }*/
       if (progress.size <= 1) sub :: Nil
       else {
         assert(progress.contains(trat.name$))
-        progress.put(trat.name$, sub)
+        progress.update(trat.name$, sub)
         progress.values.toSeq
       }
     }
@@ -723,12 +722,12 @@ private[reflow] object Tracker {
     @volatile private var scheduler: Scheduler.Impl = _
 
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
-      if (autoProgress) progress(0)
-      scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, if (autoProgress) progress(1)),
+      progress(0, 10, publish = autoProgress)
+      scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(10, 10, publish = autoProgress)),
         env.tracker.strategy.toSub, null, env, env.tracker.pulse)
       false // 异步。
     }
-
+    override protected def autoProgress: Boolean = false
     override protected def doWork(): Unit = {}
 
     override protected def onAbort(): Unit = {
@@ -747,7 +746,7 @@ private[reflow] object Tracker {
 
     override def onProgress(progress: Progress, out: Out, depth: Int): Unit = {
       // if (out ne env.out) env.out.fillWith(out, fullVerify = false) // 暂不要，以提高效率。
-      env.tracker.onTaskProgress(env.trat, progress, out, depth)
+      env.tracker.onTaskProgress(env.trat, progress, out, depth, publish = true)
     }
 
     override def onComplete(out: Out): Unit = {

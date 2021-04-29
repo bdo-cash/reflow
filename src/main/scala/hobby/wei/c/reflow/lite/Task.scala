@@ -236,7 +236,7 @@ abstract class Lite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
   def clip[Next >: Null <: AnyRef]
   (period: Period.Tpe = TRANSIENT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = false)
   (f: (IN, OUT) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] =
-    (Task[IN, IN](TRANSIENT, P_HIGH)((in, _) => in) +>> this /*对于`Serial`，这里的确要用`inPar()`。*/)
+    (Task[IN, IN](TRANSIENT, P_HIGH, visible = false)((in, _) => in) +>> this /*对于`Serial`，这里的确要用`inPar()`。*/)
       .merge[Next](period, priority, name, desc, visible) { (in, out, _) => f(in, out) }
 
   // 如果是并行，需要重写 intent，会用到。
@@ -264,7 +264,7 @@ abstract class Lite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
 }
 
 /** 单个[并行]的任务。 */
-// This class compiled to AbsLite$$anon$`${i}` because of not `final`.
+// This class compiled to AbsLite$$anon$`${i}` because of `abstract`.
 abstract class Parel[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite]
 (period: Period.Tpe, priority: Int, name: String, desc: String, visible: Boolean)(implicit in: ClassTag[IN], out: ClassTag[OUT])
   extends Lite[IN, OUT](period, priority, name, desc, visible)

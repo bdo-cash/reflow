@@ -20,6 +20,7 @@ import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Feedback.Progress.Weight
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.tool.Locker
 import hobby.wei.c.tool.Locker.CodeZ
@@ -96,10 +97,10 @@ abstract class Task protected() {
     *
     * @param _progress 进度百分比，取值区间[0, 1]，必须是递增的。
     */
-  final def progress(_progress: Float): Unit = {
+  final def progress(_progress: Float, publish: Boolean): Unit = {
     val s = String.valueOf(_progress)
     val unit = math.pow(10, s.length - (s.indexOf('.') + 1)).toInt
-    progress((_progress * unit).round, unit)
+    progress((_progress * unit).round, unit, publish)
   }
 
   /**
@@ -108,8 +109,8 @@ abstract class Task protected() {
     * @param step 进度的分子。必须是递增的。
     * @param sum  进度的分母。必须大于等于`step`且不可变。
     */
-  final def progress(step: Int, sum: Int): Unit = env$.tracker.onTaskProgress(
-    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum)), env$.out, env$.subDepth)
+  final def progress(step: Int, sum: Int, publish: Boolean = true): Unit = env$.tracker.onTaskProgress(
+    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum), Weight(step, 1, env$.weightPar)), env$.out, env$.subDepth, publish)
 
   /**
     * 请求强化运行。
@@ -186,9 +187,9 @@ abstract class Task protected() {
     */
   private[reflow] def exec$(_env: Env, _runner: Runner): Boolean = {
     // 这里反馈进度有两个用途: 1.Feedback subProgress; 2.并行任务进度统计。
-    if (autoProgress) progress(0)
+    progress(0, 10, publish = autoProgress)
     doWork()
-    if (autoProgress) progress(1)
+    progress(10, 10, publish = autoProgress)
     true
   }
 

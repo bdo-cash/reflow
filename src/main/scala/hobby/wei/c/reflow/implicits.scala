@@ -73,7 +73,7 @@ object implicits {
 
   def +|-[IN >: Null <: AnyRef, Next >: Null <: AnyRef]
   (f: IN => Next)(implicit in: ClassTag[IN], nxt: ClassTag[Next]): Lite[IN, Next] =
-    lite.Task[IN, Next](TRANSIENT, P_HIGH)((in, _) => f(in))
+    lite.Task[IN, Next](TRANSIENT, P_HIGH, visible = false)((in, _) => f(in))
 
   // def方法不能直接起作用，这里转换为函数值。
   implicit lazy val f0 = kce2Bdr _

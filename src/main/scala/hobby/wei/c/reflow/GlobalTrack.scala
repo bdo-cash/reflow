@@ -16,8 +16,9 @@
 
 package hobby.wei.c.reflow
 
-import hobby.chenai.nakam.basis.TAG.ClassName
+import hobby.chenai.nakam.basis.TAG
 import hobby.wei.c.reflow.Feedback.Progress
+import hobby.wei.c.reflow.Feedback.Progress.Weight
 import hobby.wei.c.reflow.Trait.ReflowTrait
 
 /**
@@ -26,9 +27,9 @@ import hobby.wei.c.reflow.Trait.ReflowTrait
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 03/04/2018
   */
-final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[ReflowTrait]) extends Equals with ClassName {
+final case class GlobalTrack(reflow: Reflow, scheduler: Scheduler, parent: Option[ReflowTrait]) extends Equals with TAG.ClassName {
   @volatile private var _progress: Progress = {
-    val pgr = Progress(reflow.basis.traits.size, 0, reflow.basis.traits.headOption)
+    val pgr = Progress(reflow.basis.traits.size, 0, Weight(0, 1), reflow.basis.traits.headOption)
     pgr.copy(trigger = pgr)
   }
 

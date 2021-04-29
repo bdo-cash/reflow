@@ -24,8 +24,9 @@ import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.reflow.Assist.{Throws, _}
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
-
-import scala.collection.{mutable, Set, _}
+import hobby.wei.c.reflow.Reflow.Period._
+import hobby.wei.c.reflow.Trait.ReflowTrait
+import scala.collection.{Set, mutable, _}
 import scala.util.control.Breaks._
 
 /**
@@ -282,14 +283,24 @@ object Dependency {
         } else trat
       })
 
-    def minPeriod(ts: Seq[Trait] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+    def minPeriod(ts: Seq[Trait] = traits, ignoreReflowTrait: Boolean): Period.Tpe = (INFINITE /: ts) { (l, r) =>
       import l.mkOrderingOps
-      l min (if (r.isPar) minPeriod(r.asPar.traits()) else r.period$)
+      l min (if (!ignoreReflowTrait && r.is4Reflow) minPeriod(r.asSub.reflow.basis.traits, ignoreReflowTrait)
+      else if (r.isPar) minPeriod(r.asPar.traits(), ignoreReflowTrait) else r.period$)
     }
 
-    def maxPeriod(ts: Seq[Trait] = traits): Period.Tpe = (Period.TRANSIENT /: ts) { (l, r) =>
+    def maxPeriod(ts: Seq[Trait] = traits, ignoreReflowTrait: Boolean): Period.Tpe = (TRANSIENT /: ts) { (l, r) =>
       import l.mkOrderingOps
-      l max (if (r.isPar) maxPeriod(r.asPar.traits()) else r.period$)
+      l max (if (!ignoreReflowTrait && r.is4Reflow) maxPeriod(r.asSub.reflow.basis.traits, ignoreReflowTrait)
+      else if (r.isPar) maxPeriod(r.asPar.traits(), ignoreReflowTrait) else r.period$)
+    }
+
+    def weightedPeriods(): Seq[Int] = traits.map(weightedPeriod)
+
+    def weightedPeriod(t: Trait): Int = {
+      if (t.is4Reflow) t.asSub.reflow.basis.traits.map(weightedPeriod).sum
+      else if (t.isPar) t.asPar.traits().map(weightedPeriod).max
+      else math.pow(t.period$.weight, 3).toInt
     }
 
     def lowestPriority(ts: Seq[Trait] = traits): Int = (P_HIGH /: ts) { (l, r) =>
@@ -338,8 +349,8 @@ object Dependency {
 
   implicit class IsPar(trat: Trait) {
     def isPar: Boolean = trat.isInstanceOf[Trait.Parallel]
-
     def asPar: Trait.Parallel = trat.as[Trait.Parallel]
+    def asSub: ReflowTrait = trat.as[ReflowTrait]
   }
 
   /**

@@ -56,6 +56,8 @@ private[reflow] trait Env extends TAG.ClassName {
 
   final def subDepth: Int = tracker.subDepth
 
+  final lazy val weightPar: Int = tracker.reflow.basis.weightedPeriod(trat)
+
   /**
     * 请求强化运行。
     *
