@@ -157,7 +157,7 @@ object Assist {
     @Burden
     def assertStateOverride(prev: State.Tpe, state: State.Tpe, success: Boolean) {
       if (!success) {
-        log.e("illegal state override! prev:%s, state:%s.", prev, state)(tag("abortion"))
+        log.w("`state override` maybe illegal, IGNORED! prev:%s, state:%s.", prev, state)(tag("abortion"))
         // 允许`success = false`, 不用中止。
         //assertx(success)
       }
