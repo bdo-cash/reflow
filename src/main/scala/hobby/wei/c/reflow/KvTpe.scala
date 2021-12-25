@@ -49,24 +49,22 @@ abstract class KvTpe[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_]
 
   /**
     * 走这个方法作类型转换, 确保value类型与定义的一致性。
-    *
-    * @param value
     * @return 返回Task在执行时当前key对应值的目标类型。
     */
   def asType(value: Any): T = value.as[T]
 
-  def putValue(map: mutable.Map[String, Any], value: Any): Boolean = putValue(map, value, ignoreDiffType = false)
+  def putValue(map: mutable.Map[String, Any], value: Any): Boolean = putValue(map, value, ignoreTpeDiff = false)
 
   /**
     * 将输出值按指定类型(作类型检查)插入Map。
     *
-    * @param map            输出到的Map。
-    * @param value          要输出的值。
-    * @param ignoreDiffType 如果value参数类型不匹配，是否忽略。
+    * @param map           输出到的Map。
+    * @param value         要输出的值。
+    * @param ignoreTpeDiff 如果value参数类型不匹配，是否忽略。
     * @return true成功，else失败。
     */
-  def putValue(map: mutable.Map[String, Any], value: Any, ignoreDiffType: Boolean): Boolean = {
-    val v = requireSameType(value, ignoreDiffType)
+  def putValue(map: mutable.Map[String, Any], value: Any, ignoreTpeDiff: Boolean): Boolean = {
+    val v = requireSameType(value, ignoreTpeDiff)
     if (v.nonNull) {
       map.put(key, v)
       true

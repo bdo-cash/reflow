@@ -16,7 +16,7 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Reflow.{Period, _}
@@ -105,7 +105,7 @@ object Trait {
     override def newTask() = Task(_dosth)
   }
 
-  private final val sCount = new AtomicInteger(0)
+  private final val sCount = new AtomicLong(0)
 
   private[reflow] final class Parallel private[reflow](trats: Seq[Trait]) extends Trait {
     // 提交调度器之后具有不变性
@@ -124,7 +124,7 @@ object Trait {
     private[reflow] def first(): Trait = _traits.head
     private[reflow] def last(): Trait = _traits.last
 
-    override protected def name() = classOf[Parallel].getName + "#" + sCount.getAndIncrement()
+    override protected def name() = classOf[Parallel].getName + "#" + sCount.incrementAndGet
     override def newTask() = ???
     override protected def requires() = none
     override protected def outs() = none
@@ -134,7 +134,7 @@ object Trait {
   }
 
   trait Adapter extends Trait {
-    override protected def name() = classOf[Adapter].getName + "#" + sCount.getAndIncrement()
+    override protected def name() = classOf[Adapter].getName + "#" + sCount.incrementAndGet
     override protected def requires() = none
     override protected def outs() = none
     override protected def priority() = Reflow.P_NORMAL
@@ -142,7 +142,7 @@ object Trait {
   }
 
   private[reflow] final class Input(reflow: Reflow, in: In, outsTrimmed: immutable.Set[KvTpe[_ <: AnyRef]]) extends Adapter {
-    override protected def name() = classOf[Input].getName + "#" + sCount.getAndIncrement()
+    override protected def name() = classOf[Input].getName + "#" + sCount.incrementAndGet
 
     override def newTask() = new Task {
       override protected def doWork(): Unit = in.fillValues(env.out)
@@ -156,7 +156,7 @@ object Trait {
   abstract class ReflowTrait private[reflow](val reflow: Reflow) extends Trait {
     override final val is4Reflow = true
 
-    override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.getAndIncrement()
+    override protected def name() = classOf[ReflowTrait].getName + "#" + sCount.incrementAndGet
     override final def newTask() = new SubReflowTask()
     override protected final def priority() = reflow.basis.first(child = true).get.priority$
     // 这只是一个外壳，调度瞬间完成。子任务执行时，这层壳不会阻塞线程（事件回调机制）。

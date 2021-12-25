@@ -18,7 +18,7 @@ package reflow.test
 
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.future2Scala
-import hobby.wei.c.reflow.{Config, GlobalTrack, Poster, Reflow, State}
+import hobby.wei.c.reflow.{GlobalTrack, Poster, Reflow, State}
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.lite._
@@ -26,7 +26,10 @@ import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
 import java.util.concurrent.{Callable, FutureTask}
+
+import scala.annotation.tailrec
 import scala.concurrent.duration.DurationInt
+import scala.util.control.Breaks
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
@@ -126,69 +129,140 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
       assert(true)
     }
 
-    Scenario("带有输入类型的 `Pulse` 流处理器") {
-      val pars =
-        (
-//          c2d
+//    Scenario("带有输入类型的 `Pulse` 流处理器") {
+//      val pars =
+//        (
+////          c2d
+////          +>>
+//          (c2abc >>> Task[Ccc, Ddd]() { (ccc, ctx) =>
+//            if (ctx.input[String]("flag").isEmpty) {
+//              ctx.cache("flag", "")
+//              throw new IllegalArgumentException
+//            } else {
+//              ctx.cache("flag", "")
+//              new Ddd(ccc)
+//            }
+//          // 一个串行的里面不能有重名的。
+//          } >>> d2b >>> b2a >>> a2d) //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
 //          +>>
-          (c2abc >>> Task[Ccc, Ddd]() { (ccc, ctx) =>
-            if (ctx.input[String]("flag").isEmpty) {
-              ctx.cache("flag", "")
-              throw new IllegalArgumentException
-            } else {
-              ctx.cache("flag", "")
-              new Ddd(ccc)
-            }
-          // 一个串行的里面不能有重名的。
-          } >>> d2b >>> b2a >>> a2d) //.inPar("name#c2abc", "c2abc`串行`混入`并行`")
-          +>>
-          (c2b >>> b2c >>> Task[Ccc, Aaa]() { (ccc, ctx) =>
-            val n: Integer = ctx.input[Integer]("int").getOrElse(1)
-            if (n == 2) {
-              throw new IllegalStateException
-            } else {
-              ctx.cache("int", n + 1)
-              ccc.bbb.aaa
-            }
-          } >>> a2b)
-          +>>
-          c2b
-          +>>
-          c2a
-        ) **> { (d, c, b, a, ctx) =>
-//          info(a.toString)
-//          info(b.toString)
-//          info(c.toString)
-//          info(d.toString)
+//          (c2b >>> b2c >>> Task[Ccc, Aaa]() { (ccc, ctx) =>
+//            val n: Integer = ctx.input[Integer]("int").getOrElse(1)
+//            if (n == 2) {
+//              throw new IllegalStateException
+//            } else {
+//              ctx.cache("int", n + 1)
+//              ccc.bbb.aaa
+//            }
+//          } >>> a2b)
+//          +>>
+//          c2b
+//          +>>
+//          c2a
+//        ) **> { (d, c, b, a, ctx) =>
+////          info(a.toString)
+////          info(b.toString)
+////          info(c.toString)
+////          info(d.toString)
+//          d
+//        }
+//
+//      @volatile var callableOut: Int = 0
+//      val future = new FutureTask[Int](new Callable[Int] {
+//        override def call() = callableOut
+//      })
+//
+//      val repeatCount = 1000 // Int.MaxValue
+//
+//      val pulse = (Input[Aaa] >>> a2b >>> b2c >>> pars) pulse (new reflow.Pulse.Feedback.Lite[Ddd] {
+//        override def onStart(serialNum: Long): Unit = println(
+//          s"[onStart] |||||||||||||||||||||||||||||||||||||||||||| $serialNum ||||||||||||||||||||||||||||||||||||||||||||"
+//        )
+//        override def onAbort(serialNum: Long, trigger: Option[Intent], parent: Option[ReflowTrait], depth: Int): Unit = {
+//          callableOut = repeatCount
+//          future.run()
+//          println(s"[onAbort] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! $serialNum, ${trigger.map(_.name$).orNull} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+//        }
+//        override def onFailed(serialNum: Long, trat: Intent, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
+//          if (serialNum == repeatCount) {
+//            callableOut = repeatCount
+//            future.run()
+//          }
+//          println(s"[onFailed] ?????????????????????????????????????????? $serialNum, ${trat.name$}, ${e.getMessage} ??????????????????????????????????????????")
+//        }
+//
+//        override def liteOnComplete(serialNum: Long, value: Option[Ddd]): Unit = {
+//          if (serialNum == repeatCount) {
+//            callableOut = repeatCount
+//            future.run()
+//          }
+//          println(s"[liteOnComplete] ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ $serialNum, $value ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+//        }
+//      }, abortIfError = false, execCapacity = 10)
+//
+//      Breaks.breakable {
+//        for (_ <- 0 to repeatCount) {
+//          val in = new Aaa
+//          var i  = 0
+//          while (!pulse.input(in)) {
+//            if (pulse.pulse.isDone) Breaks.break
+//            println(s"[pulse.input] @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ wait repeat times: $i @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+//            i += 1
+//            Thread.sleep(250 * i.millis.toMillis)
+//          }
+//        }
+//      }
+//
+//      future map { result =>
+//        require(pulse.pulse.isCurrAllCompleted)
+//
+//        assertResult(repeatCount)(result)
+//      }
+//    }
+
+    Scenario("`Pulse` 的多层嵌套组装测试") {
+      val pars = {
+        // 切记：不能用 val 替换 def，否则不但有并行的同名的任务，而且深层的【同名同层】会导致 Pulse.Interact 接口无法辨识而出现阻塞的情况。
+        def p = (c2d +>> c2b) **> { (d, _, _) =>
+          /*println(":: 0");*/
           d
-        }
+        } +|- { (_, d) => d }
+        @tailrec
+        def loop(s: () => Serial[Ccc, Ddd], times: Int = 0, limit: Int = 10): Serial[Ccc, Ddd] =
+          if (times >= limit) s()
+          else {
+            def p =
+              (
+                s() +|- { (_, d) =>
+                  /*println(s":: ${times + 1} " + ("::" * (times + 1)));*/
+                  d
+                }
+                +>>
+                s()
+              ) **> { (d, _, _) => d }
+            loop(() => p, times + 1, limit)
+          }
+        loop(() => p, limit = 3)
+      }
 
       @volatile var callableOut: Int = 0
-      val future = new FutureTask[Int](new Callable[Int] {
-        override def call() = callableOut
-      })
+      val future                     = new FutureTask[Int](() => callableOut)
 
-      val repeatCount = 1000 // Int.MaxValue
+      val repeatCount = Int.MaxValue
 
       val pulse = (Input[Aaa] >>> a2b >>> b2c >>> pars) pulse (new reflow.Pulse.Feedback.Lite[Ddd] {
-        override def onStart(serialNum: Long): Unit = println(
-          s"[onStart] |||||||||||||||||||||||||||||||||||||||||||| $serialNum ||||||||||||||||||||||||||||||||||||||||||||"
-        )
+        override def onStart(serialNum: Long): Unit = {}
         override def onAbort(serialNum: Long, trigger: Option[Intent], parent: Option[ReflowTrait], depth: Int): Unit = {
           callableOut = repeatCount
           future.run()
-          println(
-            s"[onAbort] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! $serialNum, ${trigger.map(_.name$).orNull} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-          )
+          println(s"[onAbort] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! $serialNum, ${trigger.map(_.name$).orNull} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         }
         override def onFailed(serialNum: Long, trat: Intent, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
           if (serialNum == repeatCount) {
             callableOut = repeatCount
             future.run()
           }
-          println(
-            s"[onFailed] ?????????????????????????????????????????? $serialNum, ${trat.name$}, ${e.getMessage} ??????????????????????????????????????????"
-          )
+          future.run()
+          println(s"[onFailed] ?????????????????????????????????????????? $serialNum, ${trat.name$}, ${e.getMessage} ??????????????????????????????????????????")
         }
 
         override def liteOnComplete(serialNum: Long, value: Option[Ddd]): Unit = {
@@ -196,25 +270,25 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
             callableOut = repeatCount
             future.run()
           }
-          println(
-            s"[liteOnComplete] ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ $serialNum, $value ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-          )
+          if (serialNum % 700 == 0)
+            println(s"[liteOnComplete] ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ $serialNum, $value ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+          if (serialNum == repeatCount)
+            println(s"[liteOnComplete] ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ DONE | $serialNum, $value ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         }
-      }, abortIfError = false, execCapacity = 10)
+      }, abortIfError = true, execCapacity = 7)
 
-      Reflow.submit {
+      Breaks.breakable {
         for (_ <- 0 to repeatCount) {
           val in = new Aaa
           var i  = 0
           while (!pulse.input(in)) {
-            println(
-              s"[pulse.input] @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ repeat times:$i @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-            )
+            if (pulse.pulse.isDone) Breaks.break
+            println(s"[pulse.input] @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ wait repeat times: $i @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             i += 1
             Thread.sleep(250 * i.millis.toMillis)
           }
         }
-      }(INFINITE)
+      }
 
       future map { result =>
         require(pulse.pulse.isCurrAllCompleted)

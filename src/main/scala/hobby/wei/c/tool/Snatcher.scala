@@ -18,7 +18,7 @@ package hobby.wei.c.tool
 
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.util.control.Breaks._
 
@@ -53,8 +53,8 @@ import scala.util.control.Breaks._
   */
 class Snatcher {
   private val scheduling = new AtomicBoolean(false)
-  private val signature = new AtomicBoolean(false)
-  private val thread = new AtomicReference[Thread](null)
+  private val signature  = new AtomicBoolean(false)
+  private val thread     = new AtomicReference[Thread](null)
 
   /**
     * 线程尝试抢占执行权并执行某任务。
@@ -152,13 +152,11 @@ object Snatcher {
     * @param fluentMode 流畅模式。启用后，在拥挤（队列不空）的情况下，设置了`flag`的`action`将会被丢弃而不执行（除非是最后一个）。默认`不启用`。
     */
   class ActionQueue(val fluentMode: Boolean = false) extends Snatcher with TAG.ClassName {
-    private lazy val queue = new ConcurrentLinkedQueue[Action[_]]
+    private lazy val queue = new concurrent.LinkedTransferQueue[Action[_]]
 
     private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean) {
       type A = T
-
-      def execN(): A = necessity()
-
+      def execN(): A           = necessity()
       def execA(args: A): Unit = action(args)
     }
 
@@ -174,21 +172,36 @@ object Snatcher {
       */
     def queAc[T](canAbandon: Boolean = false)(necessity: => T)(action: T => Unit): Unit = {
       def hasMore = !queue.isEmpty
-
-      val elem = Action(() => necessity, action, canAbandon)
-      while (!(queue offer elem)) Thread.`yield`()
-
+      def newAc   = Action(() => necessity, action, canAbandon)
+      def quelem() {
+        val elem = newAc
+        while (!(queue offer elem)) Thread.`yield`()
+      }
+      def execAc(elem: Action[_]) {
+        val p: elem.A = elem.execN()
+        if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
+          if (hasMore) {                     // 可以抛弃
+          } else elem.execA(p)
+        } else elem.execA(p)
+      }
+//      if (
+//        !tryOn({
+//          if (hasMore) quelem()
+//          else execAc(newAc)
+//          while (hasMore) {
+//            execAc(queue.remove())
+//          }
+//        }, false)
+//      ) {
+//        quelem() // 放在最后，很可能得不到执行，也会乱序，当然本实现并不解决乱序问题（当前也有乱序问题）。
+//      }
+      quelem()
       tryOn({
         // 第一次也要检查，虽然前面入队了。因为很可能在当前线程抢占到的时候，自己入队的已经被前一个线程消化掉而退出了。
         while (hasMore) {
-          val elem = queue.remove()
-          val p: elem.A = elem.execN()
-          if (fluentMode && elem.canAbandon) { // 设置了`abandon`标识
-            if (hasMore) { // 可以抛弃
-            } else elem.execA(p)
-          } else elem.execA(p)
+          execAc(queue.remove())
         }
-      }, false)
+      }, false /*必须为`false`，否则调用会嵌套，方法栈会加深。*/)
     }
   }
 }

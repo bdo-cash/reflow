@@ -34,7 +34,6 @@ private[reflow] trait Env extends TAG.ClassName {
     in.fillWith(tracker.getPrevOutFlow)
     val cached = if (isPulseMode && !tracker.isInput(trat)) tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
     if (cached.nonNull) in.cache(cached)
-    if (debugMode) log.i("input: %s.", in)
     in
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)

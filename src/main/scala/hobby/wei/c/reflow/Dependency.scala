@@ -111,15 +111,15 @@ class Dependency private[reflow]() extends TAG.ClassName {
           var first = true
           par.traits().foreach { tt =>
             if (first) {
-              next(tt).trans$(dependency.basis.transformers.getOrNull(tt.name$), tt)
+              next(tt).trans$(dependency.basis.transformers.getOrElse(tt.name$, Set.empty), tt)
               first = false
             } else {
-              and(tt).trans$(dependency.basis.transformers.getOrNull(tt.name$), tt)
+              and(tt).trans$(dependency.basis.transformers.getOrElse(tt.name$, Set.empty), tt)
             }
           }
-        case _ => next(trat).trans$(dependency.basis.transformers.getOrNull(trat.name$), trat)
+        case _ => next(trat).trans$(dependency.basis.transformers.getOrElse(trat.name$, Set.empty), trat)
       }
-      next$(dependency.basis.transGlobal.getOrNull(trat.name$), trat)
+      next$(dependency.basis.transGlobal.getOrElse(trat.name$, Set.empty), trat)
     }
     this
   }
@@ -134,12 +134,12 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * @see Transformer
     */
   private def trans$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], child: Trait = basis.last(true).get): Dependency = {
-    if (tranSet.nonNull && tranSet.nonEmpty) basis.transformers.put(child.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
+    if (tranSet.nonEmpty) basis.transformers.put(child.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)))
     this
   }
 
   private def next$(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], top: Trait = basis.last(false).get): Dependency = {
-    if (tranSet.nonNull && tranSet.nonEmpty) basis.transGlobal.put(top.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.Set])
+    if (tranSet.nonEmpty) basis.transGlobal.put(top.name$, requireTransInTpeSame$OutKDiff(requireElemNonNull(tranSet)).to[mutable.Set])
     this
   }
 
@@ -187,7 +187,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     // 必须先于下面transGlobal的读取。
     val trimmed = trimOutsFlow(basisx, outputs, uselesx)
     new Reflow.Impl(new Basis {
-      override val traits = basisx.traits.to[immutable.Seq]
+      override val traits = basisx.traits.toList
       override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
       override val transformers = basisx.transformers.mapValues(_.toSet).toMap
       override val transGlobal = basisx.transGlobal.mapValues(_.toSet).toMap
@@ -211,9 +211,9 @@ class Dependency private[reflow]() extends TAG.ClassName {
 object Dependency {
   trait Basis {
     val traits: Seq[Trait]
-    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`top trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
+    /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`sub trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
     val dependencies: Map[String, Map[String, KvTpe[_ <: AnyRef]]]
-    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`top trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。可能`get`出来为`null`。 */
+    /** 任务的输出经过转换（用不上的转换器将被忽略）, 生成最终输出传给后续任务。`key`为`sub trat.name$`。注意：仅转换当前任务的输出，区别于`transGlobal`。 */
     val transformers: Map[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     /** 把截止到当前为止的全部输出作为输入的全局转换器（用不上的转换器将被忽略）。`key`为`top level trat.name$`。可能`get`出来为`null`。 */
     val transGlobal: Map[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
@@ -570,8 +570,8 @@ object Dependency {
     }
   }
 
-  private def requireTypeMatch4Consume(require: KvTpe[_ <: AnyRef], out: KvTpe[_ <: AnyRef]): Unit = if (debugMode &&
-    !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
+  private def requireTypeMatch4Consume(require: KvTpe[_ <: AnyRef], out: KvTpe[_ <: AnyRef]): Unit =
+    if (/*debugMode &&*/ !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
   private def genOuts(trat: Trait, mapPal: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable)
                      (implicit logTag: LogTag): mutable.Map[String, KvTpe[_ <: AnyRef]] = {
@@ -583,14 +583,12 @@ object Dependency {
       transOuts(basis.transformers.getOrNull(trat.name$), map)
       // 再看看有没有相同的输出
       if (mapPal.nonNull) {
-        if (debugMode) {
-          if (mapPal.nonEmpty) map.values.foreach { k =>
-            if (mapPal.contains(k.key)) {
-              // 并行的任务不应该有相同的输出
-              Throws.sameOutKeyParallel(k, trat)
-            }
+        /*if (debugMode) {*/ // 多一些判断并不会造成什么性能损失，但能及时发现可能存在的问题。
+        if (mapPal.nonEmpty) map.values.foreach { k =>
+          if (mapPal.contains(k.key)) {
+            Throws.sameOutKeyParallel(k, trat) // 并行的任务不应该有相同的输出。
           }
-        }
+        } /*}*/
         mapPal ++= map
       }
       if (debugMode) log.i("[genOuts]trait:%s, mapPal:%s, map:%s.", trat.name$.s, mapPal, map)
@@ -605,7 +603,7 @@ object Dependency {
       tranSet.filter(t => map.contains(t.in.key)).foreach { t =>
         // 先不从map移除, 可能多个transformer使用同一个源。
         val from = map(t.in.key)
-        if (debugMode && !t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
+        if (/*debugMode &&*/ !t.in.isAssignableFrom(from)) Throws.typeNotMatch4Trans(from, t.in)
         if (t.in.key == t.out.key) sameKey = t :: sameKey
         else trans = t :: trans
       }
@@ -626,8 +624,7 @@ object Dependency {
     if (requires.nonEmpty) {
       requires.values.toSet.filter(k => inputRequired.contains(k.key)).foreach { k =>
         val in = inputRequired(k.key)
-        /*if (debugMode) {*/
-        // 这里必须判断，不管是不是debugMode。
+        /*if (debugMode) {*/ // 这里必须判断，无论是不是 debugMode。
         if (!k.isAssignableFrom(in)) {
           // input不是require的子类, 但是require是input的子类, 那么把require存进去。
           if (in.isAssignableFrom(k)) inputRequired.put(k.key, k)

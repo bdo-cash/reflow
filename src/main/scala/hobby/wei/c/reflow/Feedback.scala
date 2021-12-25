@@ -105,8 +105,8 @@ object Feedback {
     * @param weight  根据`Period`得到的加权参数（29/04/2021 增加）。
     */
   final case class Progress(sum: Int, step: Int, weight: Weight, trat: Option[Trait] = None, trigger: Progress = null, subs: Option[Seq[Progress]] = None) {
-    require(step < sum || (step == sum && subs.isEmpty))
-    require(subs.fold(true)(_.forall(_.nonNull)))
+    assert(step < sum || (step == sum && subs.isEmpty))
+    assert(subs.fold(true)(_.forall(_.nonNull)))
 
     lazy val main: Float = (weight.serial + sub * weight.rate) / sum
     lazy val sub: Float = subs.fold[Float](0) { seq => seq.map(p => p() * p.weight.par).sum / seq.map(_.weight.par).sum }
