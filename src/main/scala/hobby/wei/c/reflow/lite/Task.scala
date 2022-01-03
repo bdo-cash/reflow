@@ -30,7 +30,7 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
-import hobby.wei.c.reflow.Assist.requireTaskNameDiffAndUpdate
+import hobby.wei.c.reflow.Assist.requirePulseKeyDiff
 import hobby.wei.c.reflow.Dependency.IsPar
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import java.util.concurrent.atomic.AtomicLong
@@ -180,18 +180,7 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     period = period, priority = priority, name = name, desc = desc, visible = visible
   )(f)
 
-  def resolveDepends(pulseMode: Boolean): Dependency = {
-    def check(dep: Dependency): Dependency = {
-      val names = new mutable.HashSet[String]
-      def requestParentNameWithDepthDiff(r: Intent, depth: Int = 0) {
-        if (r.is4Reflow) r.asSub.reflow.basis.traits.foreach(requestParentNameWithDepthDiff(_, depth + 1))
-        else if (r.isPar) r.asPar.traits().foreach(requestParentNameWithDepthDiff(_, depth))
-        else requireTaskNameDiffAndUpdate(r, names, depth)
-      }
-      // 非`pulseMode`不关注`depth`，在各层`submit()`时已经检查了`name`。
-      if (pulseMode) dep.submit().basis.traits.foreach(requestParentNameWithDepthDiff(_))
-      dep
-    }
+  def resolveDepends(): Dependency = {
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) if head.isDefined =>
         val dep = parseDepends(head.get)
@@ -199,10 +188,10 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
       case _: Input[_] => Reflow.builder
       case _ => throwInputRequired
     }
-    check(parseDepends(this))
+    parseDepends(this)
   }
 
-  def run(input: IN, feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit strategy: Strategy, poster: Poster): Scheduler = {
+  def run(input: IN, feedback: Feedback.Lite[OUT] = Feedback.Lite.Log, globalTrack: Boolean = false)(implicit strategy: Strategy, poster: Poster): Scheduler = {
     /*@scala.annotation.tailrec
     def findIn(lite: AbsLite[_, _]): In = lite match {
       case Serial(head, _) if head.isDefined => findIn(head.get)
@@ -210,7 +199,7 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
       case _ => throwInputRequired
     }*/
     def findIn: In = Task.defKeyVType -> input
-    resolveDepends(false).submit().start(findIn, feedback)
+    resolveDepends().submit().start(findIn, feedback, globalTrack)
   }
 
   /**
@@ -220,8 +209,8 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     * @return `Pulse`实例，可进行无数次的`input(in)`操作。
     */
   final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3,
-                  execCapacity: Int = 3)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
-    Pulse(new reflow.Pulse(resolveDepends(true).submit(), feedback, abortIfError, inputCapacity, execCapacity))
+                  execCapacity: Int = 3, globalTrack: Boolean = false)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
+    Pulse(new reflow.Pulse(requirePulseKeyDiff(resolveDepends().submit()), feedback, abortIfError, inputCapacity, execCapacity, globalTrack))
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
   protected def throwInputNotRequired = throw new IllegalArgumentException("`Input[]` NOT required.".tag)

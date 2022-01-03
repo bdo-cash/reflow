@@ -29,10 +29,11 @@ import hobby.wei.c.reflow.Trait.ReflowTrait
 private[reflow] trait Env extends TAG.ClassName {
   private[reflow] val trat: Trait
   private[reflow] val tracker: Tracker
+
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
     in.fillWith(tracker.getPrevOutFlow)
-    val cached = if (isPulseMode && !tracker.isInput(trat)) tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
+    val cached = if (isPulseMode) if (tracker.isInput(trat) || trat.is4Reflow) None else tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
     if (cached.isDefined) in.cache(cached.get)
     in
   }
@@ -40,20 +41,22 @@ private[reflow] trait Env extends TAG.ClassName {
 
   private final def superCache: ReinforceCache = tracker.getCache
 
-  /** 在reinforce阶段，从缓存中取回。 */
+  /** 在 reinforce 阶段，从缓存中取回。 */
   private[reflow] final def obtainCache: Option[ReinforceCache] = {
     assert(isReinforcing)
     superCache.subs.get(trat.name$)
   }
 
   /** `Task`的当前缓存。 */
-  private[reflow] final def myCache(create: Boolean = false): Option[Out] = if (create) {
-    Some(superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.KvTpes.empty())))
-  } else superCache.caches.get(trat.name$)
+  private[reflow] final def myCache(create: Boolean = false): Option[Out] =
+    if (create) Some(superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.KvTpes.empty())))
+    else superCache.caches.get(trat.name$)
 
   private[reflow] final def cache[V](key: String, value: V): Unit = myCache(create = true).get.cache(key, value)
 
-  final def subDepth: Int = tracker.subDepth
+  final def subDepth: Int        = tracker.subDepth
+  final def serialNum: Long      = tracker.serialNum
+  final def globalTrack: Boolean = tracker.globalTrack
 
   final lazy val weightPar: Int = tracker.reflow.basis.weightedPeriod(trat)
 
@@ -63,16 +66,17 @@ private[reflow] trait Env extends TAG.ClassName {
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
   final def requireReinforce(t: Trait = trat): Boolean = tracker.requireReinforce(t)
-  final def isReinforceRequired: Boolean = tracker.isReinforceRequired
-  final def isReinforcing: Boolean = tracker.isReinforcing
-  final def isPulseMode: Boolean = tracker.isPulseMode
-  final def isSubReflow: Boolean = tracker.isSubReflow
-  final def parent: Option[ReflowTrait] = tracker.outer.map(_.trat.as[ReflowTrait])
+  final def isReinforceRequired: Boolean               = tracker.isReinforceRequired
+  final def isReinforcing: Boolean                     = tracker.isReinforcing
+  final def isPulseMode: Boolean                       = tracker.isPulseMode
+  final def isSubReflow: Boolean                       = tracker.isSubReflow
+  final def parent: Option[ReflowTrait]                = tracker.outer.map(_.trat.as[ReflowTrait])
 }
 
 private[reflow] object Env {
+
   def apply(_trat: Trait, _tracker: Tracker): Env = new Env {
-    override private[reflow] val trat = _trat
+    override private[reflow] val trat    = _trat
     override private[reflow] val tracker = _tracker
   }
 }

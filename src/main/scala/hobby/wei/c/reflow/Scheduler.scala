@@ -16,12 +16,11 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.tool.Locker
-
+import java.util.concurrent.locks.ReentrantLock
 import scala.collection._
 
 /**
@@ -29,15 +28,12 @@ import scala.collection._
   * @version 1.0, 02/07/2016
   */
 trait Scheduler {
-  /**
-    * @see #sync(boolean, long)
-    */
-  @deprecated(message = "好用但应慎用。会block住当前线程，几乎是不需要的。", since = "0.0.1")
+
+  /** @see #sync(boolean, long) */
+  @deprecated(message = "好用但应慎用。会 block 住当前线程，几乎是不需要的。", since = "0.0.1")
   def sync(reinforce: Boolean = false): Out
 
-  /**
-    * 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}), 则会重新{@link Impl#start()} 启动。但
-    * 这种情况极少见。
+  /** 等待任务运行完毕并输出最终结果。如果没有拿到结果(已经{@link #isDone()}), 则会重新{@link Impl#start()} 启动。但这种情况极少见。
     *
     * @param reinforce    是否等待`reinforce`阶段结束。
     * @param milliseconds 延迟的deadline, 单位：毫秒。
@@ -52,8 +48,7 @@ trait Scheduler {
 
   def getState: Tpe
 
-  /**
-    * 判断整个任务流是否运行结束。
+  /** 判断整个任务流是否运行结束。
     * 注意: 此时的{@link #getState()}值可能是{@link State#COMPLETED}、{@link State#FAILED}、
     * {@link State#ABORTED}或{@link State#UPDATED}中的某一种。
     *
@@ -63,14 +58,24 @@ trait Scheduler {
 }
 
 object Scheduler {
+
   /**
     * @author Wei Chou(weichou2010@gmail.com)
     * @version 1.0, 07/08/2016
     */
-  private[reflow] class Impl(reflow: Reflow, traitIn: Trait, inputTrans: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
-                             feedback: Feedback, strategy: Strategy, outer: Env = null, pulse: Pulse.Interact = null) extends Scheduler {
-    private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
-    private lazy val state = new State$()
+  private[reflow] class Impl(
+      reflow: Reflow,
+      traitIn: Trait,
+      inputTrans: immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
+      feedback: Feedback,
+      strategy: Strategy,
+      outer: Env,
+      pulse: Pulse.Interact,
+      serialNum: Long,
+      globalTrack: Boolean
+  ) extends Scheduler {
+    private implicit lazy val lock: ReentrantLock                       = Locker.getLockr(this)
+    private lazy val state                                              = new State$()
     @volatile private var delegatorRef: ref.WeakReference[Tracker.Impl] = _
 
     private[reflow] def start$(): this.type = {
@@ -84,7 +89,7 @@ object Scheduler {
         }
       }
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
-        val tracker = new Tracker.Impl(reflow, traitIn, inputTrans, state, feedback, strategy, Option(outer), pulse)
+        val tracker = new Tracker.Impl(reflow, traitIn, inputTrans, state, feedback, strategy, Option(outer), pulse, serialNum, globalTrack)
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
         // 这里增加一层弱引用, 避免在任务完毕之后得不到释放。
         delegatorRef = new ref.WeakReference[Tracker.Impl](tracker)
@@ -105,15 +110,15 @@ object Scheduler {
 
     @throws[InterruptedException]
     override def sync(reinforce: Boolean, milliseconds: Long): Option[Out] = {
-      val begin = System.nanoTime
-      var loop = true
+      val begin                   = System.nanoTime
+      var loop                    = true
       var delegator: Tracker.Impl = null
       while (loop) {
         getDelegator.fold {
           Option(start$()).fold {
             // 如果还没拿到, 说明其他线程也在同时start().
             Thread.`yield`() // 那就等一下下再看看
-          } { _ => } // 重启成功，再走一次循环拿值。
+          } { _ => }         // 重启成功，再走一次循环拿值。
         } { d =>
           delegator = d
           loop = false
@@ -128,7 +133,7 @@ object Scheduler {
 
     override def isDone: Boolean = {
       val state = this.state.get
-      state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/) {
+      state == COMPLETED && getDelegator.fold(true /*若引用释放,说明任务已不被线程引用,即运行完毕。*/ ) {
         !_.isReinforceRequired
       } || state == FAILED || state == ABORTED || state == UPDATED
     }
@@ -137,8 +142,8 @@ object Scheduler {
   class State$ {
     private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
-    @volatile private var state = State.IDLE
-    @volatile private var state$ = State.IDLE
+    @volatile private var state      = State.IDLE
+    @volatile private var state$     = State.IDLE
     @volatile private var overridden = false
 
     def forward(state: State.Tpe): Boolean = Locker.syncr {
@@ -162,13 +167,13 @@ object Scheduler {
           state = State.COMPLETED
           true
         case State.COMPLETED | State.UPDATED => true
-        case _ => false
+        case _                               => false
       }
     }
 
     def get: Tpe = state
 
-    def get$: Tpe = state$
+    def get$ : Tpe = state$
 
     private[reflow] def reset(): Unit = Locker.syncr {
       state = State.IDLE

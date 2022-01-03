@@ -16,21 +16,21 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent._
-import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.anno.proguard.{KeepMp$, KeepVp$}
 import hobby.wei.c.log.Logger
 import hobby.wei.c.reflow
-import hobby.wei.c.reflow.Assist.eatExceptions
+import hobby.wei.c.reflow.Assist.{eatExceptions, requirePulseKeyDiff}
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
-import scala.collection.{mutable, _}
+import java.util.concurrent._
+import java.util.concurrent.locks.ReentrantLock
+import scala.collection._
 import scala.collection.concurrent.TrieMap
 
 /**
@@ -90,17 +90,18 @@ object Reflow {
   /**
     * 任务大概时长。
     */
-  @KeepVp$
-  @KeepMp$
+  @ KeepVp$
+  @ KeepMp$
   object Period extends Enumeration {
     type Tpe = Period$
+
     /**
       * @param weight 辅助任务{Trait#priority() 优先级}的调度策略参考。
       */
     private[reflow] case class Period$(weight: Int) extends Val with Ordering[Period$] {
       private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
-      private var average = 0L
-      private var count = 0L
+      private var average                           = 0L
+      private var count                             = 0L
 
       override def compare(x: Period$, y: Period$) = if (x.weight < y.weight) -1 else if (x.weight == y.weight) 0 else 1
 
@@ -140,7 +141,7 @@ object Reflow {
     val INFINITE = Period$(20)
   }
 
-  private var _debugMode = true
+  private var _debugMode      = true
   private var _config: Config = Config.DEF
   private var _logger: Logger = new Logger()
 
@@ -154,17 +155,12 @@ object Reflow {
     }
   }
 
-  def config = _config
-
+  def config                                         = _config
   def setThreadResetor(resetor: ThreadResetor): Unit = Worker.setThreadResetor(resetor)
-
-  def setLogger(logr: Logger): Unit = _logger = logr
-
-  def logger = _logger
-
-  def setDebugMode(b: Boolean): Unit = _debugMode = b
-
-  def debugMode = _debugMode
+  def setLogger(logr: Logger): Unit                  = _logger = logr
+  def logger                                         = _logger
+  def setDebugMode(b: Boolean): Unit                 = _debugMode = b
+  def debugMode                                      = _debugMode
 
   @deprecated(message = "仅用于结束应用：关闭之后不可以再重启。", since = "0.0.1")
   def shutdown(): Unit = Worker.sThreadPoolExecutor.shutdown()
@@ -178,12 +174,7 @@ object Reflow {
     */
   def create(trat: Trait, trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = builder.next(trat)
 
-  /**
-    * 复制参数到新的任务流。
-    *
-    * @param dependency
-    * @return
-    */
+  /** 复制参数到新的任务流。 */
   def create(dependency: Dependency): Dependency = builder.next(dependency)
 
   /**
@@ -199,12 +190,12 @@ object Reflow {
   def submit[V >: Null](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL, _desc: String = null, _name: String = null): Future[V] = {
     import implicits._
     @volatile var callableOut: V = null
-    val future = new FutureTask[V](() => callableOut)
+    val future                   = new FutureTask[V](() => callableOut)
     val trat = new Trait.Adapter() {
-      override protected def name() = if (_name.isNull || _name.isEmpty) super.name() else _name
+      override protected def name()     = if (_name.isNull || _name.isEmpty) super.name() else _name
       override protected def priority() = _priority
-      override protected def period() = _period
-      override protected def desc() = if (_desc.isNull) name$ else _desc
+      override protected def period()   = _period
+      override protected def desc()     = if (_desc.isNull) name$ else _desc
       override def newTask() = new Task {
         override protected def doWork(): Unit = {
           callableOut = _runner
@@ -220,21 +211,18 @@ object Reflow {
     * 本实现存在两个问题：<p>
     * 1. 无法被`GlobalTrack`监控到；<p>
     * 2. FutureTask 会吞掉异常（现已修正）。<p>
-    * 所以简版仅留给内部使用。 */
-  private[reflow] def submit$[V >: Null](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL)/*: Future[V] =*/ {
-//    @volatile var callableOut: V = null
-//    val future = new FutureTask[V](() => callableOut)
-    Worker.scheduleRunner(new Worker.Runner(new Trait.Adapter() {
-      override protected def priority() = _priority
-      override protected def period() = _period
-      override protected def desc() = name$
-      override def newTask() = null
-    }, () => {
-      _runner
-//      callableOut = _runner
-//      future.run()
-    }))
-//    future
+    * 所以简版仅留给内部使用。
+    */
+  private[reflow] def submit$[V >: Null](_runner: => V)(_period: Period.Tpe, _priority: Int = P_NORMAL) {
+    Worker.scheduleRunner(new Worker.Runner(
+      new Trait.Adapter() {
+        override protected def priority() = _priority
+        override protected def period()   = _period
+        override protected def desc()     = name$
+        override def newTask()            = null
+      },
+      () => _runner
+    ))
   }
 
   private[reflow] def builder = new Dependency()
@@ -243,9 +231,9 @@ object Reflow {
   //********************************** Global Track **********************************//
 
   object GlobalTrack {
-    private lazy val observersMap = new TrieMap[GlobalTrackObserver, Feedback4Observer]
+    private lazy val observersMap           = new TrieMap[GlobalTrackObserver, Feedback4Observer]
     private[reflow] lazy val globalTrackMap = new TrieMap[Feedback, GlobalTrack]
-    private[reflow] lazy val obtainer = getAllItems _
+    private[reflow] lazy val obtainer       = getAllItems _
 
     def getAllItems = globalTrackMap.readOnlySnapshot.values
 
@@ -272,33 +260,39 @@ object Reflow {
       private def reportOnUpdate(gt: GlobalTrack): Unit = eatExceptions(observer.onUpdate(gt, obtainer))
 
       def onPending(gt: GlobalTrack): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
-      def onStart(gt: GlobalTrack): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
-      def onProgress(gt: GlobalTrack, progress: Feedback.Progress, out: Out, fromDepth: Int): Unit =
-        if (poster.isNull) reportOnUpdate(gt.progress(progress)) else poster.post(reportOnUpdate(gt.progress(progress)))
-      def onComplete(gt: GlobalTrack, out: Out): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
-      def onUpdate(gt: GlobalTrack, out: Out): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
-      def onAbort(gt: GlobalTrack, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onStart(gt: GlobalTrack): Unit   = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+
+      def onProgress(gt: GlobalTrack, progress: Feedback.Progress, out: Out, fromDepth: Int): Unit            = if (poster.isNull) reportOnUpdate(gt.progress(progress)) else poster.post(reportOnUpdate(gt.progress(progress)))
+      def onComplete(gt: GlobalTrack, out: Out): Unit                                                         = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onUpdate(gt: GlobalTrack, out: Out): Unit                                                           = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
+      def onAbort(gt: GlobalTrack, trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
       def onFailed(gt: GlobalTrack, trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = if (poster.isNull) reportOnUpdate(gt) else poster.post(reportOnUpdate(gt))
     }
+
     private[reflow] class Feedback4GlobalTrack extends Feedback with TAG.ClassName {
       private lazy val tracker: GlobalTrack = globalTrackMap(this)
 
       override def onPending(): Unit = observersMap.snapshot.values.foreach(_.onPending(tracker))
-      override def onStart(): Unit = observersMap.snapshot.values.foreach(_.onStart(tracker))
+      override def onStart(): Unit   = observersMap.snapshot.values.foreach(_.onStart(tracker))
+
       override def onProgress(progress: Feedback.Progress, out: Out, fromDepth: Int): Unit =
         observersMap.snapshot.values.foreach(_.onProgress(tracker, progress, out, fromDepth))
+
       override def onComplete(out: Out): Unit = {
         observersMap.snapshot.values.foreach(_.onComplete(tracker, out))
         if (tracker.scheduler.isDone) globalTrackMap.remove(this)
       }
+
       override def onUpdate(out: Out): Unit = {
         observersMap.snapshot.values.foreach(_.onUpdate(tracker, out))
         globalTrackMap.remove(this)
       }
+
       override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {
         observersMap.snapshot.values.foreach(_.onAbort(tracker, trigger, parent, depth))
         globalTrackMap.remove(this)
       }
+
       override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = {
         observersMap.snapshot.values.foreach(_.onFailed(tracker, trat, parent, depth, e))
         globalTrackMap.remove(this)
@@ -309,20 +303,27 @@ object Reflow {
   //////////////////////////////////////////////////////////////////////////////////////
   //********************************** Reflow  Impl **********************************//
 
-  private[reflow] class Impl private[reflow](override val basis: Dependency.Basis, inputRequired: immutable.Map[String,
-    KvTpe[_ <: AnyRef]]) extends Reflow(basis: Dependency.Basis) with TAG.ClassName {
-    override private[reflow] def start(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl = {
+  private[reflow] class Impl private[reflow] (override val basis: Dependency.Basis, inputRequired: immutable.Map[String, KvTpe[_ <: AnyRef]]) extends Reflow(basis: Dependency.Basis) with TAG.ClassName {
+
+    override private[reflow] def start$(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null, serialNum: Long = -1, globalTrack: Boolean = false): Scheduler.Impl = {
       require(feedback.nonNull)
       require(strategy.nonNull)
       val (reqSet, tranSet) = prepare(inputs, outer, pulse)
-      val traitIn = new Trait.Input(this, inputs, reqSet)
-      // 全局记录跟踪
-      val feedback4track = new Feedback4GlobalTrack
-      val trackStrategy = Strategy.Depth(2) -> Strategy.Fluent
-      val scheduler = new Scheduler.Impl(this, traitIn, tranSet,
-        /*子Reflow还会再次走到这里，所以仅关注两层进度即可。*/
-        trackStrategy.genDelegator(feedback4track).join(strategy.genDelegator(feedback.wizh(poster))),
-        strategy /*由于内部实现仅关注isFluentMode，本处不需要考虑trackStrategy。*/ , outer, pulse)
+      val traitIn           = new Trait.Input(this, inputs, reqSet)
+      // 全局记录跟踪。SubReflow 还会再次走到这里，所以仅关注两层进度即可。
+      lazy val feedback4track = new Feedback4GlobalTrack
+      lazy val trackStrategy  = Strategy.Depth(2) -> Strategy.Fluent
+      val scheduler = new Scheduler.Impl(
+        this,
+        traitIn,
+        tranSet,
+        if (globalTrack) trackStrategy.genDelegator(feedback4track).join(strategy.genDelegator(feedback.wizh(poster))) else strategy.genDelegator(feedback.wizh(poster)),
+        strategy /*由于内部实现仅关注 isFluentMode，本处不需要考虑 trackStrategy。*/,
+        outer,
+        pulse,
+        serialNum,
+        globalTrack
+      )
       // 放在异步启动的外面，以防止后面调用sync()出现问题。
       GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat.as[ReflowTrait])))
       Reflow.submit$ {
@@ -332,6 +333,7 @@ object Reflow {
     }
 
     private var preparedSets: (immutable.Set[KvTpe[_ <: AnyRef]], immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]) = _
+
     private def prepare(inputs: In, outer: Env, pulse: Pulse.Interact): (immutable.Set[KvTpe[_ <: AnyRef]], immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]) = {
       def isPulseMode = pulse.nonNull
 
@@ -339,8 +341,8 @@ object Reflow {
       else {
         // requireInputsEnough(inputs, inputRequired) // 有下面的方法组合，不再需要这个。
         val required = inputRequired.mutable
-        val tranSet = inputs.trans.mutable
-        val realIn = putAll(new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]], inputs.keys)
+        val tranSet  = inputs.trans.mutable
+        val realIn   = putAll(new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]], inputs.keys)
         consumeTranSet(tranSet, required, realIn, check = true, trim = true)
         val reqSet = required.values.toSet
         requireRealInEnough(reqSet, realIn)
@@ -357,17 +359,17 @@ object Reflow {
     }
 
     override def toSub(_name: String, _desc: String = null): ReflowTrait = new ReflowTrait(this) {
-      override protected def name() = if (_name.isNull) super.name() else _name
+      override protected def name()     = if (_name.isNull) super.name() else _name
       override protected def requires() = inputRequired.values.toSet
-      override protected def outs() = reflow.basis.outs
-      override protected def desc() = if (_desc.isNull) name$ else _desc
+      override protected def outs()     = reflow.basis.outs
+      override protected def desc()     = if (_desc.isNull) name$ else _desc
     }
 
     override def fork() = new Impl(basis, inputRequired)
   }
 }
 
-abstract class Reflow private[reflow](val basis: Dependency.Basis) {
+abstract class Reflow private[reflow] (val basis: Dependency.Basis) {
   /**
     * 启动任务。可并行启动多个。
     *
@@ -377,17 +379,17 @@ abstract class Reflow private[reflow](val basis: Dependency.Basis) {
     * @param poster   转移`feedback`的调用线程, 可为`null`。
     * @return `true`启动成功，`false`正在运行。
     */
-  final def start(inputs: In, feedback: Feedback)(implicit strategy: Strategy, poster: Poster): Scheduler = start(inputs, feedback, strategy, poster, null)
+  final def start(inputs: In, feedback: Feedback, globalTrack: Boolean = false)(implicit strategy: Strategy, poster: Poster): Scheduler = start$(inputs, feedback, strategy, poster, globalTrack = globalTrack)
 
   /**
     * 启动一个流处理器[[Pulse]]。
     *
     * @return `Pulse`实例，可进行无数次的`input(In)`操作。
     */
-  final def pulse(feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3)(implicit strategy: Strategy, poster: Poster): Pulse =
-    new Pulse(this, feedback, abortIfError, inputCapacity)
+  final def pulse(feedback: Pulse.Feedback, abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3, execCapacity: Int = 3, globalTrack: Boolean = false)(implicit strategy: Strategy, poster: Poster): Pulse =
+    new Pulse(requirePulseKeyDiff(this), feedback, abortIfError, inputCapacity, execCapacity, globalTrack)
 
-  private[reflow] def start(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null): Scheduler.Impl
+  private[reflow] def start$(inputs: In, feedback: Feedback, strategy: Strategy, poster: Poster, outer: Env = null, pulse: Pulse.Interact = null, serialNum: Long = -1, globalTrack: Boolean = false): Scheduler.Impl
 
   /**
     * 转换为一个`Trait`（用`Trait`将本`Reflow`打包）以便嵌套构建任务流。

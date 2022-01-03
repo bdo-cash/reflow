@@ -23,8 +23,9 @@ import hobby.chenai.nakam.basis.TAG.LogTag
 import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.anno.proguard.Burden
+import hobby.wei.c.reflow.Dependency.IsPar
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
-
+import hobby.wei.c.reflow.Trait.ReflowTrait
 import scala.collection._
 
 /**
@@ -50,10 +51,34 @@ object Assist {
     col
   }
 
-  def requireTaskNameDiffAndUpdate(trat: Trait, names: mutable.Set[String], depth: Int = -1): Unit = {
-    val name = if (depth < 0) trat.name$ else s"${trat.name$}@depth:$depth"
+  def requireTaskNameDiffAndUpdate(trat: Trait, names: mutable.Set[String]): Unit = {
+    val name = trat.name$
     if (names.contains(name)) Throws.sameName(name)
     names.add(name)
+  }
+
+  def requirePulseKeyDiffAndUpdate(depth: Int, trat: Trait, parent: Option[ReflowTrait], keySet: mutable.Set[(Int, String, String)]): Unit = {
+    val key = resolveKey(depth, trat, parent)
+    if (keySet.contains(key)) Throws.sameKeyPulse(key)
+    keySet.add(key)
+  }
+
+  def requirePulseKeyDiff(reflow: Reflow): Reflow = {
+    val keySet = new mutable.HashSet[(Int, String, String)]
+    def loop(trat: Trait, parent: Option[ReflowTrait] = None, depth: Int = 0) {
+      // `Tracker`中已忽略`is4Reflow`与`Pulse.Interact`的交互。
+      if (trat.is4Reflow) trat.asSub.reflow.basis.traits.foreach(loop(_, Some(trat.asSub), depth + 1))
+      else if (trat.isPar) trat.asPar.traits().foreach(loop(_, parent, depth))
+      else requirePulseKeyDiffAndUpdate(depth, trat, parent, keySet)
+    }
+    reflow.basis.traits.foreach(loop(_))
+    reflow
+  }
+
+  def resolveKey(depth: Int, trat: Trait, parent: Option[ReflowTrait]): (Int, String, String) = (depth, trat.name$, parent.map(_.name$).orNull)
+
+  def genSerialNum(reflow: Reflow, key: (Int, String, String), which: Int): Long = {
+    3
   }
 
   /**
@@ -95,7 +120,8 @@ object Assist {
   }
 
   private[reflow] object Throws {
-    def sameName(name: String)                                                              = throw new IllegalArgumentException(s"任务队列中不可以有相同的任务名称（不同 depth 除外）。名称为`$name`的 Task 已存在, 请检查。建议把 lite.Task 定义的 val 改为 def（如果用 lite 库的话），或尝试重写其 Trait.name() 方法。")
+    def sameName(name: String)                                                              = throw new IllegalArgumentException(s"任务队列中不可以有相同的任务名称。名称为`$name`的 Task 已存在, 请检查。建议把 lite.Task 定义的 val 改为 def（如果用 lite 库的话），或尝试重写其 Trait.name() 方法。")
+    def sameKeyPulse(key: (Int, String, String))                                            = throw new IllegalArgumentException(s"Pulse 中不可以有`层级、任务名称、父任务名称`三者都相同的组。组名称为`$key`的 Task 已存在, 请检查。建议把 lite.Task 定义的 val 改为 def（如果用 lite 库的话），或尝试重写其 Trait.name() 方法。")
     def sameOutKeyParallel(kvt: KvTpe[_ <: AnyRef], trat: Trait)                            = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${kvt.key}`, Task: `${trat.name$}`。")
     def sameCacheKey(kvt: KvTpe[_ <: AnyRef])                                               = throw new IllegalArgumentException(s"Task.cache(key, value) 不可以和与该 Task 相关的 Trait.requires() 有相同的 key: `${kvt.key}`。")
     def sameKey$k(kvt: KvTpe[_ <: AnyRef])                                                  = throw new IllegalArgumentException(s"集合中的 KvTpe.key 不可以重复: `$kvt`。")

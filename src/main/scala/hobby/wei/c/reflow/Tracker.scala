@@ -24,21 +24,17 @@ import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Dependency.{IsPar, SetTo, _}
 import hobby.wei.c.reflow.Feedback.Progress
-import hobby.wei.c.reflow.Feedback.Progress.Weight
-import hobby.wei.c.reflow.Feedback.Progress.Strategy
+import hobby.wei.c.reflow.Feedback.Progress.{Strategy, Weight}
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Snatcher
 import java.util.concurrent._
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Condition, ReentrantLock}
-import java.util.{Timer, TimerTask}
-import scala.annotation.tailrec
 import scala.collection.{mutable, _}
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.duration.DurationInt
 import scala.util.control.Breaks._
 import scala.util.control.NonFatal
 
@@ -62,14 +58,13 @@ import scala.util.control.NonFatal
   * @param strategy 当前`Reflow`启动时传入的`Strategy`。由于通常要考虑到父级`Reflow`的`Strategy`，因此通常使用`strategyRevised`以取代本参数；
   * @param pulse    流处理模式下的交互接口。可能为`null`，表示非流处理模式。
   */
-private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strategy, val outer: Option[Env], val pulse: Pulse.Interact) extends TAG.ClassName {
+private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strategy, val outer: Option[Env], val pulse: Pulse.Interact, val serialNum: Long, val globalTrack: Boolean) extends TAG.ClassName {
   require(strategy.nonNull)
-  private lazy final val snatcher4Init = new Snatcher
-  // 这两个变量，在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到cache中）；
+  // 在浏览运行阶段会根据需要自行创建（任务可能需要缓存临时参数到 cache 中）；
   // 而在`Reinforce`阶段，会从外部传入。
   // 因此有这样的设计。
   // 1.3, 23/03/2019, 将`false`改为了`true`。
-  @volatile private var cacheInited: Boolean = outer.fold(true)(_.isReinforcing)
+  private lazy val cacheInited = new AtomicBoolean(outer.fold(true)(_.isReinforcing))
 
   // 1.3, 23/03/2019, 最外层的`Tracker`在各个阶段（`Reinforce`）都是同一个实例，因此本变量也是同一个实例。
   private final lazy val reinforceCache = outer.fold(new ReinforceCache) { env =>
@@ -89,12 +84,9 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strateg
     // 引起不必要的多余调用，结果是直接返回（不过`getCache`和上面`obtainCache`会触发循环递归，直到最外层的`Tracker`或`reinforceCache`已经初始化）；
     // 只是在非`Reinforce`阶段，会有一些重复不必要的调用，但没有更好的办法。
     sub.foreach(reinforceCache.subs.putIfAbsent(trat, _))
-    if (!cacheInited) // format: off
-      snatcher4Init.tryOn({
-        if (!cacheInited) {
-          outer.foreach { env => env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(reinforceCache)) }
-          cacheInited = true
-        }}, true) // format: on
+    if (cacheInited.compareAndSet(false, true)) {
+      outer.foreach { env => env.tracker.getOrInitFromOuterCache(env.trat.name$, Option(reinforceCache)) }
+    }
     reinforceCache
   }
   final def getCache = getOrInitFromOuterCache()
@@ -158,7 +150,6 @@ private[reflow] class ReinforceCache {
 }
 
 private[reflow] object Tracker {
-  //lazy val (testTimer, debugTimer) = (true, new Timer())
 
   private[reflow] final class Impl(
       reflow: Reflow,
@@ -168,8 +159,10 @@ private[reflow] object Tracker {
       feedback: Feedback,
       strategy: Strategy,
       outer: Option[Env],
-      pulse: Pulse.Interact
-  ) extends Tracker(reflow: Reflow, strategy: Strategy, outer: Option[Env], pulse: Pulse.Interact)
+      pulse: Pulse.Interact,
+      serialNum: Long,
+      globalTrack: Boolean
+  ) extends Tracker(reflow, strategy, outer, pulse, serialNum, globalTrack)
          with Scheduler
          with TAG.ClassName {
     private lazy val snatcher                  = new Snatcher.ActionQueue(strategy.isFluentMode)
@@ -242,7 +235,9 @@ private[reflow] object Tracker {
       // 1. 以下逻辑常常会执行两次，对于特别轻量的执行时间极短的任务，如：`lite.ParN.merge`。
       // 但这是不对的：有对`prevOutFlow`和`outFlowTrimmed`的处理，它们是协同的，只能处理一次，否则就会紊乱。
       // 2. 时序问题：`joinOutFlow()`未经过线程同步，导致之后`verifyOutFlow()`验证异常。
-      // 3. 额外新发现的问题：pulse 不向后走。原因是：重构`lite.ParN.merge`后，减少`SubReflow`层级同时，也把同名的`trat`（和同名 parent）应用到了`pulse.Interact`接口，导致混淆而出现错误。
+      // 3. 额外新发现的问题：pulse 不向后推进。原因是：
+      //   a. 重构`lite.ParN.merge`后，减少`SubReflow`层级同时，也把同名的`trat`（和同名 parent）应用到了`pulse.Interact`接口，导致混淆而出现错误；
+      //   b. `Pulse`中的`roadmap`和`suspend`也存在时序问题。
       if (end) snatcher.queAc { endStepByStep() }
     }
 
@@ -263,47 +258,24 @@ private[reflow] object Tracker {
     }
 
     private def updateOutJoinFlag(curr: Trait) {
-      @tailrec def cas(i: Int = 0) {
-        val mapOp    = runnersParallel.get(tratTopOrInput(curr).name$)
-        lazy val opt = mapOp.get.find(_._1.trat == curr)
-        if (mapOp.isEmpty || opt.isEmpty) { // 逻辑上不会出现
-          log.w("[updateOutJoinFlag] WAIT !!! | %s | trat:%s.", i, curr.name$.s)
-          Thread.`yield`()
-          cas(i + 1)
-        } else opt.get._2._1.ensuring(!_.get).set(true)
-      }
-      cas()
+      // 当前逻辑其实用不上`visWait`。
+      Snatcher.visWait { runnersParallel.get(tratTopOrInput(curr).name$) } { o => o.isDefined && o.get.exists(_._1.trat == curr) }(_ => s"[updateOutJoinFlag]trat:${curr.name$}")
+        .get.find(_._1.trat == curr).get._2._1.ensuring(!_.get).set(true)
     }
 
     private def updateRunnerEndFlag(runner: Runner): Boolean = {
       val top = tratTopOrInput(runner.trat)
-      @tailrec def cas(i: Int = 0): Boolean = {
-        val mapOp = runnersParallel.get(top.name$)
-        if (mapOp.isDefined && mapOp.get.isDefinedAt(runner)) {
-          val map = mapOp.get
-          map(runner)._2.ensuring(!_.get).set(true)
-          map.ensuring(_.nonEmpty).forall(_._2._2.get)
-        } else { // 逻辑上不会出现
-          log.w("[updateRunnerEndFlag] WAIT !!! | %s | trat:%s, global:%s, runner:%s.", i, runner.trat.name$.s, top.name$.s, runner)
-          Thread.`yield`()
-          cas(i + 1)
-        }
-      }
-      cas()
+      // 当前逻辑其实用不上`visWait`。
+      val map = Snatcher.visWait { runnersParallel.get(top.name$) } { o => o.isDefined && o.get.isDefinedAt(runner) }(_ => s"[updateRunnerEndFlag]trat:${runner.trat.name$}, global:${top.name$}, runner:$runner").get
+      map(runner)._2.ensuring(!_.get).set(true)
+      map.ensuring(_.nonEmpty).forall(_._2._2.get)
     }
 
     private def waitRunnersEndFlagCorrect(trat: Trait) {
       val top = tratTopOrInput(trat)
-      @tailrec def cas(i: Int = 0) {
-        val mapOp = runnersParallel.get(top.name$)
-        if (mapOp.isEmpty || mapOp.get.ensuring(_.nonEmpty).exists(t => t._2._1.get != t._2._2.get)) {
-          // 此处不用`debugMode`，因为大多数情况下，不会出现该 log。但也有例外：如并行的是一个`ReflowTrait`，那么它的`onTaskComplete()`与`endRunner()`可能不在同一个线程中被调用。
-          log.w("[waitRunnersEndFlagCorrect] WAIT !!! for Out join flag | %s | global:%s.", i, top.name$.s)
-          Thread.`yield`()
-          cas(i + 1)
-        }
-      }
-      cas()
+      Snatcher.visWait { runnersParallel.get(top.name$) } { o =>
+        o.isDefined && o.get.ensuring(_.nonEmpty).exists(t => t._2._1.get == t._2._2.get)
+      }(_ => s"[waitRunnersEndFlagCorrect] wait for Out join flag | global:${top.name$}.")
     }
 
     private def endStepByStep() {
@@ -415,24 +387,6 @@ private[reflow] object Tracker {
       }
       else map.keys.foreach { Worker.scheduleRunner(_, bucket = false) }
       Worker.scheduleBuckets()
-      /*if (testTimer || debugMode) {
-        def check(global: Trait, i: Int = 0): Unit = {
-          // format: off
-          val begin = firstBeginStep
-          val last  = lastExistsEndStep
-          if (begin.isDefined && begin.get == global) {
-            // 正常，但…如果一直输出，则说明卡住了。
-            log.w("[tryScheduleNext] %s | exists BEGIN but maybe not `PUSHED` | global:%s, parent:%s, input:%s.", i, global.name$.s, outer.map(_.trat.name$.s), traitIn.name$.s)
-            debugTimer.schedule(new TimerTask { override def run(): Unit = check(global, i + 1) }, 3.seconds.toMillis)
-          } else if (last.isDefined && last.get == global) {
-            // 正常，但…如果一直输出，则说明卡住了。
-            log.w("[tryScheduleNext] %s | exists END but maybe not `PUSHED` | global:%s, parent:%s, input:%s.", i, global.name$.s, outer.map(_.trat.name$.s), traitIn.name$.s)
-            debugTimer.schedule(new TimerTask { override def run(): Unit = check(global, i + 1) }, 3.seconds.toMillis)
-          } else { // 说明已经正常结束了。
-          } // format: on
-        }
-        debugTimer.schedule(new TimerTask { override def run(): Unit = check(global) }, 13.seconds.toMillis)
-      }*/
     }
 
     /** 切换到reinforce的开始位置。 */
@@ -504,37 +458,13 @@ private[reflow] object Tracker {
     override private[reflow] def getPrevOutFlow = prevOutFlow
 
     // 2.5, 30/12/2021, bug fix: 任务执行过快而引发的时序问题。
-    // 本方法虽然逻辑上发生在`endRunner()`之前，但没有通过线程同步，所以`verifyOutFlow()`（通过`endRunner() -> snatcher.queAc()`调用）会偶现比本方法
-    // 提前执行的情况，即：时序异常。这也解释了给本方法加上`snatcher.queAc()`后极少出现上述[时序不稳定]的情况，【但】仍会出现，而且一旦出现，极有可能
-    // 出现死循环（等不到被填充），那是非时序的其它问题了（详见该 bug fix 的其它说明）。
-    // 由于当前有`waitRunnersEndFlagCorrect()` cas 操作，为了避免不必要的等待，这里就不用`snatcher.queAc()`了。
     private def joinOutFlow(curr: Trait, flow: Out): Unit = {
-      // 以下情况不存在。
-      //val last = lastExistsEndStep
-      //val b    = last.isEmpty || last.get == traitIn || reflow.basis.stepOf(curr) == reflow.basis.stepOf(last.get)
-      //assert(b, s"[joinOutFlow]此时不应有下一步的开始执行。curr:${curr.name$}(${reflow.basis.stepOf(curr)}), last:${last.map(_.name$)}(${reflow.basis.stepOf(last.get)})。")
-      //val end = firstEndStep // 未进行线程同步，可能出现自己已结束的情况，正常。
-      //assert(end.isEmpty || end.forall { _ == tratTopOrInput(curr) }, s"[joinOutFlow]此时不应有下一步的执行结束。curr:${curr.name$}, next:${end.map(_.name$)}。")
-
       if (flow ne outFlowTrimmed) outFlowTrimmed.putWith(flow._map, flow._nullValueKeys, ignoreTpeDiff = false /*合并到整体输出流，这里需要类型绝对匹配。*/, fullVerify = false /*本方法的目的是一部分一部分的填入输出，在并行的任务没有全部执行完毕的情况下，通常是处于还没有填满的状态，所以不应该进行满载验证。*/ )
       updateOutJoinFlag(curr)
     }
 
-    //private lazy val onlyOnceVerifyCounterMap = TrieMap.empty[String, AtomicInteger]
     // 2.5, 30/12/2021, bug fix: 任务执行过快而引发的时序问题。
-    private def verifyOutFlow(curr: Trait): Unit = if (debugMode) {
-      // 该问题已经 fix。
-      //val counter = onlyOnceVerifyCounterMap.getOrElseUpdate(curr.name$, new AtomicInteger(0))
-      //val n       = counter.updateAndGet(x => x + 1)
-      //assert(n == 1, s"[verifyOutFlow]curr:${curr.name$}, times:$n.")
-      // 以下情况不存在。
-      //val last = lastExistsEndStep
-      //assert(last.isEmpty, s"[verifyOutFlow]此时不应开始执行下一步。时序不对（本方法靠后了）。curr:${curr.name$}(${reflow.basis.stepOf(curr)}), last:${last.map(_.name$)}(${reflow.basis.stepOf(last.get)})。")
-      //val end = firstEndStep
-      //assert(end.isEmpty, s"[verifyOutFlow]此时不应有下一步的执行结束。curr:${curr.name$}(${reflow.basis.stepOf(curr)}), next:${end.map(_.name$)}(${reflow.basis.stepOf(end.get)})。")
-
-      outFlowTrimmed.verify()
-    }
+    private def verifyOutFlow(curr: Trait): Unit = if (debugMode) { outFlowTrimmed.verify() }
 
     override private[reflow] def performAbort(trigger: Option[Trait], curr: Trait, parent: Option[ReflowTrait], depth: Int, forError: Boolean, e: Exception): Unit = {
       if (state.forward(if (forError) FAILED else ABORTED)) {
@@ -681,12 +611,12 @@ private[reflow] object Tracker {
 
     implicit lazy val logTag: LogTag = new LogTag(className + "/…" + trat.name$.takeRight(8))
 
-    private lazy val workDone   = new AtomicBoolean(false)
-    private lazy val runnerDone = new AtomicBoolean(false)
     // 24/12/2020, fix bug 时重构了，但不影响下面 JSR-133 用法。
-    private lazy val aborted         = new AtomicBoolean(false)
+    private lazy val aborted  = new AtomicBoolean(false)
+    private lazy val workDone = new AtomicBoolean(false)
+    //private lazy val runnerDone = new AtomicBoolean(false)
     @volatile private var task: Task = _
-    private var timeBegin: Long      = _
+    //private var timeBegin: Long      = _
 
     override final def equals(any: scala.Any) = super.equals(any)
     override final def canEqual(that: Any)    = super.equals(that)
@@ -730,8 +660,7 @@ private[reflow] object Tracker {
                 onFailed(e = e.getCause.as[Exception])
               case e: CodeException => // 客户代码问题
                 onFailed(e = e)
-              case _ =>
-                onFailed(e = new CodeException(e))
+              case _ => ??? // 没有更多
             }
             // 这里能够`catch`住的异常，必然是同步执行的。
             onWorkEnd()
@@ -745,8 +674,8 @@ private[reflow] object Tracker {
             innerError(t)
           }
       } finally {
-        runnerDone.set(true)
-        endMe()
+        //runnerDone.set(true)
+        //endMe()
       }
     }
 
@@ -784,17 +713,17 @@ private[reflow] object Tracker {
     }
 
     private def endMe() {
-      if (workDone.get && runnerDone.compareAndSet(true, false))
+      if (workDone.get /*&& runnerDone.compareAndSet(true, false)*/ )
         env.tracker.endRunner(this)
     }
 
     def onStart() {
       env.tracker.onTaskStart(trat)
-      timeBegin = System.currentTimeMillis
+      //timeBegin = System.currentTimeMillis
     }
 
     private def onComplete(out: Out, flow: Out) {
-      Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
+      //Monitor.duration(trat.name$, timeBegin, System.currentTimeMillis, trat.period$)
       env.tracker.onTaskComplete(trat, out, flow)
     }
 
@@ -822,7 +751,16 @@ private[reflow] object Tracker {
 
     override private[reflow] def exec$(env: Env, runner: Runner): Boolean = {
       progress(0, 10, publish = autoProgress)
-      scheduler = env.trat.as[ReflowTrait].reflow.start(In.from(env.input), new SubReflowFeedback(env, runner, progress(10, 10, publish = autoProgress)), env.tracker.strategy.toSub, null, env, env.tracker.pulse)
+      scheduler = env.trat.asSub.reflow.start$(
+        In.from(env.input),
+        new SubReflowFeedback(env, runner, progress(10, 10, publish = autoProgress)),
+        env.tracker.strategy.toSub,
+        null,
+        env,
+        env.tracker.pulse,
+        env.serialNum,
+        env.globalTrack
+      )
       false // 异步。
     }
     override protected def autoProgress: Boolean = false
@@ -834,7 +772,7 @@ private[reflow] object Tracker {
     }
   }
 
-  private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: => Unit) extends Feedback with TAG.ClassName {
+  private[reflow] class SubReflowFeedback(env: Env, runner: Runner, doSth: => Unit) extends Feedback {
     override def onPending(): Unit = {}
 
     override def onStart(): Unit = {
