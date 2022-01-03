@@ -158,7 +158,7 @@ private[reflow] class ReinforceCache {
 }
 
 private[reflow] object Tracker {
-  //lazy val debugTimer = new Timer()
+  //lazy val (testTimer, debugTimer) = (true, new Timer())
 
   private[reflow] final class Impl(
       reflow: Reflow,
@@ -415,7 +415,7 @@ private[reflow] object Tracker {
       }
       else map.keys.foreach { Worker.scheduleRunner(_, bucket = false) }
       Worker.scheduleBuckets()
-      /*if (debugMode) {
+      /*if (testTimer || debugMode) {
         def check(global: Trait, i: Int = 0): Unit = {
           // format: off
           val begin = firstBeginStep

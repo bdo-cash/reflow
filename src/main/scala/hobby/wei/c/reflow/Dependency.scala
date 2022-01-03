@@ -54,7 +54,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     */
   def and(trat: Trait, trans: Transformer[_ <: AnyRef, _ <: AnyRef]*): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
-    requireTaskNameDiff(trat, names)
+    requireTaskNameDiffAndUpdate(trat, names)
     if (basis.traits.isEmpty) {
       basis.traits += trat
     } else {
@@ -80,7 +80,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
     */
   def next(trat: Trait): Dependency = {
     require(!trat.ensuring(_.nonNull).isPar)
-    requireTaskNameDiff(trat, names)
+    requireTaskNameDiffAndUpdate(trat, names)
     basis.last(false).foreach(genIOPrev(_, null, basis, inputRequired, useless))
     basis.traits += trat
     this

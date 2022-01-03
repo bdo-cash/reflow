@@ -38,26 +38,20 @@ object Assist {
   def assertx(b: Boolean): Unit = assertf(b, "", force = false)
 
   @Burden
-  def assertx(b: Boolean, msg: => String): Unit = assertf(b, msg, force = false)
-
-  def assertf(b: Boolean): Unit = assertf(b, "", force = true)
-
-  def assertf(b: Boolean, msg: => String): Unit = assertf(b, msg, force = true)
-
+  def assertx(b: Boolean, msg: => String): Unit                                = assertf(b, msg, force = false)
+  def assertf(b: Boolean): Unit                                                = assertf(b, "", force = true)
+  def assertf(b: Boolean, msg: => String): Unit                                = assertf(b, msg, force = true)
   private def assertf(b: Boolean, msg: => String, force: Boolean = true): Unit = if ((force || debugMode) && !b) Throws.assertError(msg)
 
-  def requireNonEmpty(s: String): String = {
-    assertf(s.nonNull && s.nonEmpty)
-    s
-  }
+  def requireNonEmpty(s: String): String = { assertf(s.nonNull && s.nonEmpty); s }
 
   def requireElemNonNull[C <: Set[_ <: AnyRef]](col: C): C = {
     if (debugMode) col.seq.foreach(t => assertf(t.nonNull, "元素不能为null."))
     col
   }
 
-  def requireTaskNameDiff(trat: Trait, names: mutable.Set[String]): Unit = if (debugMode) {
-    val name = trat.name$
+  def requireTaskNameDiffAndUpdate(trat: Trait, names: mutable.Set[String], depth: Int = -1): Unit = {
+    val name = if (depth < 0) trat.name$ else s"${trat.name$}@depth:$depth"
     if (names.contains(name)) Throws.sameName(name)
     names.add(name)
   }
@@ -66,7 +60,7 @@ object Assist {
     * 由于{@link Key$#equals(Object)}是比较了所有参数，所以这里还得重新检查。
     */
   def requireKkDiff[C <: Iterable[KvTpe[_ <: AnyRef]]](keys: C): C = {
-    if (debugMode && keys.nonEmpty) {
+    if (/*debugMode &&*/ keys.nonEmpty) {
       val ks = new util.HashSet[String]
       for (k <- keys.seq) {
         if (ks.contains(k.key)) Throws.sameKey$k(k)
@@ -80,7 +74,7 @@ object Assist {
     * 要求相同的输入key的type也相同，且不能有相同的输出k.key。
     */
   def requireTransInTpeSame$OutKDiff[C <: Set[Transformer[_ <: AnyRef, _ <: AnyRef]]](tranSet: C): C = {
-    if (debugMode && tranSet.nonEmpty) {
+    if (/*debugMode &&*/ tranSet.nonEmpty) {
       val map = new mutable.AnyRefMap[String, Transformer[_ <: AnyRef, _ <: AnyRef]]()
       for (t <- tranSet) {
         if (map.contains(t.in.key)) {
@@ -96,59 +90,43 @@ object Assist {
   }
 
   def eatExceptions(work: => Unit)(implicit tag: LogTag) {
-    try {
-      work
-    } catch {
-      case e: Exception => log.w(e, "eatExceptions.")
-    }
+    try { work }
+    catch { case e: Exception => log.w(e, "eatExceptions.") }
   }
 
   private[reflow] object Throws {
-    def sameName(name: String) = throw new IllegalArgumentException(s"队列中不可以有相同的任务名称。名称为`$name`的Task已存在, 请确认或尝试重写其name()方法。")
-
-    def sameOutKeyParallel(key: KvTpe[_ <: AnyRef], trat: Trait) = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${key.key}`, Task: `${trat.name$}`。")
-
-    def sameCacheKey(key: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException(s"Task.cache(key, value)不可以和与该Task相关联的Trait.requires()有相同的key: `${key.key}`。")
-
-    def sameKey$k(key: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException("集合中的Key$.key不可以重复: `$key`。")
-
-    def lackIOKey(key: KvTpe[_ <: AnyRef], in$out: Boolean) = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: $key。")
-
-    def lackOutKeys() = throw new IllegalStateException("所有任务的输出都没有提供最终输出, 请检查。")
-
-    def typeNotMatch(key: KvTpe[_ <: AnyRef], clazz: Class[_]) = throw new IllegalArgumentException(s"key为`${key.key}`的参数值类型与定义不一致: 应为`${key.tpe}`, 实际为`$clazz`。")
-
-    def typeNotMatch4Trans(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "转换。")
-
-    def typeNotMatch4Consume(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "消化需求。")
-
-    def typeNotMatch4Required(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "新增初始输入。")
-
-    def typeNotMatch4RealIn(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef]) = typeNotMatch(to, from, "实际输入。")
-
+    def sameName(name: String)                                                              = throw new IllegalArgumentException(s"任务队列中不可以有相同的任务名称（不同 depth 除外）。名称为`$name`的 Task 已存在, 请检查。建议把 lite.Task 定义的 val 改为 def（如果用 lite 库的话），或尝试重写其 Trait.name() 方法。")
+    def sameOutKeyParallel(kvt: KvTpe[_ <: AnyRef], trat: Trait)                            = throw new IllegalArgumentException(s"并行的任务不可以有相同的输出。key: `${kvt.key}`, Task: `${trat.name$}`。")
+    def sameCacheKey(kvt: KvTpe[_ <: AnyRef])                                               = throw new IllegalArgumentException(s"Task.cache(key, value) 不可以和与该 Task 相关的 Trait.requires() 有相同的 key: `${kvt.key}`。")
+    def sameKey$k(kvt: KvTpe[_ <: AnyRef])                                                  = throw new IllegalArgumentException(s"集合中的 KvTpe.key 不可以重复: `$kvt`。")
+    def lackIOKey(kvt: KvTpe[_ <: AnyRef], in$out: Boolean)                                 = throw new IllegalStateException(s"缺少${if (in$out) "输入" else "输出"}参数: `$kvt`。")
+    def lackOutKeys()                                                                       = throw new IllegalStateException("所有任务的输出都没有提供最终输出, 请检查。")
+    def typeNotMatch(kvt: KvTpe[_ <: AnyRef], clazz: Class[_])                              = throw new IllegalArgumentException(s"key 为`${kvt.key}`的参数值类型与定义不一致: 应为`${kvt.tpe}`, 实际为`$clazz`。")
+    def typeNotMatch4Trans(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef])                = typeNotMatch(to, from, "转换。")
+    def typeNotMatch4Consume(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef])              = typeNotMatch(to, from, "消化需求。")
+    def typeNotMatch4Required(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef])             = typeNotMatch(to, from, "新增初始输入。")
+    def typeNotMatch4RealIn(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef])               = typeNotMatch(to, from, "实际输入。")
     private def typeNotMatch(from: KvTpe[_ <: AnyRef], to: KvTpe[_ <: AnyRef], opt: String) = throw new IllegalArgumentException(s"赋值类型不匹配: `${to.tpe}` but `${from.tpe}`. 操作: `$opt`。")
-
-    def tranSameKeyButDiffType(one: KvTpe[_ <: AnyRef], another: KvTpe[_ <: AnyRef]) = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
-
-    def assertError(msg: String) = throw new AssertionError(msg)
+    def tranSameKeyButDiffType(one: KvTpe[_ <: AnyRef], another: KvTpe[_ <: AnyRef])        = throw new IllegalArgumentException(s"多个转换使用同一输入key但类型不一致: key: `${one.key}`, types: `${one.tpe}`、`${another.tpe}`。")
+    def assertError(msg: String)                                                            = throw new AssertionError(msg)
   }
 
   private[reflow] object Monitor extends TAG.ClassName {
     private def tag(name: String): LogTag = new LogTag(className + "/" + name)
 
     @Burden
-    def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe) {
+    def duration(name: String, begin: Long, end: Long, period: Reflow.Period.Tpe): Unit = if (debugMode) {
       val duration = end - begin
-      val avg = period.average(duration)
+      val avg      = period.average(duration)
       if (avg == 0 || duration <= avg) {
-        if (debugMode) log.i("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.i("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       } else {
-        if (debugMode) log.w("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
+        log.w("task:%s, period:%s, duration:%fs, average:%fs.", name.s, period, duration / 1000f, avg / 1000f)(tag("duration"))
       }
     }
 
     @Burden
-    def duration(reflow: TAG.ClassName, begin: Long, end: Long, state: State.Tpe, state$: State.Tpe, subReflow: Boolean): Unit = if (!subReflow)
+    def duration(reflow: TAG.ClassName, begin: Long, end: Long, state: State.Tpe, state$ : State.Tpe, subReflow: Boolean): Unit = if (!subReflow)
       if (debugMode) log.w("[Reflow Time Duration]>>>>>>>>>> duration:%fs, state:%s/%s <<<<<<<<<<.", (end - begin) / 1000f, state, state$)(reflow.className)
 
     @Burden
@@ -170,19 +148,20 @@ object Assist {
     def threadPool(pool: ThreadPoolExecutor, addThread: Boolean, reject: Boolean): Unit = if (debugMode) log.i(
       "{ThreadPool}%s, active/core/max:(%d/%d/%d), queueSize:%d, taskCount:%d, largestPool:%d.",
       if (reject) "reject runner".s else if (addThread) "add thread".s else "offer queue".s,
-      pool.getActiveCount, pool.getPoolSize, pool.getMaximumPoolSize, pool.getQueue.size(),
-      pool.getTaskCount, pool.getLargestPoolSize)(tag("threadPool"))
+      pool.getActiveCount,
+      pool.getPoolSize,
+      pool.getMaximumPoolSize,
+      pool.getQueue.size(),
+      pool.getTaskCount,
+      pool.getLargestPoolSize
+    )(tag("threadPool"))
 
     def threadPoolError(t: Throwable): Unit = log.e(t)(tag("threadPoolError"))
   }
 
-  class FailedException(t: Throwable) extends Exception(t: Throwable)
-
-  class AbortException(t: Throwable) extends Exception(t: Throwable)
-
-  class FailedError(t: Throwable) extends Error(t: Throwable)
-
+  class FailedException(t: Throwable)   extends Exception(t: Throwable)
+  class AbortException(t: Throwable)    extends Exception(t: Throwable)
+  class FailedError(t: Throwable)       extends Error(t: Throwable)
   class AbortError(t: Throwable = null) extends Error(t: Throwable)
-
-  class InnerError(t: Throwable) extends Error(t: Throwable)
+  class InnerError(t: Throwable)        extends Error(t: Throwable)
 }

@@ -22,6 +22,7 @@ import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.macros
 import hobby.wei.c.anno.proguard.Keep$
+import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.Task.Context
@@ -29,17 +30,19 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
-import java.util.concurrent.atomic.AtomicLong
+import hobby.wei.c.reflow.Assist.requireTaskNameDiffAndUpdate
 import hobby.wei.c.reflow.Dependency.IsPar
-
-import scala.reflect.ClassTag
+import hobby.wei.c.reflow.Trait.ReflowTrait
+import java.util.concurrent.atomic.AtomicLong
+import scala.collection.mutable
 import scala.language.implicitConversions
+import scala.reflect.ClassTag
 
 /**
   * @author Chenai Nakam(chenai.nakam@gmail.com)
   * @version 1.0, 14/06/2020
   */
-object Task {
+object Task { // format: off
   lazy val KEY_DEF = getClass.getName + "." + macros.valName
   lazy val defKeyVType = new KvTpe[AnyRef](Task.KEY_DEF) {}
   lazy val defKeyVTypes: Set[KvTpe[_ <: AnyRef]] = defKeyVType
@@ -177,8 +180,18 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     period = period, priority = priority, name = name, desc = desc, visible = visible
   )(f)
 
-  /** 去掉了[[Input]]的。*/
-  def resolveDepends(): Dependency = {
+  def resolveDepends(pulseMode: Boolean): Dependency = {
+    def check(dep: Dependency): Dependency = {
+      val names = new mutable.HashSet[String]
+      def requestParentNameWithDepthDiff(r: Intent, depth: Int = 0) {
+        if (r.is4Reflow) r.asSub.reflow.basis.traits.foreach(requestParentNameWithDepthDiff(_, depth + 1))
+        else if (r.isPar) r.asPar.traits().foreach(requestParentNameWithDepthDiff(_, depth))
+        else requireTaskNameDiffAndUpdate(r, names, depth)
+      }
+      // 非`pulseMode`不关注`depth`，在各层`submit()`时已经检查了`name`。
+      if (pulseMode) dep.submit().basis.traits.foreach(requestParentNameWithDepthDiff(_))
+      dep
+    }
     def parseDepends(lite: AbsLite[_, _]): Dependency = lite match {
       case Serial(head, tail) if head.isDefined =>
         val dep = parseDepends(head.get)
@@ -186,7 +199,7 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
       case _: Input[_] => Reflow.builder
       case _ => throwInputRequired
     }
-    parseDepends(this)
+    check(parseDepends(this))
   }
 
   def run(input: IN, feedback: Feedback.Lite[OUT] = Feedback.Lite.Log)(implicit strategy: Strategy, poster: Poster): Scheduler = {
@@ -197,7 +210,7 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
       case _ => throwInputRequired
     }*/
     def findIn: In = Task.defKeyVType -> input
-    resolveDepends().submit().start(findIn, feedback)
+    resolveDepends(false).submit().start(findIn, feedback)
   }
 
   /**
@@ -208,7 +221,7 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
     */
   final def pulse(feedback: reflow.Pulse.Feedback.Lite[OUT], abortIfError: Boolean = false, inputCapacity: Int = Config.DEF.maxPoolSize * 3,
                   execCapacity: Int = 3)(implicit strategy: Strategy, poster: Poster): Pulse[IN] =
-    Pulse(new reflow.Pulse(resolveDepends().submit(), feedback, abortIfError, inputCapacity, execCapacity))
+    Pulse(new reflow.Pulse(resolveDepends(true).submit(), feedback, abortIfError, inputCapacity, execCapacity))
 
   protected def throwInputRequired = throw new IllegalArgumentException("`Input[]` required.".tag)
   protected def throwInputNotRequired = throw new IllegalArgumentException("`Input[]` NOT required.".tag)
@@ -315,9 +328,8 @@ protected[lite] trait AbsPar extends ClassTags2Name {
   protected final def allOuts(pars: Seq[Parel[_, _]] = seq) =
     (Set.newBuilder[KvTpe[_ <: AnyRef]] /: pars) { (set, par) => set ++= par.intent.outs$ }.result()
 
-  protected final def toIntent(pars: Seq[Parel[_, _]] = seq, tag: String = getClass.getSimpleName): Intent = {
+  protected final def toIntent(pars: Seq[Parel[_, _]] = seq, tag: String = getClass.getSimpleName): Intent =
     parseDepends(pars).submit(allOuts(pars)).toSub(_name(tag))
-  }
 
   protected final def hasPar(pars: Seq[Parel[_, _]] = seq): Boolean = pars.exists(_.intent.isPar)
 
