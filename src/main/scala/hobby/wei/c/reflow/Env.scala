@@ -33,7 +33,7 @@ private[reflow] trait Env extends TAG.ClassName {
     val in = new Out(trat.requires$)
     in.fillWith(tracker.getPrevOutFlow)
     val cached = if (isPulseMode && !tracker.isInput(trat)) tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
-    if (cached.nonNull) in.cache(cached)
+    if (cached.isDefined) in.cache(cached.get)
     in
   }
   private[reflow] final lazy val out: Out = new Out(trat.outs$)
@@ -47,11 +47,11 @@ private[reflow] trait Env extends TAG.ClassName {
   }
 
   /** `Task`的当前缓存。 */
-  private[reflow] final def myCache(create: Boolean = false): Out = if (create) {
-    superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.KvTpes.empty()))
-  } else superCache.caches.get(trat.name$).orNull
+  private[reflow] final def myCache(create: Boolean = false): Option[Out] = if (create) {
+    Some(superCache.caches.getOrElseUpdate(trat.name$, new Out(Helper.KvTpes.empty())))
+  } else superCache.caches.get(trat.name$)
 
-  private[reflow] final def cache[V](key: String, value: V): Unit = myCache(create = true).cache(key, value)
+  private[reflow] final def cache[V](key: String, value: V): Unit = myCache(create = true).get.cache(key, value)
 
   final def subDepth: Int = tracker.subDepth
 

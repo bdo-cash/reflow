@@ -316,7 +316,7 @@ private[reflow] object Tracker {
         if (veryBeginning) {
           // nothing ...
         } else {
-          val cache = getCache
+          lazy val cache = getCache
           if (isReinforcing) { // 如果当前任务`是`申请了`reinforce`的且处于执行阶段，则应该把输出进行合并。
             // 本条件判断必须在上一个的后面
             if (isOnReinforceBegins(tratGlobal, cache))

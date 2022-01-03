@@ -168,7 +168,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback,
   private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Strategy,
                                onStartCallback: Long => Unit, onCompleteCall: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
-    private lazy val roadmap = new TrieMap[(Int, String, String), Out]
+    private lazy val roadmap = new TrieMap[(Int, String, String), Option[Out]]
     private lazy val suspend = new TrieMap[(Int, String, String), () => Unit]
     // 不可以释放实例，只可以赋值。
     @volatile var scheduler: Scheduler = _
@@ -199,7 +199,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback,
     }
 
     private lazy val interact = new Pulse.Interact {
-      override def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Out, failed: Boolean): Unit = {
+      override def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Option[Out], failed: Boolean): Unit = {
         val key = (depth, trat.name$, parent.map(_.name$).orNull)
         if (debugMode) log.i("(%d)[interact.evolve]%s.", serialNum, key)
         if (failed && !pulse.abortIfError) {
@@ -221,11 +221,11 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback,
         }
       }
 
-      override def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Out = {
+      override def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Option[Out] = {
         val key = (depth, trat.name$, parent.map(_.name$).orNull)
         if (debugMode) log.i("(%d)[interact.getCache]%s.", serialNum, key)
-        head.fold[Out](null) {
-          _.roadmap.remove(key).orNull
+        head.fold[Option[Out]](None) {
+          _.roadmap.remove(key).flatten
         }
       }
     }
@@ -383,7 +383,7 @@ object Pulse {
       * @param cache  留给下一个路过`Task`的数据。
       * @param failed 当前`Task`是否异常失败了。
       */
-    def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Out, failed: Boolean): Unit
+    def evolve(depth: Int, trat: Trait, parent: Option[ReflowTrait], cache: Option[Out], failed: Boolean): Unit
 
     /**
       * 当前`Tactic`的某[[Task]]询问是否可以启动执行。必须在前一条数据输入[[Pulse.input]]执行完毕该`Task`后才可以启动。
@@ -404,7 +404,7 @@ object Pulse {
       * @param parent 同上。
       * @return
       */
-    def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Out
+    def getCache(depth: Int, trat: Trait, parent: Option[ReflowTrait]): Option[Out]
   }
 
   implicit class WithPoster(feedback: Feedback) {
