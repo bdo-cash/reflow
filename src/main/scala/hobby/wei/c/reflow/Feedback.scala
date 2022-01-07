@@ -84,12 +84,13 @@ trait Feedback extends Equals {
     */
   def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit
 
-  override def equals(any: Any) = super.equals(any)
+  override def equals(any: Any)    = super.equals(any)
   override def canEqual(that: Any) = false
 }
 
 object Feedback {
   import Progress.Weight
+
   /**
     * 表示任务的进度。由于任务可以嵌套，所以进度也需要嵌套，以便实现更精确的管理。
     *
@@ -104,15 +105,17 @@ object Feedback {
     * @param subs    子任务。可以是并行的，所以用了`Seq`。
     * @param weight  根据`Period`得到的加权参数（29/04/2021 增加）。
     */
-  final case class Progress(sum: Int, step: Int, weight: Weight, trat: Option[Trait] = None, trigger: Progress = null, subs: Option[Seq[Progress]] = None) {
+  final case class Progress(sum: Int, step: Int, weight: Weight, trat: Option[Trait] = None, trigger: Progress = null, private var subs: Option[Seq[Progress]] = None) {
     assert(step < sum || (step == sum && subs.isEmpty))
     assert(subs.fold(true)(_.forall(_.nonNull)))
 
     lazy val main: Float = (weight.serial + sub * weight.rate) / sum
-    lazy val sub: Float = subs.fold[Float](0) { seq => seq.map(p => p() * p.weight.par).sum / seq.map(_.weight.par).sum }
+    lazy val sub: Float  = subs.fold[Float](0) { seq => seq.map(p => p() * p.weight.par).sum / seq.map(_.weight.par).sum }.ensuring { _ => subs = None; true }
 
     @inline def apply(): Float = main
-    override def toString = s"Progress(sum:$sum, step:$step, weight:$weight, p:$main, sub:$sub, name:${trat.map(_.name$).orNull}, trigger:${if (trigger.isNull) null else {trigger.trat.map(_.name$).orNull + "(" + trigger.main+")"}})"
+
+    override def toString =
+      s"Progress(sum:$sum, step:$step, weight:$weight, p:$main, sub:$sub, name:${trat.map(_.name$).orNull}, trigger:${if (trigger.isNull) null else { trigger.trat.map(_.name$).orNull + "(" + trigger.main + ")" }})"
   }
 
   object Progress {
@@ -123,22 +126,24 @@ object Feedback {
       outer =>
       val priority: Int
       def genDelegator(feedback: Feedback): Feedback = feedback
-      def ->(strategy: Strategy): Strategy = new Multiply(this, strategy)
-      final def isFluentMode: Boolean = this <= Fluent
-      def base = this
+      def ->(strategy: Strategy): Strategy           = new Multiply(this, strategy)
+      final def isFluentMode: Boolean                = this <= Fluent
+      def base                                       = this
 
       /** 生成用于传递到`SubReflow`的`Strategy`。 */
       def toSub = this match {
         case Depth(level) => Depth(level - 1) // 每加深一层即递减
-        case p => p
+        case p            => p
       }
 
-      final def revise(strategy: Strategy): Strategy = if (strategy.base equiv this.base) { // 如果相等，其中一个必然是`Depth`。
-        strategy match {
-          case _: Depth => strategy
-          case _ => this
-        }
-      } else if (strategy.base > this.base) strategy else this
+      final def revise(strategy: Strategy): Strategy =
+        if (strategy.base equiv this.base) { // 如果相等，其中一个必然是`Depth`。
+          strategy match {
+            case _: Depth => strategy
+            case _        => this
+          }
+        } else if (strategy.base > this.base) strategy
+        else this
 
       // 优先级越高，数值越小。
       override def compare(x: Strategy, y: Strategy) = if (x.priority > y.priority) -1 else if (x.priority < y.priority) 1 else 0
@@ -147,12 +152,13 @@ object Feedback {
     class Multiply(val before: Strategy, val after: Strategy) extends Strategy {
       override val priority = (before min after).priority
 
-      override def base = before.base
-      override def toSub = base.toSub
+      override def base                             = before.base
+      override def toSub                            = before.toSub -> after.toSub
       override def genDelegator(feedback: Feedback) = before.genDelegator(after.genDelegator(feedback))
     }
 
     object Strategy {
+
       /** 全量。不错过任何进度细节。 */
       object FullDose extends Strategy {
         override val priority = 0
@@ -168,9 +174,11 @@ object Feedback {
 
           override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
             if (debugMode) log.i("~~~~~~~~~~~~~~~~~~~~~~~~[Fluent]fromDepth:%s, progress:%s.", fromDepth, progress)
-            if ((progress.main > main).obiter {
-              main = progress.main
-            }) {
+            if (
+              (progress.main > main).obiter {
+                main = progress.main
+              }
+            ) {
               super.onProgress(progress, out, fromDepth)
             }
           }
@@ -187,22 +195,25 @@ object Feedback {
 
         final def isMind(level: Int) = this.level > level
 
-        override def genDelegator(feedback: Feedback) = if (isFluentMode) Fluent.genDelegator(feedback)
-        else new Delegator(feedback) with TAG.ClassName {
-          @volatile private var step: Int = -1
+        override def genDelegator(feedback: Feedback) =
+          if (isFluentMode) Fluent.genDelegator(feedback)
+          else new Delegator(feedback) with TAG.ClassName {
+            @volatile private var step: Int = -1
 
-          override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
-            if (debugMode) log.i("[Depth(%s)]progress:%s, out:%s, fromDepth:%s.", level, progress, out, fromDepth)
-            if (isMind(0)) { // 关注当前层
-              if (isMind(1) /*关注子层*/
-                || (progress.step > step).obiter {
-                step = progress.step
-              }) {
-                super.onProgress(progress, out, fromDepth)
+            override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+              if (debugMode) log.i("[Depth(%s)]progress:%s, out:%s, fromDepth:%s.", level, progress, out, fromDepth)
+              if (isMind(0)) { // 关注当前层
+                if (
+                  isMind(1) /*关注子层*/
+                  || (progress.step > step).obiter {
+                    step = progress.step
+                  }
+                ) {
+                  super.onProgress(progress, out, fromDepth)
+                }
               }
             }
           }
-        }
       }
 
       /**
@@ -213,30 +224,32 @@ object Feedback {
       case class Interval(minGap: Int) extends Strategy {
         override val priority = 2
 
-        override def genDelegator(feedback: Feedback) = if (minGap <= 0) super.genDelegator(feedback)
-        else new Delegator(feedback) {
-          @volatile private var time = 0L
+        override def genDelegator(feedback: Feedback) =
+          if (minGap <= 0) super.genDelegator(feedback)
+          else new Delegator(feedback) {
+            @volatile private var time = 0L
 
-          override def onStart(): Unit = {
-            super.onStart()
-            time = System.currentTimeMillis
-          }
+            override def onStart(): Unit = {
+              super.onStart()
+              time = System.currentTimeMillis
+            }
 
-          override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
-            if (minGap > 0) {
-              val curr = System.currentTimeMillis
-              if (curr - time >= minGap) {
-                time = curr
-                super.onProgress(progress, out, fromDepth)
-              }
-            } else super.onProgress(progress, out, fromDepth)
+            override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
+              if (minGap > 0) {
+                val curr = System.currentTimeMillis
+                if (curr - time >= minGap) {
+                  time = curr
+                  super.onProgress(progress, out, fromDepth)
+                }
+              } else super.onProgress(progress, out, fromDepth)
+            }
           }
-        }
       }
     }
   }
 
   implicit class Join(fb: Feedback = null) {
+
     def join(that: Feedback): Feedback = {
       // 把 that 放在最前面
       if (fb.nonNull && fb.isInstanceOf[Feedback.Observable]) {
@@ -259,28 +272,32 @@ object Feedback {
   }
 
   implicit class WithPoster(feedback: Feedback) {
-    def wizh(poster: Poster): Feedback = if (poster.isNull) feedback else if (feedback.isNull) feedback else new Delegator(feedback) {
-      require(poster.nonNull)
 
-      override def onPending(): Unit = poster.post(super.onPending())
-      override def onStart(): Unit = poster.post(super.onStart())
-      override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = poster.post(super.onProgress(progress, out, fromDepth))
-      override def onComplete(out: Out): Unit = poster.post(super.onComplete(out))
-      override def onUpdate(out: Out): Unit = poster.post(super.onUpdate(out))
-      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = poster.post(super.onAbort(trigger, parent, depth))
-      override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = poster.post(super.onFailed(trat, parent, depth, e))
-    }
+    def wizh(poster: Poster): Feedback =
+      if (poster.isNull) feedback
+      else if (feedback.isNull) feedback
+      else new Delegator(feedback) {
+        require(poster.nonNull)
+
+        override def onPending(): Unit                                                                  = poster.post(super.onPending())
+        override def onStart(): Unit                                                                    = poster.post(super.onStart())
+        override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit                     = poster.post(super.onProgress(progress, out, fromDepth))
+        override def onComplete(out: Out): Unit                                                         = poster.post(super.onComplete(out))
+        override def onUpdate(out: Out): Unit                                                           = poster.post(super.onUpdate(out))
+        override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = poster.post(super.onAbort(trigger, parent, depth))
+        override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = poster.post(super.onFailed(trat, parent, depth, e))
+      }
   }
 
   private[reflow] class Delegator(feedback: Feedback) extends Feedback {
     require(feedback.nonNull)
 
-    override def onPending(): Unit = feedback.onPending()
-    override def onStart(): Unit = feedback.onStart()
-    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = feedback.onProgress(progress, out, fromDepth)
-    override def onComplete(out: Out): Unit = feedback.onComplete(out)
-    override def onUpdate(out: Out): Unit = feedback.onUpdate(out)
-    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = feedback.onAbort(trigger, parent, depth)
+    override def onPending(): Unit                                                                  = feedback.onPending()
+    override def onStart(): Unit                                                                    = feedback.onStart()
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit                     = feedback.onProgress(progress, out, fromDepth)
+    override def onComplete(out: Out): Unit                                                         = feedback.onComplete(out)
+    override def onUpdate(out: Out): Unit                                                           = feedback.onUpdate(out)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = feedback.onAbort(trigger, parent, depth)
     override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = feedback.onFailed(trat, parent, depth, e)
   }
 
@@ -314,8 +331,9 @@ object Feedback {
     * @param kce                所关注值的`Kce[T]`信息。
     * @param watchProgressDepth 如果同时关注进度中的反馈值的话，会涉及到 Reflow 嵌套深度的问题。
     *                           本参数表示关注第几层的进度（即：是第几层的哪个任务会输出`kce`值，Reflow 要求不同层任务的`kce`可以相同）。
-    **/
+    */
   abstract class Butt[T >: Null <: AnyRef](kce: KvTpe[T], watchProgressDepth: Int = 0) extends Adapter {
+
     override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = {
       super.onProgress(progress, out, fromDepth)
       if (fromDepth == watchProgressDepth && out.keysDef().contains(kce))
@@ -338,11 +356,14 @@ object Feedback {
   }
 
   abstract class Lite[-T <: AnyRef](watchProgressDepth: Int = 0) extends Butt(lite.Task.defKeyVType, watchProgressDepth) {
+
     @deprecated
     override final def onValueGotOnProgress(value: Option[AnyRef], progress: Progress): Unit =
       liteValueGotOnProgress(value.as[Option[T]], progress)
+
     @deprecated
     override final def onValueGotOnComplete(value: Option[AnyRef]): Unit = liteOnComplete(value.as[Option[T]])
+
     @deprecated
     override final def onValueGotOnUpdate(value: Option[AnyRef]): Unit = liteOnUpdate(value.as[Option[T]])
 
@@ -352,19 +373,20 @@ object Feedback {
   }
 
   object Lite {
+
     implicit final object Log extends Feedback.Lite[AnyRef] with TAG.ClassName {
       import Reflow.{logger => log}
 
-      override def onPending(): Unit = log.i("[onPending]")
-      override def onStart(): Unit = log.i("[onStart]")
-      override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, value:%s.", depth, progress, out/*.get(lite.Task.defKeyVType)*/)
-      override def onComplete(out: Out): Unit = super.onComplete(out)
-      override def onUpdate(out: Out): Unit = super.onUpdate(out)
-      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
+      override def onPending(): Unit                                                                  = log.i("[onPending]")
+      override def onStart(): Unit                                                                    = log.i("[onStart]")
+      override def onProgress(progress: Progress, out: Out, depth: Int): Unit                         = log.i("[onProgress]depth:%s, progress:%s, value:%s.", depth, progress, out /*.get(lite.Task.defKeyVType)*/ )
+      override def onComplete(out: Out): Unit                                                         = super.onComplete(out)
+      override def onUpdate(out: Out): Unit                                                           = super.onUpdate(out)
+      override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
       override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = log.e(e, "[onFailed]depth:%s, trat:%s, parent:%s.", depth, trat, parent)
 
       override def liteOnComplete(value: Option[AnyRef]): Unit = log.w("[liteOnComplete]value:%s.", value)
-      override def liteOnUpdate(value: Option[AnyRef]): Unit = log.w("[liteOnUpdate]value:%s.", value)
+      override def liteOnUpdate(value: Option[AnyRef]): Unit   = log.w("[liteOnUpdate]value:%s.", value)
     }
 
   }
@@ -377,34 +399,34 @@ object Feedback {
     private[Feedback] var obs: Seq[Feedback] = Nil //scala.collection.concurrent.TrieMap[Feedback, Unit] //CopyOnWriteArraySet[Feedback]
 
     private[Feedback] def removeAll(): Unit = Locker.syncr(obs = Nil)
-    private[Feedback] def reverse(): Unit = Locker.syncr(obs = obs.reverse)
+    private[Feedback] def reverse(): Unit   = Locker.syncr(obs = obs.reverse)
 
     def addObservers(fbs: Feedback*): Unit = Locker.syncr {
-      obs = (obs.to[mutable.LinkedHashSet] ++= fbs.map(_.ensuring(_.nonNull))).toSeq
+      obs = (obs.to[mutable.LinkedHashSet] ++= fbs.ensuring(_.forall(_.nonNull))).toList
     }
 
     def removeObservers(fbs: Feedback*): Unit = Locker.syncr {
-      obs = (obs.to[mutable.LinkedHashSet] --= fbs.map(_.ensuring(_.nonNull))).toSeq
+      obs = (obs.to[mutable.LinkedHashSet] --= fbs.ensuring(_.forall(_.nonNull))).toList
     }
 
-    override def onPending(): Unit = obs.foreach { fb => eatExceptions(fb.onPending()) }
-    override def onStart(): Unit = obs.foreach { fb => eatExceptions(fb.onStart()) }
-    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, fromDepth)) }
-    override def onComplete(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
-    override def onUpdate(out: Out): Unit = obs.foreach { fb => eatExceptions(fb.onUpdate(out)) }
-    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = obs.foreach { fb => eatExceptions(fb.onAbort(trigger, parent, depth)) }
+    override def onPending(): Unit                                                                  = obs.foreach { fb => eatExceptions(fb.onPending()) }
+    override def onStart(): Unit                                                                    = obs.foreach { fb => eatExceptions(fb.onStart()) }
+    override def onProgress(progress: Progress, out: Out, fromDepth: Int): Unit                     = obs.foreach { fb => eatExceptions(fb.onProgress(progress, out, fromDepth)) }
+    override def onComplete(out: Out): Unit                                                         = obs.foreach { fb => eatExceptions(fb.onComplete(out)) }
+    override def onUpdate(out: Out): Unit                                                           = obs.foreach { fb => eatExceptions(fb.onUpdate(out)) }
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = obs.foreach { fb => eatExceptions(fb.onAbort(trigger, parent, depth)) }
     override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = obs.foreach { fb => eatExceptions(fb.onFailed(trat, parent, depth, e)) }
   }
 
   implicit final object Log extends Feedback with TAG.ClassName {
     import Reflow.{logger => log}
 
-    override def onPending(): Unit = log.i("[onPending]")
-    override def onStart(): Unit = log.i("[onStart]")
-    override def onProgress(progress: Progress, out: Out, depth: Int): Unit = log.i("[onProgress]depth:%s, progress:%s, out:%s.", depth, progress, out)
-    override def onComplete(out: Out): Unit = log.w("[onComplete]out:%s.", out)
-    override def onUpdate(out: Out): Unit = log.w("[onUpdate]out:%s.", out)
-    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
+    override def onPending(): Unit                                                                  = log.i("[onPending]")
+    override def onStart(): Unit                                                                    = log.i("[onStart]")
+    override def onProgress(progress: Progress, out: Out, depth: Int): Unit                         = log.i("[onProgress]depth:%s, progress:%s, out:%s.", depth, progress, out)
+    override def onComplete(out: Out): Unit                                                         = log.w("[onComplete]out:%s.", out)
+    override def onUpdate(out: Out): Unit                                                           = log.w("[onUpdate]out:%s.", out)
+    override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit     = log.w("[onAbort]depth:%s, trigger:%s, parent:%s.", depth, trigger, parent)
     override def onFailed(trat: Trait, parent: Option[ReflowTrait], depth: Int, e: Exception): Unit = log.e(e, "[onFailed]depth:%s, trat:%s, parent:%s.", depth, trat, parent)
   }
 }

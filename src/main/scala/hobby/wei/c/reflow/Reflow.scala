@@ -26,6 +26,7 @@ import hobby.wei.c.reflow.Assist.{eatExceptions, requirePulseKeyDiff}
 import hobby.wei.c.reflow.Dependency._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.Feedback4GlobalTrack
+import hobby.wei.c.reflow.Reflow.Period.TRANSIENT
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool.Locker
 import java.util.concurrent._
@@ -324,11 +325,9 @@ object Reflow {
         serialNum,
         globalTrack
       )
-      // 放在异步启动的外面，以防止后面调用sync()出现问题。
-      GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat.as[ReflowTrait])))
-      Reflow.submit$ {
-        scheduler.start$()
-      }(Period.TRANSIENT, P_HIGH)
+      // 放在异步启动的外面，以防止后面调用`sync()`出现问题。
+      if (globalTrack) GlobalTrack.globalTrackMap.put(feedback4track, new GlobalTrack(this, scheduler, Option(if (outer.isNull) null else outer.trat.as[ReflowTrait])))
+      Reflow.submit$ { scheduler.start$() }(TRANSIENT, P_HIGH)
       scheduler
     }
 

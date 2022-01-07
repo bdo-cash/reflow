@@ -27,8 +27,8 @@ import scala.reflect.ClassTag
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 28/03/2018
   */
-@KeepVp$
-@KeepMp$
+@ KeepVp$
+@ KeepMp$
 object implicits {
   val P_HIGH   = Reflow.P_HIGH
   val P_NORMAL = Reflow.P_NORMAL
@@ -50,8 +50,8 @@ object implicits {
   type Intent = Trait
   val Intent = Trait
 
-  def none[A]: immutable.Set[KvTpe[_ <: AnyRef]] = Helper.KvTpes.empty
-  def none: In                                   = In.empty
+  def none[A]: immutable.Set[KvTpe[_ <: AnyRef]] = Helper.KvTpes.empty()
+  def none: In                                   = In.empty()
 
   implicit class TransformerRetain(kvt: KvTpe[_ <: AnyRef]) {
     @inline def re: Transformer[_ <: AnyRef, _ <: AnyRef] = Helper.Transformers.retain(kvt)
@@ -68,13 +68,13 @@ object implicits {
     lite.Task[IN, Next](TRANSIENT, P_HIGH, visible = false)((in, _) => f(in))
 
   // def 方法不能直接起作用，这里转换为函数值。
-  implicit lazy val f0 = kvtpe2Bdr _
+  implicit lazy val f0 = kvTpe2Bdr _
   implicit lazy val f1 = trans2Bdr _
   implicit lazy val f2 = tpeKv2Bdr _
   implicit lazy val f3 = strKv2Bdr _
 
-  implicit def kvtpe2Bdr(kt: KvTpe[_ <: AnyRef]): Helper.KvTpes.Builder                                                     = Helper.KvTpes + kt
-  implicit def kvtpe2Ok(kt: KvTpe[_ <: AnyRef]): immutable.Set[KvTpe[_ <: AnyRef]]                                          = kt ok ()
+  implicit def kvTpe2Bdr(kt: KvTpe[_ <: AnyRef]): Helper.KvTpes.Builder                                                     = Helper.KvTpes + kt
+  implicit def kvTpe2Ok(kt: KvTpe[_ <: AnyRef]): immutable.Set[KvTpe[_ <: AnyRef]]                                          = kt ok ()
   implicit def kvtBdr2Ok(kb: Helper.KvTpes.Builder): immutable.Set[KvTpe[_ <: AnyRef]]                                      = kb ok ()
   implicit def trans2Bdr(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): Helper.Transformers.Builder                         = Helper.Transformers + trans
   implicit def trans2Ok(trans: Transformer[_ <: AnyRef, _ <: AnyRef]): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans ok ()

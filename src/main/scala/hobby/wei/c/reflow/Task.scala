@@ -110,7 +110,7 @@ abstract class Task protected() {
     * @param sum  进度的分母。必须大于等于`step`且不可变。
     */
   final def progress(step: Int, sum: Int, publish: Boolean = true): Unit = env$.tracker.onTaskProgress(
-    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum), Weight(step, 1, env$.weightPar)), env$.out, env$.subDepth, publish)
+    trat, Progress(sum, step.ensuring(_ <= /*这里必须可以等于*/ sum), Weight(step, 1, env$.weightPar)), env$.out, env$.depth, publish)
 
   /**
     * 请求强化运行。

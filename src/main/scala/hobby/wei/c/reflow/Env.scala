@@ -33,7 +33,7 @@ private[reflow] trait Env extends TAG.ClassName {
   private[reflow] final lazy val input: Out = {
     val in = new Out(trat.requires$)
     in.fillWith(tracker.getPrevOutFlow)
-    val cached = if (isPulseMode) if (tracker.isInput(trat) || trat.is4Reflow) None else tracker.pulse.getCache(subDepth, trat, parent) else myCache(create = false)
+    val cached = if (isPulseMode) if (tracker.isInput(trat) || trat.is4Reflow) None else tracker.pulse.getCache(depth, trat, parent) else myCache(create = false)
     if (cached.isDefined) in.cache(cached.get)
     in
   }
@@ -54,23 +54,23 @@ private[reflow] trait Env extends TAG.ClassName {
 
   private[reflow] final def cache[V](key: String, value: V): Unit = myCache(create = true).get.cache(key, value)
 
-  final def subDepth: Int        = tracker.subDepth
+  final def depth: Int           = tracker.subDepth
+  final def reflow: Reflow       = tracker.reflow
+  final def reflowTop: Reflow    = tracker.reflowTop
   final def serialNum: Long      = tracker.serialNum
   final def globalTrack: Boolean = tracker.globalTrack
 
-  final lazy val weightPar: Int = tracker.reflow.basis.weightedPeriod(trat)
+  final lazy val weightPar: Int = reflow.basis.weightedPeriod(trat)
 
-  /**
-    * 请求强化运行。
-    *
+  /** 请求强化运行。
     * @return （在本任务或者本次调用）之前是否已经请求过, 同`isReinforceRequired()`。
     */
-  final def requireReinforce(t: Trait = trat): Boolean = tracker.requireReinforce(t)
-  final def isReinforceRequired: Boolean               = tracker.isReinforceRequired
-  final def isReinforcing: Boolean                     = tracker.isReinforcing
-  final def isPulseMode: Boolean                       = tracker.isPulseMode
-  final def isSubReflow: Boolean                       = tracker.isSubReflow
-  final def parent: Option[ReflowTrait]                = tracker.outer.map(_.trat.as[ReflowTrait])
+  final def requireReinforce(): Boolean  = tracker.requireReinforce(trat)
+  final def isReinforceRequired: Boolean = tracker.isReinforceRequired
+  final def isReinforcing: Boolean       = tracker.isReinforcing
+  final def isPulseMode: Boolean         = tracker.isPulseMode
+  final def isSubReflow: Boolean         = tracker.isSubReflow
+  final def parent: Option[ReflowTrait]  = tracker.parent
 }
 
 private[reflow] object Env {

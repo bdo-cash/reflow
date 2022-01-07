@@ -38,11 +38,11 @@ import scala.util.control.Breaks._
   *          1.1, 07/09/2019, bug fix;
   *          1.2, 29/12/2019.
   */
-class Dependency private[reflow]() extends TAG.ClassName {
+class Dependency private[reflow] () extends TAG.ClassName {
   private val basis = new BasisMutable
   private val names = new mutable.HashSet[String]
-  // `Kce`是`transform`后的
-  private val useless = new mutable.AnyRefMap[String, Map[String, KvTpe[_ <: AnyRef]]]
+  // `KvTpe`是`transform`后的。
+  private val useless       = new mutable.AnyRefMap[String, Map[String, KvTpe[_ <: AnyRef]]]
   private val inputRequired = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
 
   /**
@@ -59,14 +59,14 @@ class Dependency private[reflow]() extends TAG.ClassName {
       basis.traits += trat
     } else {
       (basis.last(false).get match {
-        case tt: Trait.Parallel => tt.traits()
+        case tt: Trait.Parallel => tt //.traits()
         case last: Trait =>
           val parallel = new Trait.Parallel(last)
           // 注意：必须用 remove 和 +=，只有这俩是 ListBuffer 的方法，其他 Seq 方法会出现意想不到的状况。
           basis.traits.remove(basis.traits.length - 1)
           basis.traits += parallel
-          parallel.traits()
-      }) += trat
+          parallel //.traits()
+      }).add(trat) // += trat
     }
     trans$(trans.toSet, trat)
     this
@@ -143,19 +143,18 @@ class Dependency private[reflow]() extends TAG.ClassName {
     this
   }
 
-  /**
-    * [[#submit(outputs)]]的简写：如果要将最后任务（或转换器）的输出作为最终输出。
-    */
+  /** [[#submit(outputs)]]的简写：如果要将最后任务（或转换器）的输出作为最终输出。 */
   // 新增: 29/12/2019。
   def submit(): Reflow = {
     val outsPal = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
     basis.last(false).foreach { trat =>
-      if (trat.isPar) trat.asPar.traits().foreach { t => genOuts(t, outsPal, basis) } else genOuts(trat, outsPal, basis)
+      if (trat.isPar) trat.asPar.traits().foreach { t => genOuts(t, outsPal, basis) }
+      else genOuts(trat, outsPal, basis)
       basis.transGlobal.get(trat.name$).foreach { tranSet =>
-        // next$()已经对tranSet输入输出检查过了
+        // `next$()`已经对 tranSet 输入输出检查过了
         tranSet.map(_.out).foreach { k =>
-          // 此时outsPal里面装的是：最后transGlobal的输出和最后的任务的输出。
-          // 检查的事就交给submit(outputs)吧。
+          // 此时 outsPal 里面装的是：最后 transGlobal 的输出和最后的任务的输出。
+          // 检查的事就交给 submit(outputs) 吧。
           outsPal.put(k.key, k)
         }
       }
@@ -167,16 +166,16 @@ class Dependency private[reflow]() extends TAG.ClassName {
     * 完成依赖的创建。
     *
     * @param outputs 输出值的key列表。
-    * @return Reflow 实例。
+    * @return [[Reflow]] 实例。
     */
   // 重构: 06/09/2019. 简化参数。
   def submit(outputs: Set[KvTpe[_ <: AnyRef]]): Reflow = {
     if (debugMode) log.w("[submit]")
     requireKkDiff(outputs)
     // 创建拷贝用于计算，以防污染当前对象中的原始数据。因为当前对象可能还会被继续使用。
-    val uselesx = useless.mapValues(_.toMap.as[Map[String, KvTpe[_ <: AnyRef]]]).mutable
+    val uselesx   = useless.mapValues(_.toMap.as[Map[String, KvTpe[_ <: AnyRef]]]).mutable
     val inputReqx = inputRequired.mutable
-    val basisx = new BasisMutable(basis)
+    val basisx    = new BasisMutable(basis)
     genIOPrev(basisx.last(false).get, null, basisx, inputReqx, uselesx)
     genDeps(outputs, basisx.traits.reverse, basisx, inputReqx, uselesx)
     basisx.traits.foreach { trat =>
@@ -186,15 +185,18 @@ class Dependency private[reflow]() extends TAG.ClassName {
     } // 避免空值
     // 必须先于下面transGlobal的读取。
     val trimmed = trimOutsFlow(basisx, outputs, uselesx)
-    new Reflow.Impl(new Basis {
-      override val traits = basisx.traits.toList
-      override val dependencies = basisx.dependencies.mapValues(_.toMap).toMap
-      override val transformers = basisx.transformers.mapValues(_.toSet).toMap
-      override val transGlobal = basisx.transGlobal.mapValues(_.toSet).toMap
-      override val outsFlowTrimmed = trimmed.mapValues(_.toSet).toMap
-      override val inputs = inputReqx.values.toSet
-      override val outs = outputs.toSet
-    }, inputReqx.toMap)
+    new Reflow.Impl(
+      new Basis {
+        override val traits          = basisx.traits.toList
+        override val dependencies    = basisx.dependencies.mapValues(_.toMap).toMap
+        override val transformers    = basisx.transformers.mapValues(_.toSet).toMap
+        override val transGlobal     = basisx.transGlobal.mapValues(_.toSet).toMap
+        override val outsFlowTrimmed = trimmed.mapValues(_.toSet).toMap
+        override val inputs          = inputReqx.values.toSet
+        override val outs            = outputs.toSet
+      },
+      inputReqx.toMap
+    )
   }
 
   def fork(): Dependency = Reflow.create(this)
@@ -209,6 +211,7 @@ class Dependency private[reflow]() extends TAG.ClassName {
 }
 
 object Dependency {
+
   trait Basis {
     val traits: Seq[Trait]
     /** 表示每个任务结束的时候应该为后面的任务保留哪些`Key$`(`transform`后的)。`key`为`sub trat.name$`。注意：可能`get`出来为`empty`, 表示根本不用输出。 */
@@ -255,20 +258,22 @@ object Dependency {
 
     def topOf(name: String): Trait = topOf(traitOf(name))
 
-    def topOf(trat: Trait): Trait = if (trat.isPar) trat else {
-      var result: Trait = null
-      breakable {
-        for (tt <- traits)
-          if (tt == trat) {
-            result = tt
-            break
-          } else if (tt.isPar && tt.asPar.traits().contains(trat)) {
-            result = tt
-            break
-          }
+    def topOf(trat: Trait): Trait =
+      if (trat.isPar) trat
+      else {
+        var result: Trait = null
+        breakable {
+          for (tt <- traits)
+            if (tt == trat) {
+              result = tt
+              break
+            } else if (tt.isPar && tt.asPar.traits().contains(trat)) {
+              result = tt
+              break
+            }
+        }
+        result.ensuring(_.nonNull)
       }
-      result.ensuring(_.nonNull)
-    }
 
     def first(child: Boolean): Option[Trait] = first$last(first$last = true, child)
 
@@ -281,18 +286,21 @@ object Dependency {
         if (child && trat.isPar) {
           if (first$last) trat.asPar.first() else trat.asPar.last()
         } else trat
-      })
+      }
+    )
 
     def minPeriod(ts: Seq[Trait] = traits, ignoreReflowTrait: Boolean): Period.Tpe = (INFINITE /: ts) { (l, r) =>
       import l.mkOrderingOps
       l min (if (!ignoreReflowTrait && r.is4Reflow) minPeriod(r.asSub.reflow.basis.traits, ignoreReflowTrait)
-      else if (r.isPar) minPeriod(r.asPar.traits(), ignoreReflowTrait) else r.period$)
+             else if (r.isPar) minPeriod(r.asPar.traits(), ignoreReflowTrait)
+             else r.period$)
     }
 
     def maxPeriod(ts: Seq[Trait] = traits, ignoreReflowTrait: Boolean): Period.Tpe = (TRANSIENT /: ts) { (l, r) =>
       import l.mkOrderingOps
       l max (if (!ignoreReflowTrait && r.is4Reflow) maxPeriod(r.asSub.reflow.basis.traits, ignoreReflowTrait)
-      else if (r.isPar) maxPeriod(r.asPar.traits(), ignoreReflowTrait) else r.period$)
+             else if (r.isPar) maxPeriod(r.asPar.traits(), ignoreReflowTrait)
+             else r.period$)
     }
 
     def weightedPeriods(): Seq[Int] = traits.map(weightedPeriod)
@@ -317,13 +325,13 @@ object Dependency {
 
     if (basis.nonNull) copyFrom(basis)
 
-    override lazy val traits: mutable.ListBuffer[Trait] = new mutable.ListBuffer[Trait]
-    override lazy val dependencies: mutable.AnyRefMap[String, mutable.Map[String, KvTpe[_ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Map[String, KvTpe[_ <: AnyRef]]]
-    override lazy val transformers: mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
+    override lazy val traits: mutable.ListBuffer[Trait]                                                          = new mutable.ListBuffer[Trait]
+    override lazy val dependencies: mutable.AnyRefMap[String, mutable.Map[String, KvTpe[_ <: AnyRef]]]           = new mutable.AnyRefMap[String, mutable.Map[String, KvTpe[_ <: AnyRef]]]
+    override lazy val transformers: mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]        = new mutable.AnyRefMap[String, Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
     override lazy val transGlobal: mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]] = new mutable.AnyRefMap[String, mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]]
-    override val outsFlowTrimmed = null
-    override val inputs = null
-    override val outs = null
+    override val outsFlowTrimmed                                                                                 = null
+    override val inputs                                                                                          = null
+    override val outs                                                                                            = null
 
     def copyFrom(src: Basis): Unit = {
       src.traits.foreach(traits += _)
@@ -348,9 +356,9 @@ object Dependency {
   }
 
   implicit class IsPar(trat: Trait) {
-    def isPar: Boolean = trat.isInstanceOf[Trait.Parallel]
+    def isPar: Boolean        = trat.isInstanceOf[Trait.Parallel]
     def asPar: Trait.Parallel = trat.as[Trait.Parallel]
-    def asSub: ReflowTrait = trat.as[ReflowTrait]
+    def asSub: ReflowTrait    = trat.as[ReflowTrait]
   }
 
   /**
@@ -361,9 +369,13 @@ object Dependency {
     * <p>
     * 注意：本方法会让并行的各任务先执行`transition(Set)`进行输出转换，以免在事件b中检查出相同的输出。
     */
-  private def genIOPrev(last: Trait, mapParallelOuts: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable,
-                        inputRequired: mutable.Map[String, KvTpe[_ <: AnyRef]], mapUseless: mutable.Map[String, Map[String, KvTpe[_ <: AnyRef]]])
-                       (implicit logTag: LogTag) {
+  private def genIOPrev(
+    last: Trait,
+    mapParallelOuts: mutable.Map[String, KvTpe[_ <: AnyRef]],
+    basis: BasisMutable,
+    inputRequired: mutable.Map[String, KvTpe[_ <: AnyRef]],
+    mapUseless: mutable.Map[String, Map[String, KvTpe[_ <: AnyRef]]]
+  )(implicit logTag: LogTag) {
     if (last.isPar) {
       val outsPal = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
       for (tt <- last.asPar.traits()) {
@@ -375,7 +387,7 @@ object Dependency {
       mapUseless.put(last.name$, outsPal)
     } else {
       /*##### for requires #####*/
-      genDeps(last.requires$, basis.traits.reverse.tail /*从倒数第{二}个开始*/ , basis, inputRequired, mapUseless)
+      genDeps(last.requires$, basis.traits.reverse.tail /*从倒数第{二}个开始*/, basis, inputRequired, mapUseless)
       /*##### for outs #####*/
       val outs = genOuts(last, mapParallelOuts, basis)
       // 后面的输出可以覆盖掉前面的useless输出, 不论值类型。
@@ -392,8 +404,7 @@ object Dependency {
   /**
     * 根据最终的输出需求，向前生成依赖。同`genIOPrev()`。
     */
-  private def genDeps(req: Set[KvTpe[_ <: AnyRef]], seq: Seq[Trait], basis: BasisMutable, inputRequired: mutable.Map[String, KvTpe[_ <: AnyRef]],
-                      mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]])(implicit logTag: LogTag) {
+  private def genDeps(req: Set[KvTpe[_ <: AnyRef]], seq: Seq[Trait], basis: BasisMutable, inputRequired: mutable.Map[String, KvTpe[_ <: AnyRef]], mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]])(implicit logTag: LogTag) {
     val requires = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
     putAll(requires, req)
     breakable {
@@ -404,7 +415,7 @@ object Dependency {
         consumeRequiresOnTransGlobal(trat, requires, basis, mapUseless(trat.name$))
         // 消化在计算输出(genOuts())的前面，是否不合理？注意输出的计算仅一次，
         // 而且是为了下一次的消化服务的。如果把输出放在前面，自己的输出会误被自己消化掉。
-        consumeRequires(trat, null /*此处总是null*/ , requires, basis, mapUseless)
+        consumeRequires(trat, null /*此处总是null*/, requires, basis, mapUseless)
       }
     }
     // 前面的所有输出都没有满足, 那么看看初始输入。
@@ -415,10 +426,9 @@ object Dependency {
   /**
     * 必须单独放到最后计算，因为最后的输出需求的不同，决定了前面所有步骤的各自输出也可能不同。
     */
-  private def trimOutsFlow(basis: BasisMutable, outputs: Set[KvTpe[_ <: AnyRef]],
-                           mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]])(implicit logTag: LogTag): Map[String, Set[KvTpe[_ <: AnyRef]]] = {
+  private def trimOutsFlow(basis: BasisMutable, outputs: Set[KvTpe[_ <: AnyRef]], mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]])(implicit logTag: LogTag): Map[String, Set[KvTpe[_ <: AnyRef]]] = {
     val outsFlow = new mutable.AnyRefMap[String, Set[KvTpe[_ <: AnyRef]]]
-    val trimmed = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
+    val trimmed  = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
     putAll(trimmed, outputs)
     basis.traits.reverse.foreach(trimOutsFlow(_, basis, outsFlow, trimmed, mapUseless))
     if (debugMode) log.i("[trimOutsFlow]outsFlow:%s, globalTrans:%s.", outsFlow, basis.transGlobal)
@@ -428,15 +438,20 @@ object Dependency {
   /**
     * 必要的输出不一定都要保留到最后，指定的输出在某个任务之后就不再被需要了，所以要进行`trim`。
     */
-  private def trimOutsFlow(trat: Trait, basis: BasisMutable, outsFlow: mutable.AnyRefMap[String, Set[KvTpe[_ <: AnyRef]]],
-                           trimmed: mutable.Map[String, KvTpe[_ <: AnyRef]], mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]])(implicit logTag: LogTag) {
+  private def trimOutsFlow(
+    trat: Trait,
+    basis: BasisMutable,
+    outsFlow: mutable.AnyRefMap[String, Set[KvTpe[_ <: AnyRef]]],
+    trimmed: mutable.Map[String, KvTpe[_ <: AnyRef]],
+    mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]]
+  )(implicit logTag: LogTag) {
     consumeRequiresOnTransGlobal(trat, trimmed, basis, mapUseless(trat.name$), check = false, trim = true)
     // 注意：放在这里，存储的是globalTrans`前`的结果。
     // 如果要存储globalTrans`后`的结果，则应该放在consumeTransGlobal前边（即第1行）。
     outsFlow.put(trat.name$, trimmed.values.toSet)
     if (trat.isPar) {
       val inputs = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
-      val outs = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
+      val outs   = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
       for (tt <- trat.asPar.traits()) {
         // 根据Tracker实现的实际情况，弃用这行。
         // outsFlow.put(tt.name$(), flow)
@@ -461,8 +476,9 @@ object Dependency {
     * @param check 是否进行类型匹配检查（在最后`trim`的时候，不需要再检查一遍）。
     * @param trim  是否删除多余的全局转换（仅在`trim`阶段进行）。
     */
-  private def consumeRequiresOnTransGlobal(prev: Trait, requires: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable,
-                                           prevOuts: Map[String, KvTpe[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false)(implicit logTag: LogTag) {
+  private def consumeRequiresOnTransGlobal(prev: Trait, requires: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable, prevOuts: Map[String, KvTpe[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false)(implicit
+    logTag: LogTag
+  ) {
     val transSet = basis.transGlobal.getOrElse(prev.name$, mutable.Set.empty)
     if (transSet.nonEmpty) {
       consumeTranSet(transSet, requires, prevOuts, check, trim)
@@ -480,11 +496,16 @@ object Dependency {
     * 3. 如果全部保留，会导致不再需要的数据淤积，与设计初衷相悖（即使把局部和全局转换的运行时执行区分开，也无法解决数据淤积问题，即使淤积仅仅占用下一任务的时间）。
     * 最终方案：自动增加[输入即输出]转换（即：`retain`功能的`Transformer`）。
     */
-  private[reflow] def consumeTranSet(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], requires: mutable.Map[String, KvTpe[_ <: AnyRef]],
-                                     prevOuts: Map[String, KvTpe[_ <: AnyRef]], check: Boolean = true, trim: Boolean = false)(implicit logTag: LogTag) {
-    var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
+  private[reflow] def consumeTranSet(
+    tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]],
+    requires: mutable.Map[String, KvTpe[_ <: AnyRef]],
+    prevOuts: Map[String, KvTpe[_ <: AnyRef]],
+    check: Boolean = true,
+    trim: Boolean = false
+  )(implicit logTag: LogTag) {
+    var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]]   = Nil
     var retains: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
-    var ignore: List[String] = Nil
+    var ignore: List[String]                                 = Nil
     // 如果前一个的输出正好匹配需求，那么忽略与之相应的转换。
     if (prevOuts.nonEmpty) requires.toMap /*clone*/ .foreach { req =>
       if (prevOuts.contains(req._1) && req._2.isAssignableFrom(prevOuts(req._1))) ignore = req._1 :: ignore
@@ -526,8 +547,7 @@ object Dependency {
     * <p>
     * 背景上下文：前面已经执行过消化的`trait`不可能因为后面的任务而取消或减少消化，只会不变或增多，因此本逻辑合理且运算量小。
     */
-  private def consumeRequires(prev: Trait, parent: Trait.Parallel, requires: mutable.Map[String, KvTpe[_ <: AnyRef]],
-                              basis: BasisMutable, mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]]) {
+  private def consumeRequires(prev: Trait, parent: Trait.Parallel, requires: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable, mapUseless: Map[String, Map[String, KvTpe[_ <: AnyRef]]]) {
     if (prev.isPar) {
       breakable {
         for (tt <- prev.asPar.traits()) {
@@ -536,19 +556,20 @@ object Dependency {
         }
       }
     } else {
-      val outs = basis.dependencies.getOrElseUpdate(prev.name$,
+      val outs = basis.dependencies.getOrElseUpdate(
+        prev.name$,
         if (prev.outs$.isEmpty) mutable.Map.empty // 如果没有输出，那就算执行转换必然也是空的。
-        else new mutable.AnyRefMap)
+        else new mutable.AnyRefMap
+      )
       // 不可以使用parent，否则会导致requires都被绑定到并行的第一个任务的错误。
-      consumeRequires(prev, requires, outs, mapUseless(/*(if (parent.isNull) */ prev /* else parent)*/ .name$))
+      consumeRequires(prev, requires, outs, mapUseless( /*(if (parent.isNull) */ prev /* else parent)*/ .name$))
     }
   }
 
   /**
     * 注意：由于是从`useless`里面去拿，而`useless`都是已经转换过的，这符合`dependencies`的定义。
     */
-  private def consumeRequires(prev: Trait, requires: mutable.Map[String, KvTpe[_ <: AnyRef]],
-                              outs: mutable.Map[String, KvTpe[_ <: AnyRef]], useless: Map[String, KvTpe[_ <: AnyRef]]) {
+  private def consumeRequires(prev: Trait, requires: mutable.Map[String, KvTpe[_ <: AnyRef]], outs: mutable.Map[String, KvTpe[_ <: AnyRef]], useless: Map[String, KvTpe[_ <: AnyRef]]) {
     if (prev.outs$.nonEmpty && requires.nonEmpty) {
       requires.values.foreach { k =>
         outs.get(k.key).fold(
@@ -560,7 +581,8 @@ object Dependency {
             // 所有的useless都不删除，为了transGlobal。
             // useless.remove(out.key)
             requires.remove(k.key)
-          }) { out =>
+          }
+        ) { out =>
           requireTypeMatch4Consume(k, out)
           // 直接删除, 不用再向前面的任务要求这个输出了。
           // 而对于并行的任务, 前面已经检查过并行的任务不会有相同的输出, 后面不会再碰到这个key。
@@ -573,8 +595,7 @@ object Dependency {
   private def requireTypeMatch4Consume(require: KvTpe[_ <: AnyRef], out: KvTpe[_ <: AnyRef]): Unit =
     if (/*debugMode &&*/ !require.isAssignableFrom(out)) Throws.typeNotMatch4Consume(out, require)
 
-  private def genOuts(trat: Trait, mapPal: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable)
-                     (implicit logTag: LogTag): mutable.Map[String, KvTpe[_ <: AnyRef]] = {
+  private def genOuts(trat: Trait, mapPal: mutable.Map[String, KvTpe[_ <: AnyRef]], basis: BasisMutable)(implicit logTag: LogTag): mutable.Map[String, KvTpe[_ <: AnyRef]] = {
     if (trat.outs$.isEmpty) mutable.Map.empty
     else {
       val map = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
@@ -598,7 +619,7 @@ object Dependency {
 
   private def transOuts(tranSet: Set[Transformer[_ <: AnyRef, _ <: AnyRef]], map: mutable.Map[String, KvTpe[_ <: AnyRef]]) {
     if (tranSet.nonNull && tranSet.nonEmpty && map.nonEmpty) {
-      var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
+      var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]]   = Nil
       var sameKey: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
       tranSet.filter(t => map.contains(t.in.key)).foreach { t =>
         // 先不从map移除, 可能多个transformer使用同一个源。
@@ -672,11 +693,10 @@ object Dependency {
     *                  1. 输入是精简后的，即：已有的输入都应当尽可能的去作转换（依赖构建的时候已检测通过）。这种情况不需要传本参数；
     *                  2. 已知输出是精简后的，但输入有可能冗余。这种情况应尽量传本参数，以便减少运算。
     */
-  def doTransform(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, KvTpe[_ <: AnyRef]],
-                  prefer: Map[String, KvTpe[_ <: AnyRef]] = null): Unit = {
+  def doTransform(tranSet: mutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]], map: mutable.Map[String, Any], nullVKeys: mutable.Map[String, KvTpe[_ <: AnyRef]], prefer: Map[String, KvTpe[_ <: AnyRef]] = null): Unit = {
     if (tranSet.nonEmpty && (map.nonEmpty || nullVKeys.nonEmpty)) {
-      val out: mutable.Map[String, Any] = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
-      val nulls = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
+      val out: mutable.Map[String, Any]                      = if (map.isEmpty) mutable.Map.empty else new mutable.AnyRefMap
+      val nulls                                              = new mutable.AnyRefMap[String, KvTpe[_ <: AnyRef]]
       var trans: List[Transformer[_ <: AnyRef, _ <: AnyRef]] = Nil
       // 不过这里跟transOuts()的算法不同，所以不需要这个了。
       // val sameKey = new mutable.HashSet[Transformer[_]]

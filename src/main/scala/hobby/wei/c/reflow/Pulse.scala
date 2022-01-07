@@ -29,9 +29,10 @@ import hobby.wei.c.reflow.State._
 import hobby.wei.c.reflow.Trait.ReflowTrait
 import hobby.wei.c.tool
 import hobby.wei.c.tool.Snatcher
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import scala.collection.concurrent.TrieMap
+import scala.collection.JavaConversions.enumerationAsScalaIterator
 
 /**
   * 脉冲步进流式数据处理器。
@@ -51,7 +52,8 @@ import scala.collection.concurrent.TrieMap
   *          1.8, 01/10/2020, 修复`Tactic.snatcher`处于不同上下文导致线程不串行而偶现异常的问题；
   *          1.9, 11/10/2020, 为`Pulse.Interact`接口方法增加`parent`参数，修复[深度]和[任务]都相同的两个并行子任务干扰的问题；
   *          2.1, 18/12/2020, bug fix: 支持`Pulse.abortIfError = false`的定义（在异常出错时也能正常前进）；
-  *          2.2, 30/12/2021, bug fix: 任务执行过快而引发的时序问题。
+  *          2.2, 30/12/2021, 微调优化；
+  *          2.3, 10/01/2122, 修复诡异的 bug: 最终定位到`TrieMap`的`put()`,`remove()`不能并发读写，即使是不同的`key`。
   */
 // format: off
 class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Boolean = false,
@@ -163,36 +165,32 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
 
   private[reflow] class Tactic(@volatile var head: Option[Tactic], pulse: Pulse, serialNum: Long, strategy: Strategy, onStartCallback: Long => Unit, onCompleteCall: Long => Unit) extends TAG.ClassName {
     private lazy val snatcher = new tool.Snatcher
-    private lazy val roadmap  = new TrieMap[(Int, String, String), Option[Out]]
-    private lazy val suspend  = new TrieMap[(Int, String, String), () => Unit]
+    private lazy val roadmap  = new ConcurrentHashMap[(Int, String, String), Option[Out]]
+    private lazy val suspend  = new ConcurrentHashMap[(Int, String, String), () => Unit]
     // 不可以释放实例，只可以赋值。
     @volatile var scheduler: Scheduler = _
     @volatile var failed: Boolean      = false
 
     // format: off
-    // `in`参数放在这里以缩小作用域。
     def start(in: In): Unit = scheduler = pulse.reflow.start$(in, feedback, strategy,
         /*不使用外部客户代码提供的`poster`，以确保`feedback`和`cacheBack`反馈顺序问题。*/
         null, null, interact, serialNum, pulse.globalTrack)
     // format: on
 
-    private def serial(key: (Int, String, String), which: Int): Long = Assist.genSerialNum(reflow, key, which)
-
-    private def doPushForward(key: (Int, String, String), which: Int): Unit = if (pulse.canForward) snatcher.tryOns(if (failed && which == 0) -1 else serial(key, which)) {
-      var n    = -1L
-      val keys = roadmap.keys
-      // 放在前面，可能此时不存在的 k 在下边又出现了；而如果放在末尾，有可能在`go()`后的瞬间就被`interact.getCache`删除了。
-      n = n max keys.map(k => serial(k, 0)).fold(-1L) { _ max _ }
+    private def doPushForward(): Unit = if (pulse.canForward) snatcher.tryOn {
+      /*lazy val keys = roadmap.keys
       for ((k, go) <- suspend) { // 放到`map`中的肯定是并行的任务或单个任务，因此遍历时不用管它们放进去的顺序。
-        n = n max serial(k, 1)
         if (failed || keys.exists(_ == k)) {
-          n = n max serial(k, 0) // 实测，这里也必须加上，可能在前边遍历时还不存在。
-          if (debugMode) log.i("(%d)[doPushForward]%s.", serialNum, k)
           suspend.remove(k)
           go()
         }
-      }
-      n
+      }*/
+      suspend.forEach((k: (Int, String, String), go: () => Unit) => {
+        if (failed || roadmap.containsKey(k)) {
+          suspend.remove(k)
+          go()
+        }
+      })
     }
 
     private lazy val interact = new Pulse.Interact {
@@ -204,7 +202,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
           Tactic.this.failed = true
         }
         roadmap.put(key, cache)
-        doPushForward(key, 0)
+        doPushForward()
       }
 
       override def forward(depth: Int, trat: Trait, parent: Option[ReflowTrait], go: () => Unit): Unit = {
@@ -214,7 +212,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
           if (tac.failed) go()
           else {
             tac.suspend.put(key, go)
-            tac.doPushForward(key, 1)
+            tac.doPushForward()
           }
         }
       }
@@ -223,7 +221,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
         val key = Assist.resolveKey(depth, trat, parent)
         if (debugMode) log.i("(%d)[interact.getCache]%s.", serialNum, key)
         head.fold[Option[Out]](None) { tac =>
-          Snatcher.visWait(tac.roadmap.remove(key))(_.nonEmpty || tac.failed)(_ => key.toString).flatten
+          Snatcher.visWait(Option(tac.roadmap.remove(key)))(_.nonEmpty || tac.failed)(_ => key.toString).flatten
         }
       }
     }
@@ -252,9 +250,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
         // 本次脉冲走完所有`Task`，结束。
       }
 
-      override def onUpdate(out: Out): Unit = {
-        assert(assertion = false, "对于`Pulse`中的`Reflow`，不应该走到`onUpdate`这里。".tag)
-      }
+      override def onUpdate(out: Out): Unit = assert(assertion = false, "对于`Pulse`中的`Reflow`，不应该走到`onUpdate()`这里。".tag)
 
       override def onAbort(trigger: Option[Trait], parent: Option[ReflowTrait], depth: Int): Unit = {
         pulse.onAbort()
@@ -285,34 +281,39 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
 
     private def onCompleteDebug(): Unit = if (debugMode) {
       debugFuncMap.put(
-        (System.currentTimeMillis + 60 * 1000, serialNum),
+        (System.currentTimeMillis + 10 * 1000, serialNum),
         (time, sn) => {
-          if (time <= System.currentTimeMillis)
-            (head.map(_.suspend.keys.size).getOrElse(0), sn, head.map(_.suspend.keys.toList).getOrElse(Nil), roadmap)
-          else (-1, sn, Nil, roadmap)
+          if (time <= System.currentTimeMillis) {
+            // 这里还是不能用`head.suspend`，head 是给`serialNum + 1`次访问这一次用的，底层逻辑还是同一层的两个集合相匹配。
+            (sn, failed, suspend.keys.toList, roadmap.keys.toList)
+          } else (-1, false, Nil, Nil)
         }
       )
     }
   }
 
-  private lazy val debugFuncMap = new TrieMap[(Long, Long), (Long, Long) => (Int, Long, List[(Int, String, String)], TrieMap[(Int, String, String), Option[Out]])]()
+  private lazy val debugFuncMap = TrieMap.empty[(Long, Long), (Long, Long) => (Long, Boolean, List[(Int, String, String)], List[(Int, String, String)])]
 
   private def asyncDebug(): Unit = if (debugMode) {
-    var list: List[(Long, Boolean, String, String)] = Nil
+    var list1: List[(Long, String, String, String, String, String)] = Nil
+    var list2: List[(Long, String, String, String, String, String)] = Nil
     debugFuncMap.snapshot().foreach { case (k, v) =>
       val t = v(k._1, k._2)
       if (t._1 >= 0) {
-        if (t._1 == 0) debugFuncMap.remove(k)
-        else list :::= t._3.map { x =>
-          val b = t._4.contains(x)
-          (t._2, b, s"suspend.key:$x", s"roadmap.exists:$b")
-        } //.filterNot(_._2)
+        debugFuncMap.remove(k)
+        list1 :::= t._3.flatMap { x => if (t._2) None else Some(t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.key:$x", s"roadmap.exists:${t._4.contains(x)}", s"step:${Assist.findKeyStep(x, reflow)}") }
+        list2 :::= t._4.flatMap { x => if (t._2) None else Some(t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.exists:${t._3.contains(x)}", s"roadmap.key:$x", s"step:${Assist.findKeyStep(x, reflow)}") }
       }
     }
-    if (list.nonEmpty) {
+    if (list1.nonEmpty) {
       log.i("========== ========== ========== ========== ========== ========== ========== ========== ========== ==========")
-      list.foreach { v => log.i("========== %s", v) }
-      throw new IllegalStateException(s"%%%%%%%%%% %%%%%%%%%% %%%%%%%%%% 异常情况：累积了 ${list.size} 个没有推进的任务。%%%%%%%%%% %%%%%%%%%% %%%%%%%%%%")
+      list1.foreach { v => log.i("========== %s", v) }
+      throw new IllegalStateException(s"%%%%%%%%%% %%%%%%%%%% %%%%%%%%%% 异常情况：累积了 ${list1.size} 个没有推进的任务。%%%%%%%%%% %%%%%%%%%% %%%%%%%%%%")
+    }
+    if (list2.nonEmpty) {
+      log.i("========== ========== ========== ========== ========== ========== ========== ========== ========== ==========")
+      list2.foreach { v => log.i("---------- %s", v) }
+      throw new IllegalStateException(s"%%%%%%%%%% %%%%%%%%%% %%%%%%%%%% 异常情况：累积了 ${list2.size} 个没有读取缓存的任务。%%%%%%%%%% %%%%%%%%%% %%%%%%%%%%")
     }
   }
 }

@@ -76,8 +76,6 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strateg
   @deprecated(message = "不要直接调用本属性，特别是对于`SubReflow`，根本不需要使用它，否则会导致状态错误。", since = "0.0.1")
   private final lazy val reinforceRequired = new AtomicBoolean(false)
 
-  final lazy val subDepth: Int = outer.fold(0)(_.subDepth + 1)
-
   private final def getOrInitFromOuterCache(trat: String = null, sub: Option[ReinforceCache] = None): ReinforceCache = {
     // 1.3, 23/03/2019, 本操作和下面的`cache init`是不相干的两件事。本操作有可能执行多次，因为有可能是多个并行子任务。
     // `Reinforce`阶段，`cacheInited`生来为`true`，不需要初始化，也就不会触发本方法递归，因此`sub`始终为`None`, 不会
@@ -90,6 +88,10 @@ private[reflow] abstract class Tracker(val reflow: Reflow, val strategy: Strateg
     reinforceCache
   }
   final def getCache = getOrInitFromOuterCache()
+
+  final def subDepth: Int               = outer.fold(0)(_.depth + 1)
+  final def reflowTop: Reflow           = outer.fold(reflow)(_.reflowTop)
+  final def parent: Option[ReflowTrait] = outer.map(_.trat.as[ReflowTrait])
 
   def getState: State.Tpe
   private[reflow] def isInput(trat: Trait): Boolean
@@ -170,7 +172,7 @@ private[reflow] object Tracker {
     @volatile private var condition: Condition = _
 
     private def sum                                          = reflow.basis.traits.length
-    private lazy val runnersParallel                         = TrieMap.empty[String, TrieMap[Runner, (AtomicBoolean, AtomicBoolean)]]
+    private lazy val runnersParallel                         = TrieMap.empty[String, Map[Runner, (AtomicBoolean, AtomicBoolean)]]
     private lazy val progress                                = TrieMap.empty[String, Progress]
     private lazy val weightes                                = reflow.basis.weightedPeriods()
     private lazy val reporter                                = if (debugMode && !strategy.isFluentMode /*受`snatcher`的参数的牵连*/ ) new Reporter4Debug(reflow, feedback, sum) else new Reporter(feedback)
@@ -180,10 +182,9 @@ private[reflow] object Tracker {
     @volatile private var timeStart                          = 0L
 
     private[reflow] def start$(): Unit = {
-      if (debugMode) log.w("[start]reinforcing:%s, subReflow:%s, subDepth:%s.", isReinforcing, isSubReflow, subDepth)
-      assert(remaining.nonEmpty, s"`start()`时候，不应该存在空任务列表。isReinforcing:$isReinforcing")
-      // 如果当前是子Reflow, 则首先看是不是到了reinforce阶段。
-      if (isReinforcing) {
+      if (debugMode) log.w("[start]serialNum:%s, reinforcing:%s, subReflow:%s, subDepth:%s.", serialNum, isReinforcing, isSubReflow, subDepth)
+      assert(remaining.nonEmpty, s"`start()`时，不应该存在非空任务列表。isReinforcing:$isReinforcing")
+      if (isReinforcing) { // 如果当前是子 Reflow，则首先要看是不是到 reinforce 阶段了。
         if (isSubReflow) {
           state.forward(COMPLETED)
           state.forward(REINFORCE_PENDING)
@@ -213,11 +214,11 @@ private[reflow] object Tracker {
     override private[reflow] def innerError(runner: Runner, t: Throwable): Unit = {
       log.e(t, "[innerError]trait:%s.", runner.trat.name$.s)
       // 正常情况下不要调用，仅用于测试。
-      //performAbort(Some(runner.trat), runner.trat, outer.map(_.trat.as[ReflowTrait]), subDepth, forError = true, e)
+      //performAbort(Some(runner.trat), runner.trat, parent, subDepth, forError = true, e)
     }
 
     override private[reflow] def endRunner(runner: Runner): Unit = {
-      if (debugMode) log.i("[endRunner]depth:%s, trait:%s, parent:%s.", subDepth, runner.trat.name$.s, outer.map(_.trat.name$.s).orNull)
+      if (debugMode) log.i("[endRunner]depth:%s, trait:%s, parent:%s.", subDepth, runner.trat.name$.s, parent.map(_.name$.s).orNull)
       // 拿到父级`trait`（注意：如果当前是并行的任务，则`runner.trat`是子级）。
       //val (tratGlobal, veryBeginning) = if (isInput(runner.trat)) (traitIn, true) else (reflow.basis.topOf(runner.trat), false)
       val tratGlobal = tratTopOrInput(runner.trat)
@@ -227,34 +228,31 @@ private[reflow] object Tracker {
       if (isPulseMode && !isInput(runner.trat)) {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
-        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, outer.map(_.trat.as[ReflowTrait]), runner.env.myCache(create = false), state.get$ == FAILED)
+        if (!runner.trat.is4Reflow) pulse.evolve(subDepth, runner.trat, parent, runner.env.myCache(create = false), state.get$ == FAILED)
       }
       // 不在这里 wait 是为了避免`ABORT`或`FAILED`时的死循环。
-      val end = updateRunnerEndFlag(runner)
-      // 2.5, 30/12/2021, bug fix: 任务执行过快而引发的时序问题。发现多方面的原因：
-      // 1. 以下逻辑常常会执行两次，对于特别轻量的执行时间极短的任务，如：`lite.ParN.merge`。
-      // 但这是不对的：有对`prevOutFlow`和`outFlowTrimmed`的处理，它们是协同的，只能处理一次，否则就会紊乱。
+      val maybeEnding = updateRunnerEndFlagAndJudgeIfEnding(runner)
+      // 2.5, 30/12/2021, bug fix: 任务执行过快而引发的时序问题。原因如下：
+      // 1. 以下逻辑常常会执行两次，对于特别轻量的执行时间极短的任务，如：`lite.ParN.merge`。但
+      // 这是不对的：有对`prevOutFlow`和`outFlowTrimmed`的处理，它们是协同的，只能处理一次，否则就会紊乱。
       // 2. 时序问题：`joinOutFlow()`未经过线程同步，导致之后`verifyOutFlow()`验证异常。
-      // 3. 额外新发现的问题：pulse 不向后推进。原因是：
-      //   a. 重构`lite.ParN.merge`后，减少`SubReflow`层级同时，也把同名的`trat`（和同名 parent）应用到了`pulse.Interact`接口，导致混淆而出现错误；
-      //   b. `Pulse`中的`roadmap`和`suspend`也存在时序问题。
-      if (end) snatcher.queAc { endStepByStep() }
+      if (maybeEnding) snatcher.queAc { endStepByStep() }
     }
 
     private def firstBeginStep: Option[Trait] = (traitIn :: reflow.basis.traits.toList) find { t =>
       val opt = runnersParallel.get(t.name$)
       // `forall`没有`nonEmpty`的判断，但由于多线程并行执行，存在偶尔是`isEmpty`的情况。
-      opt.isDefined && opt.get.ensuring(_.nonEmpty).forall(!_._2._1.get)
+      opt.isDefined && opt.get.ensuring(_.nonEmpty).values.forall(!_._1.get)
     }
 
     private def firstEndStep: Option[Trait] = (traitIn :: reflow.basis.traits.toList) find { t =>
       val opt = runnersParallel.get(t.name$)
-      opt.isDefined && opt.get.ensuring(_.nonEmpty).forall(_._2._2.get)
+      opt.isDefined && opt.get.ensuring(_.nonEmpty).values.forall(_._2.get)
     }
 
     private def lastExistsEndStep: Option[Trait] = (traitIn :: reflow.basis.traits.toList).reverse.find { t =>
       val opt = runnersParallel.get(t.name$)
-      opt.isDefined && opt.get.ensuring(_.nonEmpty).exists(_._2._2.get)
+      opt.isDefined && opt.get.ensuring(_.nonEmpty).values.exists(_._2.get)
     }
 
     private def updateOutJoinFlag(curr: Trait) {
@@ -263,18 +261,18 @@ private[reflow] object Tracker {
         .get.find(_._1.trat == curr).get._2._1.ensuring(!_.get).set(true)
     }
 
-    private def updateRunnerEndFlag(runner: Runner): Boolean = {
+    private def updateRunnerEndFlagAndJudgeIfEnding(runner: Runner): Boolean = {
       val top = tratTopOrInput(runner.trat)
       // 当前逻辑其实用不上`visWait`。
-      val map = Snatcher.visWait { runnersParallel.get(top.name$) } { o => o.isDefined && o.get.isDefinedAt(runner) }(_ => s"[updateRunnerEndFlag]trat:${runner.trat.name$}, global:${top.name$}, runner:$runner").get
+      val map = Snatcher.visWait { runnersParallel.get(top.name$) } { o => o.isDefined && o.get.isDefinedAt(runner) }(_ => s"[updateRunnerEndFlagAndJudgeIfEnding]trat:${runner.trat.name$}, global:${top.name$}, runner:$runner").get
       map(runner)._2.ensuring(!_.get).set(true)
-      map.ensuring(_.nonEmpty).forall(_._2._2.get)
+      map.ensuring(_.nonEmpty).values.forall(t => t._2.get || t._1.get)
     }
 
     private def waitRunnersEndFlagCorrect(trat: Trait) {
       val top = tratTopOrInput(trat)
       Snatcher.visWait { runnersParallel.get(top.name$) } { o =>
-        o.isDefined && o.get.ensuring(_.nonEmpty).exists(t => t._2._1.get == t._2._2.get)
+        o.isDefined && o.get.ensuring(_.nonEmpty).values.forall(t => t._1.get && t._2.get)
       }(_ => s"[waitRunnersEndFlagCorrect] wait for Out join flag | global:${top.name$}.")
     }
 
@@ -323,9 +321,8 @@ private[reflow] object Tracker {
           tratGlobal,
           if (currIsLast) null else if (veryBeginning) remaining.head else remaining.tail.head,
           transGlobal,
-          (_, afterGlobalTrans) => {
-            // 处理完成事件
-            if (currIsLast) { // 当前是最后一个
+          (_, afterGlobalTrans) => { // 处理完成事件
+            if (currIsLast) {        // 当前是最后一个
               if (isReinforcing) {
                 val prev    = state.get
                 val success = state.forward(UPDATED)
@@ -336,12 +333,13 @@ private[reflow] object Tracker {
                 reporter.reportOnUpdate(afterGlobalTrans) /*}*/
                 interruptSync(true)
               } else {
-                val prev    = state.get
+                //val prev    = state.get
                 val success = state.forward(COMPLETED)
                 // 会被混淆优化掉
-                Monitor.assertStateOverride(prev, COMPLETED, success)
+                //Monitor.assertStateOverride(prev, COMPLETED, success)
                 /*snatcher.queAc {*/
-                reporter.reportOnComplete(afterGlobalTrans) /*}*/
+                // 存在并行反馈`FAILED`的情况，在预期内（详见本逻辑所在方法）。
+                if (success) reporter.reportOnComplete(afterGlobalTrans) /*}*/
                 interruptSync(!isReinforceRequired)
               }
             } else if (state.forward(PENDING)) { // 确保符合`PENDING`的定义
@@ -353,9 +351,8 @@ private[reflow] object Tracker {
         // 安排下一步任务
         progress.clear()
         if (!veryBeginning) remaining = remaining.tail
-        if (remaining.nonEmpty) {
-          tryScheduleNext(remaining.head)
-        } else if (!isPulseMode && !isSubReflow && isReinforceRequired && state.forward(REINFORCE_PENDING)) {
+        if (remaining.nonEmpty) tryScheduleNext(remaining.head)
+        else if (!isPulseMode && !isSubReflow && isReinforceRequired && state.forward(REINFORCE_PENDING)) {
           remaining = reflow.basis.traits
           start$()
         }
@@ -363,7 +360,7 @@ private[reflow] object Tracker {
     }
 
     private def tryScheduleNext(global: Trait): Unit = {
-      val map = TrieMap.empty[Runner, (AtomicBoolean, AtomicBoolean)]
+      var map = Map.empty[Runner, (AtomicBoolean, AtomicBoolean)]
       if (global.isPar) {
         lazy val cache = getCache
         val begin      = isReinforcing && isOnReinforceBegins(global, cache)
@@ -383,7 +380,7 @@ private[reflow] object Tracker {
         // 1.5, 04/10/2019, fix 了有关`Pulse`的一个 bug。
         // bug fix: 加了如下判断。
         if (runner.trat.is4Reflow) Worker.scheduleRunner(runner, bucket = false)
-        else pulse.forward(subDepth, runner.trat, outer.map(_.trat.as[ReflowTrait]), () => Worker.scheduleRunner(runner, bucket = true))
+        else pulse.forward(subDepth, runner.trat, parent, () => Worker.scheduleRunner(runner, bucket = true))
       }
       else map.keys.foreach { Worker.scheduleRunner(_, bucket = false) }
       Worker.scheduleBuckets()
@@ -474,14 +471,14 @@ private[reflow] object Tracker {
         runnersParallel.get(tratTopOrInput(curr).name$).foreach(_.foreach(_._1.abort()))
         snatcher.queAc {
           if (forError) reporter.reportOnFailed(trigger.get /*为`None`时不会走到这里*/, parent, depth, e)
-          else reporter.reportOnAbort(trigger /*为`None`时说明是外部scheduler主动触发*/, parent, depth)
+          else reporter.reportOnAbort(trigger /*为`None`时说明是外部 scheduler 主动触发*/, parent, depth)
         }
       } else if (state.abort()) {
-        // 已经到达COMPLETED/REINFORCE阶段了
+        // 已经到达 COMPLETED/REINFORCE 阶段了
       } else {
-        // 如果本方法被多次被调用，则会进入本case. 虽然逻辑上并不存在本case, 但没有影响。
+        // 如果本方法被多次被调用，则会进入本 case。虽然逻辑上并不存在本 case，但没有影响。
       }
-      interruptSync(true /*既然是中断，应该让reinforce级别的sync请求也终止*/ )
+      interruptSync(true /*既然是中断，应该让 reinforce 级别的 sync 请求也终止*/ )
     }
 
     @deprecated(message = "已在{Impl}中实现, 本方法不会被调用。", since = "0.0.1")
@@ -535,7 +532,7 @@ private[reflow] object Tracker {
 
     override def abort(): Unit = {
       val rem = remaining
-      if (rem.nonEmpty) performAbort(outer.map(_.trat), rem.head, outer.map(_.trat.as[ReflowTrait]), subDepth - 1, forError = false, null)
+      if (rem.nonEmpty) performAbort(outer.map(_.trat), rem.head, parent, subDepth - 1, forError = false, null)
     }
 
     override def getState = state.get
@@ -565,11 +562,11 @@ private[reflow] object Tracker {
 
     override private[reflow] def onTaskProgress(trat: Trait, sub: Progress, out: Out, depth: Int, publish: Boolean): Unit = {
       if (!isInput(trat)) {
-        // 跟上面onTaskStart()保持一致（包在外面），否则会出现顺序问题。
+        // 跟上面`onTaskStart()`保持一致（包在外面），否则会出现顺序问题。
         snatcher.queAc(canAbandon = true) {
-          subProgress(trat, sub) // 在abandon之前必须要做的
+          subProgress(trat, sub) // 在 abandon 之前必须要做的
         } { subs =>
-          // 即使对于REINFORCING, Task还是会进行反馈，但是这里需要过滤掉。
+          // 即使对于 REINFORCING, Task 还是会进行反馈，但是这里需要过滤掉。
           if (publish && state.get == EXECUTING) {
             val top  = remaining.head
             val step = reflow.basis.stepOf(top)
@@ -590,14 +587,8 @@ private[reflow] object Tracker {
       )
     }
 
-    // 注意：本方法为单线程操作。
-    private def subProgress(trat: Trait, sub: Progress): Seq[Progress] = {
-      if (progress.size <= 1) sub :: Nil
-      else {
-        assert(progress.contains(trat.name$))
-        progress.update(trat.name$, sub)
-        progress.values.toSeq
-      }
+    private def subProgress(trat: Trait, sub: Progress): Seq[Progress] = { // `sub()`触发释放`sub.subs`。
+      (if (progress.size <= 1) sub :: Nil else progress.ensuring(_.contains(trat.name$)).+=((trat.name$, sub)).values.toSeq).ensuring { sub(); true }
     }
 
     override private[reflow] def onTaskComplete(trat: Trait, out: Out, flow: Out): Unit = {
@@ -680,7 +671,7 @@ private[reflow] object Tracker {
     }
 
     private def transOutput(): Out = {
-      if (env.tracker.isInput(trat)) env.out // 不在这里作转换的理由：无论如何，到tracker里去了之后还要进行一遍trim合并，那就在这里节省一遍吧。
+      if (env.tracker.isInput(trat)) env.out // 不在这里作转换的理由：无论如何，到 tracker 里去了之后还要进行一遍 trim 合并，那就在这里节省一遍吧。
       else {
         val flow = new Out(env.tracker.reflow.basis.dependencies(trat.name$))
         env.tracker.reflow.basis.transformers.get(trat.name$).fold {
@@ -727,11 +718,11 @@ private[reflow] object Tracker {
       env.tracker.onTaskComplete(trat, out, flow)
     }
 
-    def onAbort(trigger: Option[Trait] = Some(trat) /*与`parent`保持一致*/, parent: Option[ReflowTrait] = env.tracker.outer.map(_.trat.as[ReflowTrait]), depth: Int = env.subDepth) {
+    def onAbort(trigger: Option[Trait] = Some(trat) /*与`parent`保持一致*/, parent: Option[ReflowTrait] = env.parent, depth: Int = env.depth) {
       withAbort(trigger, parent, depth, null)
     }
 
-    def onFailed(trat: Trait = trat, parent: Option[ReflowTrait] = env.tracker.outer.map(_.trat.as[ReflowTrait]), depth: Int = env.subDepth, e: Exception) {
+    def onFailed(trat: Trait = trat, parent: Option[ReflowTrait] = env.parent, depth: Int = env.depth, e: Exception) {
       withAbort(Some(trat), parent, depth, e)
     }
 

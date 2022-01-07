@@ -16,17 +16,20 @@
 
 package hobby.wei.c.reflow
 
-import java.util
-import java.util.concurrent.ThreadPoolExecutor
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.basis.TAG.LogTag
-import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.chenai.nakam.lang.J2S._
+import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.pool.S._2S
 import hobby.wei.c.anno.proguard.Burden
 import hobby.wei.c.reflow.Dependency.IsPar
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.reflow.Trait.ReflowTrait
+import java.util
+import java.util.concurrent.ThreadPoolExecutor
+import scala.annotation.tailrec
 import scala.collection._
+import scala.util.control.Breaks._
 
 /**
   * @author Wei Chou(weichou2010@gmail.com)
@@ -66,9 +69,10 @@ object Assist {
   def requirePulseKeyDiff(reflow: Reflow): Reflow = {
     val keySet = new mutable.HashSet[(Int, String, String)]
     def loop(trat: Trait, parent: Option[ReflowTrait] = None, depth: Int = 0) {
-      // `Tracker`中已忽略`is4Reflow`与`Pulse.Interact`的交互。
-      if (trat.is4Reflow) trat.asSub.reflow.basis.traits.foreach(loop(_, Some(trat.asSub), depth + 1))
-      else if (trat.isPar) trat.asPar.traits().foreach(loop(_, parent, depth))
+      if (trat.is4Reflow) { // `Tracker`中已忽略`is4Reflow`的`Pulse.Interact`交互，但保险起见，还是加上，看看有没可能与其它非`is4Reflow`碰撞。
+        requirePulseKeyDiffAndUpdate(depth, trat, parent, keySet)
+        trat.asSub.reflow.basis.traits.foreach(loop(_, Some(trat.asSub), depth + 1))
+      } else if (trat.isPar) trat.asPar.traits().foreach(loop(_, parent, depth))
       else requirePulseKeyDiffAndUpdate(depth, trat, parent, keySet)
     }
     reflow.basis.traits.foreach(loop(_))
@@ -77,8 +81,71 @@ object Assist {
 
   def resolveKey(depth: Int, trat: Trait, parent: Option[ReflowTrait]): (Int, String, String) = (depth, trat.name$, parent.map(_.name$).orNull)
 
-  def genSerialNum(reflow: Reflow, key: (Int, String, String), which: Int): Long = {
-    3
+  /** 为`key`生成可比较大小的序列号。目前仅支持最多 10 层，每层最多 63 步。满足`走得越远的越大`，即：层级 depth 越低，step 越大的就越大。
+    * @param which 需要满足与`pulse.serialNum`的大小顺序一致。目前仅支持`0, 1, 2, 3`四个数字。
+    * @return `> 0`，如果找到了`key`所在的 step（即：`key`有效），`-1`，其它情况。
+    */
+  @deprecated("Has limit.")
+  def genIncrSerialNum(reflow: Reflow, key: (Int, String, String), which: Int)(implicit tag: LogTag): Long = {
+    val opt = findKeyStep(key, reflow)
+    //log.i("[genSerialNum]succeed:%s, lis:%s.", b, lis.map { case (depth, step) => s"(depth:$depth, step:$step)" }.mkString$.s)
+    if (opt.isDefined) {
+      val lis = opt.get
+      // 层级序号是固定的，那就把每一层的 step 依次排列放进 1000000000000000000L 中。
+      // ((depth:0, step:2), (depth:1, step:0), (depth:2, step:0), (depth:3, step:0), (depth:4, step:0), (depth:5, step:0), (depth:6, step:0), (depth:7, step:0)).
+      // 支持最多 10 层，每层最多 63 步。
+      val bits = java.lang.Long.numberOfLeadingZeros(64)
+      lis.sortBy(_._1).map { case (depth, step) => (step + 1).toLong << (bits - 1 - (64 - bits - 1) * depth) }.sum + which
+    } else -1
+  }
+
+  /** @return `(depth, step)`的列表。 */
+  def findKeyStep(key: (Int, String, String), reflow: Reflow): Option[List[(Int, Int)]] = {
+    @tailrec
+    def stepForKey(r: Reflow, step: Int, parent: Option[ReflowTrait], depth: Int): (Boolean, Int) = {
+      if (step >= r.basis.steps()) (false, -1)
+      else {
+        val trat = r.basis.traits(step)
+        //if (trat.is4Reflow) // 不向下一层寻找
+        if (trat.isPar) {
+          var result = (false, -1)
+          breakable {
+            trat.asPar.traits().foreach { t =>
+              if (resolveKey(depth, t, parent) == key) {
+                result = (true, step); break
+              }
+            }
+          }
+          if (result._1) result else stepForKey(r, step + 1, parent, depth)
+        } else if (resolveKey(depth, trat, parent) == key) (true, step)
+        else stepForKey(r, step + 1, parent, depth)
+      }
+    }
+    def findSub(r: Reflow, step: Int, depth: Int): Seq[(ReflowTrait, Int)] = {
+      val trat = r.basis.traits(step)
+      if (trat.isPar) trat.asPar.traits().flatMap { sub => if (sub.is4Reflow) Some((sub.asSub, depth + 1)) else None }
+      else if (trat.is4Reflow) (trat.asSub, depth + 1) :: Nil
+      else Nil
+    }
+    def findStep(r: Reflow, step: Int = 0, parent: Option[ReflowTrait] = None, depth: Int = 0): (Boolean, List[(Int, Int)]) = {
+      if (depth == key._1) {
+        val (b, s) = stepForKey(r, 0, parent, depth)
+        (b, (depth, s) :: Nil)
+      } else if (depth < key._1) {
+        var result = (false, Nil.as[List[(Int, Int)]]); var step1 = step
+        breakable {
+          while (step1 < r.basis.steps()) {
+            findSub(r, step1, depth).foreach { case (s, d) =>
+              result = findStep(s.reflow, 0, Some(s), d)
+              if (result._1) break
+            }; step1 += 1
+          }
+        }
+        (result._1, (depth, step1) :: result._2)
+      } else (false, Nil)
+    }
+    val (b, lis) = findStep(reflow)
+    if (b) Some(lis) else None
   }
 
   /**

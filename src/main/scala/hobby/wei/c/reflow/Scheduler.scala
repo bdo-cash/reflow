@@ -74,8 +74,8 @@ object Scheduler {
       serialNum: Long,
       globalTrack: Boolean
   ) extends Scheduler {
-    private implicit lazy val lock: ReentrantLock                       = Locker.getLockr(this)
-    private lazy val state                                              = new State$()
+    private lazy val state = new State$()
+
     @volatile private var delegatorRef: ref.WeakReference[Tracker.Impl] = _
 
     private[reflow] def start$(): this.type = {
@@ -87,7 +87,7 @@ object Scheduler {
         } else {
           permit = !state.isOverridden
         }
-      }
+      }(state.lock)
       if (permit && state.forward(PENDING) /*可看作原子锁*/ ) {
         val tracker = new Tracker.Impl(reflow, traitIn, inputTrans, state, feedback, strategy, Option(outer), pulse, serialNum, globalTrack)
         // tracker启动之后被线程引用, 任务完毕之后被线程释放, 同时被gc。
@@ -140,7 +140,7 @@ object Scheduler {
   }
 
   class State$ {
-    private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
+    implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
     @volatile private var state      = State.IDLE
     @volatile private var state$     = State.IDLE

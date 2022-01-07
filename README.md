@@ -1,5 +1,12 @@
 ## Reflow:  任务`串/并联`组合调度框架
 
+#### 主要用途：
+
+- 组织错综复杂的业务逻辑
+- 压榨多任务系统运行时间
+
+--------------------------------------------
+
 * 从命令式到`Monad`: **[lite.Task](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/lite/Task.scala) 简化且类型安全的任务组装工具集**
   - 简化`串/并联`任务的混合组装，并且各个任务和组装工具都带有`I/O`类型标记，利用编译器检查，匹配错误一目了然。示例请移步 _[这里](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95)_。
 

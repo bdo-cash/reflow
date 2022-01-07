@@ -22,7 +22,7 @@ import hobby.chenai.nakam.lang.J2S.NonNull
 import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow.Reflow.{logger => log}
 import java.util.concurrent
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.annotation.tailrec
 import scala.util.control.Breaks._
 
@@ -61,7 +61,6 @@ class Snatcher extends TAG.ClassName {
   private val signature  = new AtomicBoolean(false)
 
   private lazy val thread = new AtomicReference[Thread]
-  private lazy val serial = new AtomicLong(0)
 
   /**
     * 线程尝试抢占执行权并执行某任务。
@@ -87,115 +86,6 @@ class Snatcher extends TAG.ClassName {
       true
     } else false
   }
-
-  /** 本方法是[[tryOn]]的健壮版本。
-    * <p>
-    * 在多线程环境中，常常面临时序和可见性问题，如：a 线程尝试调用[[tryOn]](doWork)，而此时 b 线程占据执行权，a 并未抢占成功。
-    * 在这种情况下，a 携带的对 a 可见的数据`x`，对 b 而言不一定可见，因此 b 线程有可能错过处理`x`而导致`x`一直得不到处理。因此，对于
-    * 代码块`{doWork}`中需要从其它集合中遍历或读取数据的，建议使用本方法。
-    * <p>
-    * 用法示例：{{{
-    * tryOns(serial(x)) {
-    *   // do sth officially …
-    *   (serial(a), serial(b), …, serial(y)).max
-    * }
-    * }}}
-    * @param incr 可见性(visible)标志，任意希望被其它线程`看见`的最新值[数字表示(`serial(x)`)]。
-    *             竞争到执行权的线程在集合中看见该值，则表示达到线程同步目标（处理如否看需求，看见即可）；
-    *             取值范围：`<= 0`无效，会被忽略（或认为不需要同步），`> 0`时才进行判断。
-    * @param reentrant 同[[tryOn]]，不作可见性同步操作。
-    * @param doWork 要执行的代码块，返回值表示在该次运行中`看见`的所有值的[数字表示]的最大值。隐含的逻辑是：
-    *               `serial(n)`要能够被比较大小，只要返回值`> incr`就表示同步完成。取值范围同`incr`。
-    *               重申：本代码块[需要能够被]执行任意多次而不会对逻辑有未预期的影响，而且不应该携带参数，如有需要，可先插入集合，再运用本机制进行可见性同步。
-    * @return 同[[tryOn]]，`true`抢占成功并执行任务完成，`false`抢占失败，未执行任务。
-    */
-  def tryOns(incr: Long = -1, reentrant: Boolean = false)(doWork: => Long): Boolean = {
-    if (incr > 0) serial.set(incr)
-    if (reentrant && tryReentrant()) {
-      doWork; true
-    } else if (snatch()) {
-      breakable {
-        var i = 0; var n = 0L
-        while (true) {
-          val r = doWork
-          val b =
-            if (r > 0) { n = serial.get; if (n > 0) r >= n else true }
-            else true
-          debug.set((r, serial.get))
-          if (/*b &&*/ !glance()) break
-          if (b) { i = 0 }
-          else {
-            if (!signature.get) {
-              log.w("[tryOns] WAIT !!! | %s | r:%s, n:%s.", i, r, n)
-              Thread.`yield`()
-            }
-            i += 1
-          }
-        }
-      }
-      true
-    } else false
-  }
-
-  private lazy val debug = new AtomicReference[(Long, Long)]((0, 0))
-
-  override def finalize(): Unit = {
-    val (r, n) = debug.get
-    if (r > 0 && r < n) {
-      log.w("========== ========== ========== ========== ========== ========== ========== ========== ========== ==========")
-      log.e("[tryOns] 没有达到最终一致性 !!! | r:%s, n:%s.", r, n)
-      log.i("========== ========== ========== ========== ========== ========== ========== ========== ========== ==========")
-    }
-    super.finalize()
-  }
-
-//  private lazy val volatile = new AtomicReference[(AnyRef, WeakHashSet[AnyRef])]((null, new WeakHashSet[AnyRef]))
-//  def tryOns(x: AnyRef)(doWork: => Set[AnyRef]): Boolean = {
-//    // 这一版实现过于复杂，且并没有解决问题：如果不用`WeakHashSet`，会导致内存很容易超限，但使用了，又会导致对象
-//    // 过早（先于 x 被设置进 volatile）被 GC。然后，解决该问题其实很简单：调整执行顺序即可，但又势必会造成`可见`时间延长，循环会执行更多次。
-//    // 前者的设计是基于[先把对象放进集合，再调用本方法]，从而引发了本方法的复杂实现；现改为[在放入集合前，先调用本方法]，按照本方法的要求实现客户代码即可。
-//    // 实测，瓶颈在于`doWork`返回的 Set 元素对象创建次数过多，所以不能使用本模型。
-//    volatile.updateAndGet { case (_, set) => if ((x ne null) && set.contains(x)) (null, set - x) else (x, set) }
-//    //volatile.set(x.as); toColl(x)
-//    if (snatch()) {
-//      breakable {
-//        var i   = 0
-//        var b   = true
-//        var x   = null.asInstanceOf[AnyRef]
-//        val set = new WeakHashSet[AnyRef]
-//        while (true) {
-//          set ++= doWork
-//          // 存在[前一轮已经消化了但`glance()`信号还在]，所以又重来了一遍，就有`vol eq null`了。
-//          // 存在[多次看见已经被消化过的 vol]，即 set 多次出现上一轮已经出现的值，亦即 set 可能总是`nonEmpty`，这是正常的：何时处理这些值取决于具体业务逻辑。
-//          // 由于 vol 在时间顺序上比 set 晚（而且每多一遍`cas()`就更晚一次），所以本`cas()`方法总是倾向于返回`false`，这是符合预期的。
-//          // 如果 vol 已经被消化了，需要置为 null，但可能同时又被其它线程设置了新值，so… 而如果没有被消化，当然要保留该值不要抹去。
-//          var vol = null.asInstanceOf[AnyRef]
-//          val (stable, _) = visWait {
-//            val p = volatile.get; vol = p._1; if (b) { set ++= p._2; b = false }
-//            ((vol eq null) || set.contains(vol), p) // 不要用`.exists(_ eq vol)`，原因见使用案例。
-//          } { case (cons, p) =>
-//            !cons || volatile.compareAndSet(p, (null, set))
-//          }(i => if (i < 7 && !(i > 3 && set.size > 64)) "" else s"set.size:${set.size}, x:$vol")
-//
-//          // stable 是，set 在包含 vol 的同时也可能包含刚刚设置进 volatile 的最新的 vol（但还未被读取到而清除），所以需要留给下一次（抢占到执行权的线程）。
-//          //   深层次的原因是：方法开头的`x`还没被设置进 volatile 之前，就已经被放入`doWork`所操作的集合中，而此时另一个线程正在执行`doWork`且
-//          //   恰好被`看见`了，所以就处理并返回了 set。
-//          // !stable 时，表明所有旧的（和当前的）set 里都没有 vol，那 vol 一定是最新的，因此是时候安全地删除所有旧的 set 了。
-//          //if (stable) { /*prevSet.set(set)*/ } else { set.clear } // 挪到下边了
-//
-//          if (stable && !glance()) break
-//          if (stable) { i = 0; x = null; b = true }
-//          else {
-//            signature.set(false)
-//            if (x == vol || i > 0) log.w("[tryOns] WAIT !!! | %s | set.size:%s, x:%s.", i, set.size, vol.toString.s) // vol 有可能本身就是 String。
-//            i += 1; x = vol; set.clear
-//            Thread.`yield`()
-//          }
-//        }
-//      }
-//      true
-//    } else false
-//  }
 
   /** 线程尝试抢占执行权。
     * @return `true` 抢占成功，`false`抢占失败。
@@ -234,15 +124,12 @@ class Snatcher extends TAG.ClassName {
     val t = thread.get
     if (t eq Thread.currentThread) true
     else if (t.isNull) false
-    // 情况复杂，不能这样处理。见`Tracker.snatcher4Init`用法。
-    // 针对于并行情况，存在多线程同时调用，而有需要`可重入`能力，不能简单的抛出异常。
     // else if (debugMode) throw new ReentrantLockError("非当前线程[`tryOn()`的嵌套情况]，不可启用`可重入`功能。")
     else false
   }
 }
 
 object Snatcher {
-  class ReentrantLockError(msg: String) extends Error(msg)
 
   def visWait[T](waitFor: => T)(cond: T => Boolean)(msg: Int => String)(implicit tag: LogTag): T = {
     @tailrec def cas(i: Int = 0): T = {
@@ -272,9 +159,8 @@ object Snatcher {
     */
   class ActionQueue(val fluentMode: Boolean = false) extends Snatcher {
     private val queue = new concurrent.LinkedTransferQueue[Action[_]]
-    private val incr  = new AtomicLong(0)
 
-    private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean, serial: Long = incr.incrementAndGet) {
+    private case class Action[T](necessity: () => T, action: T => Unit, canAbandon: Boolean) {
       type A = T
       def execN(): A           = necessity()
       def execA(args: A): Unit = action(args)
@@ -306,33 +192,14 @@ object Snatcher {
         } else elem.execA(p)
         elem
       }
-      def serial(elem: Action[_]): Long = elem.serial
 
-      tryOns(serial(quelem())) {
-        var n = incr.get
+      quelem() // format: off
+      tryOn({
+        // 第一次也要检查，虽然前面入队了。因为很可能在当前线程抢占到的时候，自己入队的已经被前一个线程消化掉而退出了。
         while (hasMore) {
-          n = n max serial(execAc(queue.remove()))
-        }; n
-      }
-
-//      quelem() // format: off
-//      tryOn({
-//        // 第一次也要检查，虽然前面入队了。因为很可能在当前线程抢占到的时候，自己入队的已经被前一个线程消化掉而退出了。
-//        while (hasMore) {
-//          execAc(queue.remove())
-//        }
-//      }, false /*必须为`false`，否则调用会嵌套，方法栈会加深。*/)
-
-//      if (!tryOn({
-//        if (hasMore) quelem()
-//        else execAc(newAc)
-//        while (hasMore) {
-//          execAc(queue.remove())
-//        }
-//      }, false)) {
-//        quelem() // 放在最后，很可能得不到执行，也会乱序，当然本实现并不解决乱序问题（需自行从逻辑设计角度解决）。
-//      }
-      // format: on
+          execAc(queue.remove())
+        }
+      }, false /*必须为`false`，否则调用会嵌套，方法栈会加深。*/)
     }
   }
 }

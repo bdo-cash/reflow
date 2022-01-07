@@ -123,17 +123,16 @@ object Worker extends TAG.ClassName {
 
   def scheduleRunner(runner: Runner, bucket: Boolean = true): Unit = {
     if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> runner:%s.", runner)
+    var i = 0
     while (!sPreparedBuckets.queue4(runner.trat.period$).offer(runner)) {
-      if (debugMode) log.w("[scheduleBuckets]########## times loop offer(%s).", runner)
+      if (i > 3) log.w("[scheduleBuckets]########## %s times loop offer(%s).", i, runner)
       Thread.`yield`()
+      i += 1
     }
-    if (bucket) scheduleBuckets(runner)
+    if (bucket) scheduleBuckets()
   }
 
-  def scheduleBuckets(r: Runner = null): Unit = sSnatcher.tryOn {
-    //var n = -1L // 这个场景没必要应用`tryOns(serial(r))`。
-    //n = n max sPreparedBuckets.sQueues.flatMap(_.toSeq).map(r => serial(r)).fold(-1L) { _ max _ }
-
+  def scheduleBuckets(): Unit = sSnatcher.tryOn {
     if (debugMode) log.i("[scheduleBuckets]>>>>>>>>>> bucket queues sizes:%s.", sPreparedBuckets.sQueues.map(_.size).mkString$.s)
     val executor = sThreadPoolExecutor
 
@@ -175,7 +174,6 @@ object Worker extends TAG.ClassName {
     }
     def hasNext: Boolean = { next(); runner.nonNull }
     while (hasNext) {
-      //n = n max serial(runner)
       // 队列元素的顺序可能发生改变，不能用 poll(); 而 remove() 是安全的：runner 都是重新 new 出来的，不会出现重复。
       while (!sPreparedBuckets.sQueues(index).remove(runner)) {
         if (debugMode) log.w("[scheduleBuckets]########## times loop remove(%s).", runner)
@@ -200,7 +198,6 @@ object Worker extends TAG.ClassName {
       })
     }
     if (debugMode) log.w("[scheduleBuckets]<<<<<<<<<< all done.")
-    //n
   }
 
   class Runner(val trat: Trait, runnable: Runnable) extends Runnable with Comparable[Runner] {
