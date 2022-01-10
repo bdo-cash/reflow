@@ -3,18 +3,6 @@ project/project
 
 .DS_Store
 
-## 由ide自动生成，应该删掉。自定义的应该重新取个名字。 ##
-proguard-sbt.txt
-##由脚本自动从 test 的对应目录复制过去。##
-src/androidTest/java/at/
-src/androidTest/scala/at/
-
-/lang/
-/assoid/
-/annoid/
-/annoguard/
-/qrcode/
-
 # Built application files
 *.apk
 *.ap_
@@ -54,14 +42,3 @@ captures/
 
 # Keystore files
 *.jks
-
-# External native build folder generated in Android Studio 2.2 and later
-.externalNativeBuild
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Freeline
-freeline.py
-freeline/
-freeline_project_description.json
