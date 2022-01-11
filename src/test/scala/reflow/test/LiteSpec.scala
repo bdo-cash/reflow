@@ -221,20 +221,22 @@ class LiteSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter w
     Scenario("`Pulse` 的多层嵌套组装测试") {
       val pars = {
         // 切记：不能用 val 替换 def，否则不但有并行的同名的任务，而且深层的【同名同层】会导致 Pulse.Interact 接口无法辨识而出现阻塞的情况。
-        def p = (c2d +>> c2b) **> { (d, _, _) => println(":: 0"); d } +|- { (_, d) => d }
+        def p = (c2d +>> c2b) **> { (d, _, ctx) => println(":: 0"); ctx.progress(1, 2); d } +|- { (_, d) => d }
         @tailrec
         def loop(s: () => Serial[Ccc, Ddd], times: Int = 0, limit: Int = 10): Serial[Ccc, Ddd] =
           if (times >= limit) s()
           else {
             def p =
               (
-                s() +|- { (_, d) => println(s":: ${times + 1} " + ("::" * (times + 1))); d }
+                s() +|- { (_, d) => d }
                 +>>
                 s()
-              ) **> { (d, _, _) => d }
+                +>>
+                s()
+              ) **> { (d, _, _, ctx) => println(s":: ${times + 1} " + ("::" * (times + 1))); ctx.progress(1, 2); d }
             loop(() => p, times + 1, limit)
           }
-        loop(() => p, limit = 7) // 最大 depth = 2 * limit + 1, depth 从 0 开始。
+        loop(() => p, limit = 3) // 最大 depth = 2 * limit + 1, depth 从 0 开始。
       }
 
       @volatile var callableOut: Int = 0
