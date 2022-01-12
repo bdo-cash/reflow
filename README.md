@@ -1,6 +1,6 @@
 # Reflow
 
-A light-weight lock-free `series/parallel` combined scheduling framework for tasks.
+A light-weight lock-free `series/parallel` combined scheduling framework for tasks. The goal is to maximize parallelism in order to minimize the execution time overall.
 
 ----
 
@@ -20,8 +20,9 @@ A light-weight lock-free `series/parallel` combined scheduling framework for tas
 "The maximum improvement in system performance is determined by the parts that cannot be parallelized."
         —— [Amdahl's law](https://en.wikipedia.org/wiki/Amdahl%27s_law)
 
-In a large system, there is often a lot of business logic and control logic, which is the embodiment of hundreds of "jobs." The logic is intertwined and, taken as a whole, often intricate.
-So how do we abstract and simplify this complex logic?
+In a large system, there is often a lot of business logic and control logic, which is the embodiment of hundreds of "jobs". The logic is intertwined and, taken as a whole, often intricate.
+On the other hand, if this large amount of "jobs" is not organized reasonably and effectively, the execution time overall and performance are also worrying.
+So how do we abstract and simplify such a complex problem?
 
 > Programs = Algorithms + Data Structures  
 > Algorithm = Logic + Control  
@@ -46,7 +47,7 @@ combined scheduling. _Data_ is **electricity**, _task_ is **component**.
 In addition to simplifying the coding complexity, the established framework can standardize the original chaotic and intricate writing method,
 and coding errors can be easily detected, which will greatly enhance the **readability**, **robustness** and **scalability** of the program.
 
-In Reflow logic, a complex business should first be broken down into a series of **single-function**, **no-blocking**, **single-threaded** task sets and packaged in `Trait` that explicitly define the attributes of the task.
+In Reflow basic logic, a complex business should first be broken down into a series of **single-function**, **no-blocking**, **single-threaded** task sets and packaged in `Trait` that explicitly define the attributes of the task.
 Dependencies are then built and committed using `Dependency`, and a working `reflow` object is finally obtained, which is started and the task flow can be executed.
 
 
@@ -204,7 +205,7 @@ Scenario("`Serial/Parallel` Tasks mixed assembly") {
 // `Pulse`, more complex:
 Scenario("Multi-level nested assembly test of `Pulse`") {
   val pars = {
-    def p = (c2d +>> c2b) **> { (d, _, _) => d } +|- { (_, d) => d }
+    def p = (c2d +>> c2b) **> { (d, _, ctx) => ctx.progress(1, 2); d } +|- { (_, d) => d }
     @tailrec
     def loop(s: () => Serial[Ccc, Ddd], times: Int = 0, limit: Int = 10): Serial[Ccc, Ddd] =
       if (times >= limit) s()
@@ -214,10 +215,12 @@ Scenario("Multi-level nested assembly test of `Pulse`") {
             s() +|- { (_, d) => d }
             +>>
             s()
-          ) **> { (d, _, _) => d }
+            +>>
+            s()
+          ) **> { (d, _, _, ctx) => ctx.progress(1, 2); d }
         loop(() => p, times + 1, limit)
       }
-    loop(() => p, limit = 7)
+    loop(() => p, limit = 3)
   }
 
   @volatile var callableOut: Int = 0
