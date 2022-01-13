@@ -182,7 +182,7 @@ private[reflow] object Tracker {
     @volatile private var timeStart                          = 0L
 
     private[reflow] def start$(): Unit = {
-      if (debugMode) log.w("[start]serialNum:%s, reinforcing:%s, subReflow:%s, subDepth:%s.", serialNum, isReinforcing, isSubReflow, subDepth)
+      //if (debugMode) log.w("[start]serialNum:%s, reinforcing:%s, subReflow:%s, subDepth:%s.", serialNum, isReinforcing, isSubReflow, subDepth)
       assert(remaining.nonEmpty, s"`start()`时，不应该存在非空任务列表。isReinforcing:$isReinforcing")
       if (isReinforcing) { // 如果当前是子 Reflow，则首先要看是不是到 reinforce 阶段了。
         if (isSubReflow) {
@@ -266,7 +266,8 @@ private[reflow] object Tracker {
       // 当前逻辑其实用不上`visWait`。
       val map = Snatcher.visWait { runnersParallel.get(top.name$) } { o => o.isDefined && o.get.isDefinedAt(runner) }(_ => s"[updateRunnerEndFlagAndJudgeIfEnding]trat:${runner.trat.name$}, global:${top.name$}, runner:$runner").get
       map(runner)._2.ensuring(!_.get).set(true)
-      map.ensuring(_.nonEmpty).values.forall(t => t._2.get || t._1.get)
+      // 必然存在至少一次返回 true 的情况，因为：存在 n 个并行任务的最后 m 个同时到达本行，再执行最后一行而返回。
+      map.ensuring(_.nonEmpty).values.forall(t => t._2.get /* || t._1.get*/ ) // 没必要
     }
 
     private def waitRunnersEndFlagCorrect(trat: Trait) {
@@ -282,7 +283,7 @@ private[reflow] object Tracker {
       // 如果不加`top`的判断，也会引发时序错误。具体表现为：
       // 如果上一步是并行任务，则会触发多次将本方法`snatcher.queAc()`，如果此时下一步的 MERGE 也`endRunner()`并走了进度`onProgress()`，那么
       // 时序错误大概率会触发。本方法的下一次执行会让`progress.clear()`发生在 snatcher 处理进度之前，进而引发混乱（断言错误）。
-      // 详细分析：假如有 2 个并行后跟 MERGE，2 个并行把本方法的`snatcher.queAc()`执行了 2 次（条件较宽松）。
+      // 详细分析：假如有 2 个并行后跟 MERGE，2 个并行把本方法的`snatcher.queAc()`执行了 2 次（条件较宽松，即使收紧也还是存在）。
       // 第 1 次正常处理并行的 end，并`tryScheduleNext()`把 MERGE 送入线程池，由于 MERGE 任务本就几乎什么也没做，执行太快，等本方法返回时，MERGE
       // 已经`endRunner()`了顺便`snatcher.queAc()`第 3 次。
       // 第 2 次执行本方法时，拿到的`firstEndStep`就是那个 MERGE，提前执行了`progress.clear()`（重申，前两次`snatcher.queAc()`发生在把 MERGE 送入
