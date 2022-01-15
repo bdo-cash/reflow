@@ -138,7 +138,7 @@ This framework is based on a special **anti-blocking** thread synchronization to
 
 ### _3.1 Dependencies_
 
-Please click here [![](https://jitpack.io/v/dedge-space/reflow.svg)](https://jitpack.io/#dedge-space/reflow)
+Please click here [![](https://jitpack.io/v/bdo-cash/reflow.svg)](https://jitpack.io/#bdo-cash/reflow)
 
 ### _3.2 Example_
 
