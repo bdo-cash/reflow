@@ -301,8 +301,10 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
       val t = v(k._1, k._2)
       if (t._1 >= 0) {
         debugFuncMap.remove(k)
-        list1 :::= t._3.flatMap { x => if (t._2) None else Some(t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.key:$x", s"roadmap.exists:${t._4.contains(x)}", s"step:${Assist.findKeyStep(x, reflow)}") }
-        list2 :::= t._4.flatMap { x => if (t._2) None else Some(t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.exists:${t._3.contains(x)}", s"roadmap.key:$x", s"step:${Assist.findKeyStep(x, reflow)}") }
+        // 已经进入 suspend 的，无论如何都会推进。
+        list1 :::= t._3.map { x => (t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.key:$x", s"roadmap.exists:${t._4.contains(x)}", s"step:${Assist.findKeyStep(x, reflow)}") }
+        // 如果`!abortIfError`，raadmap 没有被消化是正常的：上一轮完成了所有任务，但这一轮某任务`onFailed()`了，就不向后推进了（不会`tryScheduleNext()`）。
+        list2 :::= t._4.flatMap { x => if (!abortIfError) None else Some(t._1, s"需要被${t._1 + 1}消化！", s"failed:${t._2}", s"suspend.exists:${t._3.contains(x)}", s"roadmap.key:$x", s"step:${Assist.findKeyStep(x, reflow)}") }
       }
     }
     if (list1.nonEmpty) {
