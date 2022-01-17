@@ -200,11 +200,12 @@ private[reflow] object Tracker {
         tryScheduleNext(remaining.head)
       } else {
         timeStart = System.currentTimeMillis
-        assert(state.get == PENDING)
-        snatcher.queAc(reporter.reportOnPending())
-        // prevOutFlow = new Out() // 不用赋值
-        outFlowTrimmed = new Out(traitIn.outs$)
-        tryScheduleNext(traitIn)
+        if (state.get == PENDING) { // 实测可能被`ABORTED`
+          snatcher.queAc(reporter.reportOnPending())
+          //prevOutFlow = new Out() // 不用赋值
+          outFlowTrimmed = new Out(traitIn.outs$)
+          tryScheduleNext(traitIn)
+        }
       }
     }
 
