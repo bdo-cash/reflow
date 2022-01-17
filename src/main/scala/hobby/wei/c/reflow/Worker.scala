@@ -57,9 +57,9 @@ object Worker extends TAG.ClassName {
   private final lazy val sPoolWorkQueue: BlockingQueue[Runnable] = new LinkedTransferQueue[Runnable]() {
 
     override def offer(r: Runnable) = {
-      /* 如果不放入队列并返回false，会迫使增加线程。但是这样又会导致总是增加线程，而空闲线程得不到重用。
+      /* 如果不放入队列并返回 false，会迫使增加线程。但是这样又会导致总是增加线程，而空闲线程得不到重用。
       因此在有空闲线程的情况下就直接放入队列。若大量长任务致使线程数增加到上限，
-      则threadPool启动reject流程(见ThreadPoolExecutor构造器的最后一个参数)，此时再插入到本队列。
+      则 threadPool 启动 reject 流程（见 ThreadPoolExecutor 构造器的最后一个参数），此时再插入到本队列。
       这样即完美实现[先增加线程数到最大，再入队列，空闲释放线程]这个基本逻辑。*/
       val b = sThreadPoolExecutor.getActiveCount < sThreadPoolExecutor.getPoolSize && super.offer(r)
       Assist.Monitor.threadPool(sThreadPoolExecutor, b, reject = false)
@@ -141,16 +141,16 @@ object Worker extends TAG.ClassName {
     def next() {
       val allowRunLevel = {
         val maxPoolSize = executor.getMaximumPoolSize
-        // sTransient和sShort至少会有一个线程，策略就是拼优先级了。不过如果线程已经满载，
+        // sTransient 和 sShort 至少会有一个线程，策略就是拼优先级了。不过如果线程已经满载，
         // 此时即使有更高优先级的任务到来，那也得等着，谁叫你来的晚呢！
         /*if (sExecuting.sShort.get() + sExecuting.sLong.get()
                   + sExecuting.sInfinite.get() >= maxPoolSize) {
                       allowRunLevel = 1;
             } else*/
         // 给短任务至少留一个线程，因为后面可能还会有高优先级的短任务。
-        // 但假如只有3个以内的线程，其中2个被sInfinite占用，怎么办呢？
-        // 1. 有可能某系统根本就没有sLong任务，那么剩下的一个刚好留给短任务；
-        // 2. 增加一个最大线程数通常不会对系统造成灾难性的影响，那么应该修改配置Config.
+        // 但假如只有 3 个以内的线程，其中 2 个被 sInfinite 占用，怎么办呢？
+        // 1. 有可能某系统根本就没有 sLong 任务，那么剩下的一个刚好留给短任务；
+        // 2. 增加一个最大线程数通常不会对系统造成灾难性的影响，那么应该修改配置 Config。
         if (sExecuting.sLong.get() + sExecuting.sInfinite.get() >= maxPoolSize - 1) {
           1
         }

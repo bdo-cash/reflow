@@ -4,14 +4,15 @@ A light-weight lock-free `series/parallel` combined scheduling framework for tas
 
 ----
 
-* From imperative to `Monad`: **[lite.Task](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/lite/Task.scala) —— Simplified and Type-safe Task Assembly Toolset**
-  - Simplify the mixed assembly of 'series/parallel' tasks, and each task definition and assembly tool are marked with `I/O` type, using the compiler check, match errors at a glance. Examples see _[here](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95)_.
+* From imperative to `Monad`: **[lite.Task](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/lite/Task.scala) —— Simplified and Type-safe Task Assembly Toolset**
+  - Simplify the mixed assembly of 'series/parallel' tasks, and each task definition and assembly tool are marked with `I/O` type, using the compiler check, match errors at a glance.
+    Examples see _[here](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala)_.
 
-* From single execution to streaming: **[Pulse](https://github.com/dedge-space/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala#L46) —— Step Streaming Data Processor**
+* From single execution to streaming: **[Pulse](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala) —— Step Streaming Data Processor**
   - Data flows through a `set of large-scale integration tasks`, can always be entered in the order in which it was entered, can be 'queued' (`FIFO`, using a ingenious scheduling strategy that doesn't actually have queue) into each tasks,
     and each task can also retain the mark specially left by the previous data during processing, so as to be used for the next data processing.
     It doesn't matter in any subtask of any depth, and it doesn't matter if the previous data stays in a subtask much longer than the latter.
-    Examples see _[here](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/PulseSpec.scala)_.
+    Examples see _[here](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/PulseSpec.scala)_.
 
 ----
 
@@ -31,18 +32,18 @@ Inspired by this idea, we can separate the business logic from the control logic
 The relationship between tasks can also be further classified into two types: _dependent_ and _non-dependent_, that is, **serial** and **parallel** (dependent tasks must be executed sequentially, and non-dependent tasks can be executed in parallel).
 The user programmer only needs to focus on writing task one by one and leave the rest to the framework. **Reflow** is designed around the control logic that handles these tasks.
 
-**Reflow** was developed to simplify the **coding complexity** of data-flow and event-processing between multiple [tasks](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L28)
-in _complex business logic_. Through the design of [ I](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L48)
-/[ O](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L53)
-that requires [explicit definition](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L27)
-of tasks, intelligent [dependency management](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L31)
-based on [keyword](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala#L26)
-and [value-type](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala#L26)
-analysis, unified operation [scheduling](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala#L26),
-[event feedback](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala#L25)
-and [error handling](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L124)
-interface, the set goal is realized: task [_series_](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L78)
-/[ _parallel_](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L52)
+**Reflow** was developed to simplify the **coding complexity** of data-flow and event-processing between multiple [tasks](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala)
+in _complex business logic_. Through the design of [ I](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L46)
+/[ O](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L49)
+that requires [explicit definition](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Trait.scala#L43)
+of tasks, intelligent [dependency management](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala)
+based on [keyword](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala)
+and [value-type](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/KvTpe.scala)
+analysis, unified operation [scheduling](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Scheduler.scala),
+[event feedback](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Feedback.scala)
+and [error handling](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Task.scala#L122)
+interface, the set goal is realized: task [_series_](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L81)
+/[ _parallel_](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Dependency.scala#L55)
 combined scheduling. _Data_ is **electricity**, _task_ is **component**.
 In addition to simplifying the coding complexity, the established framework can standardize the original chaotic and intricate writing method,
 and coding errors can be easily detected, which will greatly enhance the **readability**, **robustness** and **scalability** of the program.
@@ -58,6 +59,8 @@ Dependencies are then built and committed using `Dependency`, and a working `ref
   Why wait? Because the current tasks to be executed in different task-flows will be put into the same priority-bucket, the existing tasks in the bucket will be sorted according to their priorities;
 - A task-flow can be requested to **browse** mode first and then **reinforce** mode. **Browse** mode allows data to be loaded quickly;
 - Tasks can be nested and assembled indefinitely;
+- The execution of each task is atomic, single-threaded, and you don't have to worry about thread synchronization problem of input and output, whether the task is in serial or parallel, and whether it is in
+  [`Pulse`](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Pulse.scala) or not;
 - Event feedback can be specified to the thread. For example: UI thread;
 - If subsequent tasks do not depend on the output of a task, the output is discarded, allowing memory to be used efficiently;
 - Convenient **synchronous/asynchronous** mode switching:
@@ -114,35 +117,38 @@ These features greatly meet the practical requirements of various projects.
 
 ### _1.1 Related_
 
-The main features of this framework are similar to [Facebook Bolts](http://github.com/BoltsFramework/Bolts-Android) and [RxJava](https://github.com/ReactiveX/RxJava), can be seen as fine-grained extensions of their task-combination capabilities, but it's more intuitive to use, more rigorous, high-spec, and closely aligned with actual project needs.
+The main features of this framework are similar to [Facebook Bolts](http://github.com/BoltsFramework/Bolts-Android) and [RxJava](https://github.com/ReactiveX/RxJava), can be seen as fine-grained extensions
+of their task-combination capabilities, but it's more intuitive to use, more rigorous, high-spec, and closely aligned with actual project needs.
 
-This framework is implemented based on the **thread-pool** (`java.util.concurrent.ThreadPoolExecutor`) instead of the **Fork-Join** framework (`java.util.concurrent.ForkJoinPool`), and improved the former (see [Worker](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Worker.scala#L59)) to conform to the basic logic of
-_**increase the size of threads to [maximum](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Config.scala#L28) first, or else enqueue, release thread when idle**_.
+This framework is implemented based on the **thread-pool** (`java.util.concurrent.ThreadPoolExecutor`) instead of the **Fork-Join** framework (`java.util.concurrent.ForkJoinPool`), and improved the former
+(see [Worker](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Worker.scala#L59)) to conform to the basic logic of
+_**increase the size of threads to [maximum](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/Config.scala#L27) first, or else enqueue, release thread when idle**_.
 The latter is suitable for computationally intensive tasks, but is not suitable for the design objectives of this framework, and is not suitable for resource-constrained devices (e.g. mobile phones, etc).
 
 
 ### _1.2 Instruction_
 
-This framework is completely written in Scala language, and all parameters support **[shorthand](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala#L130)**, will be automatically escaped as **needed** ([implicit](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/reflow/implicits.scala#L40)), can be used on any platform that adopts **jvm-like** (e.g. Android Runtime).
+This framework is completely written in Scala language, and all parameters support **[shorthand](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala#L136)**, will be automatically escaped as
+**needed** ([implicit](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/implicits.scala)), can be used on any platform that adopts **jvm-like** (e.g. Android Runtime).
 
-This framework is based on a special **anti-blocking** thread synchronization tool [Snatcher](https://github.com/WeiChou/Reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala#L25), see the code documentation for details.
+This framework is based on a special **anti-blocking** thread synchronization tool [Snatcher](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala), see the code documentation for details.
 
 * Note: This framework does not use `java.util.concurrent.Future<V>` tools to handle parallel tasks, since it is implemented based on the **thread blocking** model, it does not meet the design goals of this framework: **lock-free**.
 
 
 ## How Reflow works
-![Reflow operation principle diagram](https://github.com/WeiChou/Reflow/blob/master/reflow_operation-principle-diagram.png "Reflow operation principle diagram")
+![Reflow operation principle diagram](https://github.com/bdo-cash/reflow/blob/master/op-principle-diagram.png "Reflow operation principle diagram")
 
 
 ## Start using Reflow
 
 ### _3.1 Dependencies_
 
-Please click here [![](https://jitpack.io/v/bdo-cash/reflow.svg)](https://jitpack.io/#bdo-cash/reflow)
+Please click [![Jitpack](https://jitpack.io/v/bdo-cash/reflow.svg)](https://jitpack.io/#bdo-cash/reflow)
 
 ### _3.2 Example_
 
-See _below_ or [LiteSpec](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95), and [~~ReflowSpec~~](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala).
+See _below_ or [LiteSpec](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala), and [~~ReflowSpec~~](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala).
 
 * If using on Android platform, please make the following settings first.
 
@@ -176,7 +182,7 @@ object App {
 }
 ```
 
-* Below is part of [LiteSpec](https://github.com/dedge-space/Reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala#L95), which is very concise and recommended:
+* Below is part of [LiteSpec](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/LiteSpec.scala), which is very concise and recommended:
 
 ```Scala
 // ...
@@ -235,5 +241,5 @@ Scenario("Multi-level nested assembly test of `Pulse`") {
   // ...
 ```
 
-* Additional, refer to [ReflowSpec](https://github.com/WeiChou/Reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala), which is verbose and no longer recommended.
+* Additional, refer to [ReflowSpec](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala), which is verbose and no longer recommended.
 
