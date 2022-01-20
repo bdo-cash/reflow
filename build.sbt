@@ -2,7 +2,7 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "3.0.1"
+version := "3.0.4"
 
 scalaVersion := "2.11.12"
 
@@ -10,7 +10,8 @@ crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
   "2.11.12",
   /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
-  "2.12.12")
+  "2.12.12"
+)
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 // 启用对 java8 lambda 语法的支持。
@@ -19,7 +20,7 @@ scalacOptions += "-Xexperimental"
 // 解决生成文档报错导致 jitpack.io 出错的问题。
 publishArtifact in packageDoc := false
 
-// TODO: 独立使用本库的话，应该启用下面的设置。
+// 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
 //  scalaVersion := "2.11.12"
 //)
@@ -39,12 +40,11 @@ resolvers += "jitpack" at "https://jitpack.io"
 
 libraryDependencies ++= Seq(
   // 如果要用 jitpack 打包的话就加上，打完了再注掉。
-  // TODO: 独立使用本库的话，应该启用本依赖。
-  "com.github.dedge-space" % "annoguard" % "v1.0.5-beta",
-  // TODO: 如果 jitpack 打包 2.12.6, 这个包的引入也必须是 2.12.6，切记切记。
-  "com.github.dedge-space" % "scala-lang" % "253dc64cf9",
-
-  // ScalaTest 的标准引用。
+  // 如果独立使用本库，应该启用本依赖。
+  "com.github.bdo-cash" % "annoguard" % "v1.0.5-beta",
+  // 如果用 jitpack 打包 2.12.12, 这个包的引入也必须是 2.12.12。
+  "com.github.bdo-cash" % "scala-lang" % "253dc64cf9",
+  // ScalaTest 的标准引用
   "junit" % "junit" % "[4.12,)" % Test,
   // `3.2.0-SNAP10`会导致`scala.ScalaReflectionException: object org.scalatest.prop.Configuration$ not found`.
   "org.scalatest" %% "scalatest" % "3.2.0-SNAP7" % Test
