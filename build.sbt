@@ -2,7 +2,7 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "3.0.1"
+version := "3.0.2"
 
 scalaVersion := "2.11.12"
 
@@ -10,7 +10,8 @@ crossScalaVersions := Seq(
   /*"2.11.7", 多余，不需要两个*/
   "2.11.12",
   /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
-  "2.12.12")
+  "2.12.12"
+)
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 // 启用对 java8 lambda 语法的支持。
@@ -43,7 +44,6 @@ libraryDependencies ++= Seq(
   "com.github.dedge-space" % "annoguard" % "v1.0.5-beta",
   // TODO: 如果 jitpack 打包 2.12.6, 这个包的引入也必须是 2.12.6，切记切记。
   "com.github.dedge-space" % "scala-lang" % "253dc64cf9",
-
   // ScalaTest 的标准引用。
   "junit" % "junit" % "[4.12,)" % Test,
   // `3.2.0-SNAP10`会导致`scala.ScalaReflectionException: object org.scalatest.prop.Configuration$ not found`.
