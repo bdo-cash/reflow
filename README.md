@@ -13,6 +13,7 @@ A light-weight lock-free `series/parallel` combined scheduling framework for tas
     and each task can also retain the mark specially left by the previous data during processing, so as to be used for the next data processing.
     It doesn't matter in any subtask of any depth, and it doesn't matter if the previous data stays in a subtask much longer than the latter.
     Examples see _[here](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/PulseSpec.scala)_.
+  - Backpressure. There are two parameters to resolve the problem: `Pulse.inputCapacity/execCapacity`. Note the return value (`true/false`) of `Pulse.input()`.
 
 ----
 
@@ -71,7 +72,7 @@ Dependencies are then built and committed using `Dependency`, and a working `ref
     // To change to sync, simply add 'sync()' to the end.
     reflow.start(input, feedback).sync()
   ```
-- Task execution progress can be strategically feed back:
+- Task execution progress can be strategically feed back (from which we consider the execution progress is important):
   > 
   ```Scala
     // `Progress.Strategy.Xxx` e.g.
@@ -203,7 +204,7 @@ Scenario("`Serial/Parallel` Tasks mixed assembly") {
       info(d.toString)
       d
     }
-  Input(new Aaa) >>> a2b >>> b2c >>> pars run() sync()
+  Input[Aaa] >>> a2b >>> b2c >>> pars run(new Aaa) sync()
 
   assert(true)
 }
