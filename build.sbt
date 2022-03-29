@@ -43,7 +43,7 @@ libraryDependencies ++= Seq(
   // 如果独立使用本库，应该启用本依赖。
   "com.github.bdo-cash" % "annoguard" % "v1.0.5-beta",
   // 如果用 jitpack 打包 2.12.12, 这个包的引入也必须是 2.12.12。
-  "com.github.bdo-cash" % "scala-lang" % "253dc64cf9",
+  "com.github.bdo-cash" % "scala-lang" % "85bb56cc3d",
   // ScalaTest 的标准引用
   "junit" % "junit" % "[4.12,)" % Test,
   // `3.2.0-SNAP10`会导致`scala.ScalaReflectionException: object org.scalatest.prop.Configuration$ not found`.
