@@ -16,15 +16,14 @@
 
 package hobby.wei.c.reflow
 
-import java.util.concurrent.locks.ReentrantLock
 import hobby.chenai.nakam.lang.J2S.NonNull
+import hobby.wei.c.anno.proguard.Keep$$
 import hobby.wei.c.reflow.Assist._
 import hobby.wei.c.reflow.Feedback.Progress
 import hobby.wei.c.reflow.Feedback.Progress.Weight
 import hobby.wei.c.reflow.Tracker.Runner
 import hobby.wei.c.tool.Locker
-import hobby.wei.c.tool.Locker.CodeZ
-
+import java.util.concurrent.locks.ReentrantLock
 import scala.collection._
 
 /**
@@ -35,6 +34,8 @@ import scala.collection._
   *          2.3, 04/01/2021, 增加`autoProgress`控制。
   */
 abstract class Task protected () {
+
+  @ Keep$$
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
   @volatile private var env$ : Env       = _
@@ -210,17 +211,11 @@ abstract class Task protected () {
     *              因为如果该类再有一个子类, 本方法在不同的实例返回不同的 Class 对象。scope 不同，同步目的将失效。
     * @return codes 的返回值。
     */
-  final def sync[T](scope: Class[_ <: Task])(codes: => T): T = sync(
-    new CodeZ[T] {
-      override def exec() = codes
-    },
-    scope
-  )
+  final def sync[T](scope: Class[_ <: Task])(codes: => T): T = sync(() => codes, scope)
 
   final def sync[T](codes: Locker.CodeZ[T], scope: Class[_ <: Task]): T = {
-    try {
-      Locker.sync(codes, scope.ensuring(_.nonNull))
-    } catch {
+    try Locker.sync(codes, scope.ensuring(_.nonNull))
+    catch {
       case e: InterruptedException =>
         assert(isAborted)
         throw new AbortError(e)
@@ -233,6 +228,5 @@ object Task {
   private[reflow] def apply(f: Context => Unit): Task = new Context {
     override protected def doWork(): Unit = f(this)
   }
-
   abstract class Context private[reflow] () extends Task
 }
