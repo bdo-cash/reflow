@@ -2,7 +2,7 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "3.0.4"
+version := "3.0.5"
 
 scalaVersion := "2.11.12"
 
