@@ -132,7 +132,7 @@ The latter is suitable for computationally intensive tasks, but is not suitable 
 This framework is completely written in Scala language, and all parameters support **[shorthand](https://github.com/bdo-cash/reflow/blob/master/src/test/scala/reflow/test/ReflowSpec.scala#L136)**, will be automatically escaped as
 **needed** ([implicit](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/reflow/implicits.scala)), can be used on any platform that adopts **jvm-like** (e.g. Android Runtime).
 
-This framework is based on a special **anti-blocking** thread synchronization tool [Snatcher](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala), see the code documentation for details.
+This framework is based on a special **anti-blocking** thread synchronization tool [Snatcher](https://github.com/bdo-cash/reflow/blob/master/src/main/scala/hobby/wei/c/tool/Snatcher.scala), see _**[why snatcher](why-snatcher.md)**_ for details.
 
 * Note: This framework does not use `java.util.concurrent.Future<V>` tools to handle parallel tasks, since it is implemented based on the **thread blocking** model, it does not meet the design goals of this framework: **lock-free**.
 
