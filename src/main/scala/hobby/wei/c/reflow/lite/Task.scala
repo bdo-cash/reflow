@@ -22,7 +22,6 @@ import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.macros
 import hobby.wei.c.anno.proguard.Keep$
-import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.Task.Context
@@ -32,9 +31,7 @@ import hobby.wei.c.reflow.Reflow.{debugMode, Period, logger => log}
 import hobby.wei.c.reflow.lite.Task.Merge
 import hobby.wei.c.reflow.Assist.requirePulseKeyDiff
 import hobby.wei.c.reflow.Dependency.IsPar
-import hobby.wei.c.reflow.Trait.ReflowTrait
 import java.util.concurrent.atomic.AtomicLong
-import scala.collection.mutable
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
@@ -152,8 +149,8 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
   // `def end()`方法中重写的报错：lazy value classTags cannot override a concrete non-lazy value.
   override lazy val classTags = (in.seq, out :: Nil)
 
-  def >>>[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(lite, nxt)
-  def next[Next >: Null <: AnyRef](implicit lite: Lite[OUT, Next], next: ClassTag[Next]): Serial[IN, Next] = {
+  def >>>[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(lite)
+  def next[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit next: ClassTag[Next]): Serial[IN, Next] = {
     require(lite.nonNull)
     Serial(head = Some(this), tail = lite)
   }
@@ -342,8 +339,7 @@ final case class Par[IN >: Null <: AnyRef, OUT >: Null <: AnyRef]
   def merge[Next >: Null <: AnyRef]
   (period: Period.Tpe = SHORT, priority: Int = P_NORMAL, name: String = null, desc: String = null, visible: Boolean = true)
   (f: (OUT, Context) => Next)(implicit next: ClassTag[Next]): Serial[IN, Next] = {
-    implicit val lite = Task[OUT, Next](period, priority, name, desc, visible)(f)
-    l.next[Next]
+    l >>> Task[OUT, Next](period, priority, name, desc, visible)(f)
   }
 }
 
@@ -375,7 +371,7 @@ final case class Par2[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -409,7 +405,7 @@ final case class Par3[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -443,7 +439,7 @@ final case class Par4[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -478,7 +474,7 @@ final case class Par5[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -513,7 +509,7 @@ final case class Par6[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -550,7 +546,7 @@ final case class Par7[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -588,7 +584,7 @@ final case class Par8[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -627,7 +623,7 @@ final case class Par9[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null 
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -667,7 +663,7 @@ final case class Par10[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -708,7 +704,7 @@ final case class Par11[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -750,7 +746,7 @@ final case class Par12[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -793,7 +789,7 @@ final case class Par13[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -837,7 +833,7 @@ final case class Par14[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -882,7 +878,7 @@ final case class Par15[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -928,7 +924,7 @@ final case class Par16[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -975,7 +971,7 @@ final case class Par17[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -1023,7 +1019,7 @@ final case class Par18[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -1072,7 +1068,7 @@ final case class Par19[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -1122,7 +1118,7 @@ final case class Par20[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
@@ -1167,7 +1163,7 @@ final case class Par21[IN >: Null <: AnyRef, OUT >: Null <: AnyRef, OUT1 >: Null
           this))
       }
     }
-    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())).next[Next]
+    (if (hasPar()) Task.sub[IN, AnyRef](toIntent(), null) else Task.sub[IN, AnyRef](null, parseDepends())) >>> end
   }
 }
 
