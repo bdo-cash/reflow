@@ -21,7 +21,7 @@ import hobby.chenai.nakam.basis.TAG.ThrowMsg
 import hobby.chenai.nakam.lang.J2S._
 import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.chenai.nakam.tool.macros
-import hobby.wei.c.anno.proguard.Keep$
+import hobby.wei.c.anno.proguard.Keep$$
 import hobby.wei.c.reflow
 import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.Task.Context
@@ -143,7 +143,7 @@ protected[lite] trait ClassTags2Name extends TAG.ClassName {
   }
 }
 
-@Keep$
+@Keep$$
 abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite](implicit in: ClassTag[IN], out: ClassTag[OUT])
   extends ClassTags2Name {
   // `def end()`方法中重写的报错：lazy value classTags cannot override a concrete non-lazy value.

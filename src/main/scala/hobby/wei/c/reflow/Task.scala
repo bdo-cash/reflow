@@ -35,7 +35,7 @@ import scala.collection._
   */
 abstract class Task protected () {
 
-  @ Keep$$
+  @Keep$$
   private implicit lazy val lock: ReentrantLock = Locker.getLockr(this)
 
   @volatile private var env$ : Env       = _
