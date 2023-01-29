@@ -1,8 +1,8 @@
 package sample
 
-import org.scalatest.Spec
+import org.scalatest.funspec.AnyFunSpec
 
-class SetSpec extends Spec {
+class SetSpec extends AnyFunSpec {
   object `A Set` {
     object `when empty` {
       def `should have size 0` {

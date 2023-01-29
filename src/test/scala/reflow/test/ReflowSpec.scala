@@ -23,6 +23,7 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import org.scalatest._
+import org.scalatest.featurespec.AsyncFeatureSpec
 import reflow.test.enum.EnumTest
 
 /**

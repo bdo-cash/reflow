@@ -4,13 +4,12 @@ organization := "hobby.wei.c"
 
 version := "3.0.6"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.17"
 
 crossScalaVersions := Seq(
-  /*"2.11.7", 多余，不需要两个*/
   "2.11.12",
-  /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
-  "2.12.12"
+  "2.12.17",
+  "2.13.10"
 )
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
@@ -41,20 +40,28 @@ resolvers += "jitpack" at "https://jitpack.io"
 libraryDependencies ++= Seq(
   // 如果要用 jitpack 打包的话就加上，打完了再注掉。
   // 如果独立使用本库，应该启用本依赖。
-  "com.github.bdo-cash" % "annoguard" % "v1.0.5-beta",
+  "com.github.bdo-cash" % "annoguard" % "v1.0.6",
   // 如果用 jitpack 打包 2.12.12, 这个包的引入也必须是 2.12.12。
-  "com.github.bdo-cash" % "scala-lang" % "138bff0c11",
+  //"com.github.bdo-cash" % "scala-lang" % "138bff0c11",
+  "com.github.bdo-cash" % "scala-lang" % "ccf5b69c86", // scala 2.12
+
   // ScalaTest 的标准引用
-  "junit" % "junit" % "[4.12,)" % Test,
-  // `3.2.0-SNAP10`会导致`scala.ScalaReflectionException: object org.scalatest.prop.Configuration$ not found`.
-  "org.scalatest" %% "scalatest" % "3.2.0-SNAP7" % Test
+  "junit"          % "junit"     % "[4.12,)"        % Test,
+  "org.scalatest" %% "scalatest" % "[3.2.0-SNAP7,)" % Test
 )
 
 // 如果项目要独立编译，请同时启用这部分。
 // Macro Settings
 ///*
 resolvers += Resolver.sonatypeRepo("releases")
-addCompilerPlugin("org.scalamacros" % "paradise" % "[2.1.0,)" cross CrossVersion.full)
-// https://mvnrepository.com/artifact/org.scala-lang/scala-compiler
-libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
+libraryDependencies ++= (CrossVersion.partialVersion(scalaVersion.value) match {
+  case Some((2, x)) if x < 13 =>
+    addCompilerPlugin("org.scalamacros" % "paradise"       % "[2.1.0,)" cross CrossVersion.full)
+    Seq("org.scala-lang"                % "scala-compiler" % scalaVersion.value)
+  case _ => Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value)
+})
+scalacOptions in Compile ++= (CrossVersion.partialVersion(scalaVersion.value) match {
+  case Some((2, x)) if x >= 13 => Seq("-Ymacro-annotations")
+  case _                       => Nil
+})
 //*/

@@ -32,7 +32,7 @@ import hobby.wei.c.tool.Snatcher
 import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import scala.collection.concurrent.TrieMap
-import scala.collection.JavaConversions.enumerationAsScalaIterator
+import scala.collection.JavaConverters.enumerationAsScalaIteratorConverter
 
 /**
   * 脉冲步进流式数据处理器。
@@ -285,7 +285,7 @@ class Pulse(val reflow: Reflow, feedback: Pulse.Feedback, val abortIfError: Bool
         (time, sn) => {
           if (time <= System.currentTimeMillis) {
             // 这里还是不能用`head.suspend`，head 是给`serialNum + 1`次访问这一次用的，底层逻辑还是同一层的两个集合相匹配。
-            (sn, failed, suspend.keys.toList, roadmap.keys.toList)
+            (sn, failed, suspend.keys.asScala.toList, roadmap.keys.asScala.toList)
           } else (-1, false, Nil, Nil)
         }
       )

@@ -18,13 +18,11 @@ package hobby.wei.c.reflow
 
 import hobby.chenai.nakam.basis.TAG
 import hobby.chenai.nakam.lang.J2S.{NonFlat$, NonNull}
-import hobby.chenai.nakam.lang.TypeBring.AsIs
 import hobby.wei.c.log.Logger._
 import hobby.wei.c.reflow.Reflow.{logger => log, _}
 import hobby.wei.c.tool.Snatcher
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
-import scala.collection.JavaConversions.collectionAsScalaIterable
 
 /**
   * 优化的线程池实现。

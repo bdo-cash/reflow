@@ -1,8 +1,9 @@
 package sample
 
-import org.scalatest.{BeforeAndAfter, FunSuite}
+import org.scalatest.BeforeAndAfter
+import org.scalatest.funsuite.AnyFunSuite
 
-class FunSuitee extends FunSuite with BeforeAndAfter {
+class FunSuitee extends AnyFunSuite with BeforeAndAfter {
   // http://doc.scalatest.org/1.8/org/scalatest/BeforeAndAfter.html
   before {
     // ...

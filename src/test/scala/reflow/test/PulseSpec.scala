@@ -22,7 +22,8 @@ import hobby.wei.c.reflow._
 import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.Feedback.Progress.Strategy
 import hobby.wei.c.reflow.Trait.ReflowTrait
-import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
+import org.scalatest.featurespec.AsyncFeatureSpec
 import java.util.concurrent.{Callable, FutureTask}
 
 /**

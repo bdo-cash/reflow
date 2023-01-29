@@ -24,9 +24,9 @@ import hobby.wei.c.reflow.implicits._
 import hobby.wei.c.reflow.lite._
 import hobby.wei.c.reflow.Reflow.GlobalTrack.GlobalTrackObserver
 import hobby.wei.c.reflow.Trait.ReflowTrait
-import org.scalatest.{AsyncFeatureSpec, BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
-import java.util.concurrent.{Callable, FutureTask}
-
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, GivenWhenThen}
+import org.scalatest.featurespec.AsyncFeatureSpec
+import java.util.concurrent.FutureTask
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationInt
 import scala.util.control.Breaks

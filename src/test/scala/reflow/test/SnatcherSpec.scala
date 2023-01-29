@@ -19,6 +19,7 @@ package reflow.test
 import hobby.chenai.nakam.lang.J2S.{future2Scala, Obiter, Run}
 import hobby.wei.c.reflow.Reflow
 import hobby.wei.c.tool
+import org.scalatest.featurespec.AsyncFeatureSpec
 //import hobby.wei.c.tool.Snatcher.ReentrantLockError
 import org.scalatest._
 import java.util

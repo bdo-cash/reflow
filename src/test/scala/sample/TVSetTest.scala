@@ -1,8 +1,10 @@
 package sample
 
-import org.scalatest.{FeatureSpec, GivenWhenThen, Matchers}
+import org.scalatest.GivenWhenThen
+import org.scalatest.featurespec.AnyFeatureSpec
+import org.scalatest.matchers.should.Matchers
 
-class TVSetTest extends FeatureSpec with GivenWhenThen with Matchers {
+class TVSetTest extends AnyFeatureSpec with GivenWhenThen with Matchers {
   info("As a TV Set owner")
   info("I want to be able to turn the TV on and off")
   info("So I can watch TV when I want")

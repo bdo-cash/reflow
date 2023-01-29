@@ -1,7 +1,7 @@
 package sample
 
-import org.scalatest.{AsyncFeatureSpec, GivenWhenThen}
-
+import org.scalatest.GivenWhenThen
+import org.scalatest.featurespec.AsyncFeatureSpec
 import scala.concurrent.{ExecutionContext, Future}
 
 // Defining actor messages

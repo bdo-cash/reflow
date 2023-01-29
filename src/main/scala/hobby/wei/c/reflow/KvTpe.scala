@@ -112,7 +112,7 @@ abstract class KvTpe[T <: AnyRef] private[reflow](_key: String, _clazz: Class[_]
     case _ => false
   }
 
-  override def canEqual(that: Any) = that.isInstanceOf[KvTpe[T]]
+  override def canEqual(that: Any) = that.isInstanceOf[KvTpe[_]]
 
   override def hashCode = key.hashCode * 41 + tpe.hashCode
 
