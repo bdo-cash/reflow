@@ -7,10 +7,8 @@ version := "3.0.6"
 scalaVersion := "2.11.12"
 
 crossScalaVersions := Seq(
-  /*"2.11.7", 多余，不需要两个*/
   "2.11.12",
-  /*"2.12.2", 有一些编译问题：`the interface is not a direct parent`。*/
-  "2.12.12"
+  "2.12.17"
 )
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")

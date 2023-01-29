@@ -149,14 +149,15 @@ abstract class AbsLite[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lite
   // `def end()`方法中重写的报错：lazy value classTags cannot override a concrete non-lazy value.
   override lazy val classTags = (in.seq, out :: Nil)
 
-  def >>>[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(lite)
-  def next[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit next: ClassTag[Next]): Serial[IN, Next] = {
+  def >>>[Next >: Null <: AnyRef](lite: Lite[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(lite, nxt)
+  // 勿改！不然不能这样写`input.next[Bbb]`(可以不带参数)！上次脑袋抽风居然把对的改错了（想不起来为什么要改）
+  def next[Next >: Null <: AnyRef](implicit lite: Lite[OUT, Next], next: ClassTag[Next]): Serial[IN, Next] = {
     require(lite.nonNull)
     Serial(head = Some(this), tail = lite)
   }
 
-  def >>>[Next >: Null <: AnyRef](serial: Serial[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(serial)
-  def next[Next >: Null <: AnyRef](serial: Serial[OUT, Next])(implicit next: ClassTag[Next]): Serial[IN, Next] = {
+  def >>>[Next >: Null <: AnyRef](serial: Serial[OUT, Next])(implicit nxt: ClassTag[Next]): Serial[IN, Next] = next(serial, nxt)
+  def next[Next >: Null <: AnyRef, Ser <: Serial[OUT, Next]](implicit serial: Serial[OUT, Next], next: ClassTag[Next]): Serial[IN, Next] = {
     require(serial.nonNull)
 
     def joinThis2Head(lite: AbsLite[_ >: Null <: AnyRef, _ >: Null <: AnyRef]): Serial[_ >: Null <: AnyRef, _ >: Null <: AnyRef] = lite match {
