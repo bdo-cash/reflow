@@ -12,16 +12,16 @@ crossScalaVersions := Seq(
   "2.13.10"
 )
 
-javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+//javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 // 启用对 java8 lambda 语法的支持。
-scalacOptions += "-Xexperimental"
+//scalacOptions += "-Xexperimental"
 
 // 解决生成文档报错导致 jitpack.io 出错的问题。
 publishArtifact in packageDoc := false
 
 // 独立使用本库的话，应该启用下面的设置。
 //lazy val scalaSettings = Seq(
-//  scalaVersion := "2.11.12"
+//  scalaVersion := "2.12.17"
 //)
 //
 //lazy val root = Project(id = "reflow", base = file("."))
@@ -43,7 +43,7 @@ libraryDependencies ++= Seq(
   "com.github.bdo-cash" % "annoguard" % "v1.0.6",
   // 如果用 jitpack 打包 2.12.12, 这个包的引入也必须是 2.12.12。
   //"com.github.bdo-cash" % "scala-lang" % "138bff0c11",
-  "com.github.bdo-cash" % "scala-lang" % "ccf5b69c86", // scala 2.12
+  "com.github.bdo-cash" % "scala-lang" % "1096f23b08", // scala 2.12
 
   // ScalaTest 的标准引用
   "junit"          % "junit"     % "[4.12,)"        % Test,
