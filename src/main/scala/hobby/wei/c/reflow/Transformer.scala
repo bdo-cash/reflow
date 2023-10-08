@@ -19,22 +19,27 @@ package hobby.wei.c.reflow
 import hobby.chenai.nakam.lang.J2S.NonNull
 
 import scala.collection._
+import scala.reflect.runtime.universe._
 
-/**
-  * 任务输出转换器。包括`key`和`value`的转换，
+/** 任务输出转换器。包括`key`和`value`的转换，
   * 可定义仅转换`value`、或仅转换`key`、或`key-value`全都转换。
   *
-  * @constructor 对于要将某key-value转换为其它key'-value'的, 应使用本构造方法。
+  * @constructor 对于要将某`key-value`转换为其它`key'-value'`的, 应使用本构造方法。
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 31/07/2016
   */
-abstract class Transformer[IN <: AnyRef, OUT <: AnyRef] private(_in: KvTpe[IN], _out: KvTpe[OUT], _keyIn: String, _keyOut: String) extends Equals {
+abstract class Transformer[IN <: AnyRef: TypeTag, OUT <: AnyRef: TypeTag] private (
+    _in: KvTpe[IN],
+    _out: KvTpe[OUT],
+    _keyIn: String,
+    _keyOut: String
+) extends Equals {
   protected def this(keyIn: String, keyOut: String) = this(null, null, keyIn, keyOut)
 
   protected def this(in: KvTpe[IN], out: KvTpe[OUT]) = this(in, out, null, null)
 
-  lazy val in: KvTpe[IN] = if (_in.nonNull) _in else new KvTpe[IN](_keyIn, this.getClass, 0) {}
-  lazy val out: KvTpe[OUT] = if (_out.nonNull) _out else new KvTpe[OUT](_keyOut, this.getClass, 1) {}
+  lazy val in: KvTpe[IN]   = if (_in.nonNull) _in else new KvTpe[IN](_keyIn)
+  lazy val out: KvTpe[OUT] = if (_out.nonNull) _out else new KvTpe[OUT](_keyOut)
 
   final def transform(input: Map[String, _]): Option[OUT] = transform(in.takeValue(input))
 

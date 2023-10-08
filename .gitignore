@@ -39,6 +39,7 @@ captures/
 
 # Intellij
 .idea/
+.bsp/
 
 # Keystore files
 *.jks

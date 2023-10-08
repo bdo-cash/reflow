@@ -27,8 +27,8 @@ import scala.reflect.ClassTag
   * @author Wei Chou(weichou2010@gmail.com)
   * @version 1.0, 28/03/2018
   */
-@ KeepVp$
-@ KeepMp$
+@KeepVp$
+@KeepMp$
 object implicits {
   val P_HIGH   = Reflow.P_HIGH
   val P_NORMAL = Reflow.P_NORMAL
@@ -71,6 +71,7 @@ object implicits {
   implicit lazy val f0 = kvTpe2Bdr _
   implicit lazy val f1 = trans2Bdr _
   implicit lazy val f2 = tpeKv2Bdr _
+  @deprecated("Use with caution, since there is no type safety protection.")
   implicit lazy val f3 = strKv2Bdr _
 
   implicit def kvTpe2Bdr(kt: KvTpe[_ <: AnyRef]): Helper.KvTpes.Builder                                                     = Helper.KvTpes + kt
@@ -81,7 +82,9 @@ object implicits {
   implicit def transBdr2Ok(tb: Helper.Transformers.Builder): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]]           = tb ok ()
   implicit def tpeKv2Bdr[V <: AnyRef](kv: (KvTpe[V], V)): In.Builder                                                        = In + kv
   implicit def tpeKv2Ok[V <: AnyRef](kv: (KvTpe[V], V)): In                                                                 = kv ok ()
+  @deprecated("Use with caution, since there is no type safety protection.")
   implicit def strKv2Bdr[V](kv: (String, V)): In.Builder                                                                    = In + (kv._1, kv._2)
+  @deprecated("Use with caution, since there is no type safety protection.")
   implicit def strKv2Ok[V](kv: (String, V)): In                                                                             = kv ok ()
   implicit def inBdr2Ok(ib: In.Builder): In                                                                                 = ib ok ()
 }
