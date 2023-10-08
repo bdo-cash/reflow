@@ -21,16 +21,16 @@ import hobby.wei.c.reflow.implicits._
 import reflow.test.enum._
 
 /**
-  * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 23/03/2018
-  */
+ * @author Wei Chou(weichou2010@gmail.com)
+ * @version 1.0, 23/03/2018
+ */
 object kvTpes {
-  lazy val anyRef = new KvTpe[AnyRef]("anyr") {}
-  lazy val int = new KvTpe[Integer]("int") {}
-  lazy val str = new KvTpe[String]("str") {}
-  lazy val outputstr = new KvTpe[String]("outputstr") {}
-  lazy val seq = new KvTpe[Seq[_]]("seq") {}
-  lazy val enum = new KvTpe[EnumTest.Tpe]("enum") {}
+  lazy val anyRef = new KvTpe[AnyRef]("anyr")
+  lazy val int = new KvTpe[Integer]("int")
+  lazy val str = new KvTpe[String]("str")
+  lazy val outputstr = new KvTpe[String]("outputstr")
+  lazy val seq = new KvTpe[Seq[_]]("seq")
+  lazy val enum = new KvTpe[EnumTest.Tpe]("enum")
 }
 
 object enum {
@@ -50,6 +50,7 @@ object trans {
 }
 
 object trats {
+
   import kvTpes._
 
   lazy val int2str0 = new Trait.Adapter {

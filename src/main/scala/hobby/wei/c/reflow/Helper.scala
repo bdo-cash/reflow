@@ -19,11 +19,12 @@ package hobby.wei.c.reflow
 import hobby.chenai.nakam.lang.J2S.NonNull
 
 import scala.collection._
+import scala.reflect.runtime.universe._
 
 /**
-  * @author Wei Chou(weichou2010@gmail.com)
-  * @version 1.0, 14/08/2016
-  */
+ * @author Wei Chou(weichou2010@gmail.com)
+ * @version 1.0, 14/08/2016
+ */
 object Helper {
   object KvTpes {
     def empty(): immutable.Set[KvTpe[_ <: AnyRef]] = immutable.Set.empty
@@ -44,9 +45,9 @@ object Helper {
 
   object Transformers {
     /**
-      * 将任务的某个输出在转换之后仍然保留。通过增加一个[输出即输入]转换。
-      */
-    def retain[O <: AnyRef](kce: KvTpe[O]): Transformer[O, O] = new Transformer[O, O](kce, kce) {
+     * 将任务的某个输出在转换之后仍然保留。通过增加一个[输出即输入]转换。
+     */
+    def retain[O <: AnyRef : TypeTag](kv: KvTpe[O]): Transformer[O, O] = new Transformer[O, O](kv, kv) {
       override def transform(in: Option[O]) = in
     }
 
@@ -60,7 +61,7 @@ object Helper {
         this
       }
 
-      def retain[O <: AnyRef](kce: KvTpe[O]): this.type = this + Transformers.retain[O](kce)
+      def retain[O <: AnyRef : TypeTag](kv: KvTpe[O]): this.type = this + Transformers.retain[O](kv)
 
       def ok(): immutable.Set[Transformer[_ <: AnyRef, _ <: AnyRef]] = trans.toSet
     }

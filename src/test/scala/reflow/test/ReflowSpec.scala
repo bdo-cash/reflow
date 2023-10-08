@@ -27,9 +27,9 @@ import org.scalatest.featurespec.AsyncFeatureSpec
 import reflow.test.enum.EnumTest
 
 /**
-  * @author Chenai Nakam(chenai.nakam@gmail.com)
-  * @version 1.0, 13/03/2018
-  */
+ * @author Chenai Nakam(chenai.nakam@gmail.com)
+ * @version 1.0, 13/03/2018
+ */
 class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter with BeforeAndAfterAll {
   override protected def beforeAll(): Unit = {
     Reflow.setDebugMode(false)
@@ -109,7 +109,7 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
 
         override protected def period() = TRANSIENT // Period.TRANSIENT
 
-        override protected def outs() = kvTpes.str + new KvTpe[String]("outputstr") {} + kvTpes.int
+        override protected def outs() = kvTpes.str + new KvTpe[String]("outputstr") + kvTpes.int
 
         override def newTask() = task
       }
@@ -135,14 +135,14 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
 
     Scenario("[Trait 定义]也可以简写") {
-      val trat = Trait("t0", SHORT, new KvTpe[String]("outputstr") {}) { ctx =>
+      val trat = Trait("t0", SHORT, new KvTpe[String]("outputstr")) { ctx =>
         ctx.output(kvTpes.outputstr.key, outputStr)
       }
       val trat1 = Trait("t1", SHORT, kvTpes.outputstr) { ctx =>
         ctx.output(kvTpes.outputstr.key, "abcd")
       }
       val scheduler = Reflow.create(trat).next(Trait("t2", SHORT) { _ => })
-        .and(trat1, new Transformer[String, Integer](kvTpes.outputstr, new KvTpe[Integer]("kkk") {}) {
+        .and(trat1, new Transformer[String, Integer](kvTpes.outputstr, new KvTpe[Integer]("kkk")) {
           override def transform(in: Option[String]) = Option(666)
         }).next(kvTpes.outputstr.re)
         .submit(/*kces.outputstr*/) // 默认用最后的输出作为prefer输出
@@ -168,12 +168,12 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
   info("在`Reflow`里，对于关系复杂的任务集，应该使用`Dependency`构建依赖关系。")
 
   Feature("组装复杂业务逻辑") {
-    val token4JobA = new KvTpe[Integer]("token4JobA") {}
-    val token4JobB = new KvTpe[Integer]("token4JobB") {}
-    val key4JobADone = new KvTpe[Integer]("key4JobADone") {}
-    val key4JobBDone = new KvTpe[Integer]("key4JobBDone") {}
-    val outkeyA = new KvTpe[Integer]("outkeyA") {}
-    val outkeyB = new KvTpe[Integer]("outkeyB") {}
+    val token4JobA = new KvTpe[Integer]("token4JobA")
+    val token4JobB = new KvTpe[Integer]("token4JobB")
+    val key4JobADone = new KvTpe[Integer]("key4JobADone")
+    val key4JobBDone = new KvTpe[Integer]("key4JobBDone")
+    val outkeyA = new KvTpe[Integer]("outkeyA")
+    val outkeyB = new KvTpe[Integer]("outkeyB")
 
     info("首先应该将复杂业务拆分为多个[功能单一]的没有[阻塞]等待的[单线程]结构的任务。")
     Given("一个业务需求：")
@@ -309,27 +309,27 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
     }
     Scenario("[局部]转换") {
       val scheduler = Reflow.create(
-        Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
-          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
-        }, transformer)
+          Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+            ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
+          }, transformer)
         .submit(kvTpes.str)
         .start(kvTpes.str -> "00000", implicitly)
       assertResult("00000")(scheduler.sync()(kvTpes.str))
     }
     Scenario("[全局]转换 1") {
       val scheduler = Reflow.create(
-        Trait("int2str 1", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
-          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
-        }).next(transformer)
+          Trait("int2str 1", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+            ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
+          }).next(transformer)
         .submit(kvTpes.str)
         .start(kvTpes.str -> "11111", implicitly)
       assertResult("11111")(scheduler.sync()(kvTpes.str))
     }
     Scenario("[不]转换 2") {
       val scheduler = Reflow.create(
-        Trait("int2str 2", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
-          ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
-        }, transformer).next(transformer)
+          Trait("int2str 2", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+            ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).get))
+          }, transformer).next(transformer)
         .submit(kvTpes.int)
         .start(kvTpes.str -> "22222", implicitly)
       assertResult(22222)(scheduler.sync()(kvTpes.int))
@@ -350,18 +350,18 @@ class ReflowSpec extends AsyncFeatureSpec with GivenWhenThen with BeforeAndAfter
         }
       }
       val scheduler = Reflow.create(
-        Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
-          if (ctx.isReinforcing) {
-            // do something ...
-            Thread.sleep(1000)
-            ctx.output[Integer](kvTpes.int, ctx.input(kvTpes.int).orNull)
-          } else {
-            ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
-            // 申请强化运行
-            ctx.requireReinforce()
-            ctx.cache[Integer](kvTpes.int, 12345)
-          }
-        })
+          Trait("int2str", TRANSIENT, kvTpes.int, kvTpes.str) { ctx =>
+            if (ctx.isReinforcing) {
+              // do something ...
+              Thread.sleep(1000)
+              ctx.output[Integer](kvTpes.int, ctx.input(kvTpes.int).orNull)
+            } else {
+              ctx.output(kvTpes.int, Integer.valueOf(ctx.input(kvTpes.str).getOrElse("-1")))
+              // 申请强化运行
+              ctx.requireReinforce()
+              ctx.cache[Integer](kvTpes.int, 12345)
+            }
+          })
         .submit(kvTpes.int)
         .start(kvTpes.str -> "11111", feedback)
       // info(s"强化运行后的最终输出。out:${scheduler.sync()}")

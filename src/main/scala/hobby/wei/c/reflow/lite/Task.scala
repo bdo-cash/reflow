@@ -41,7 +41,7 @@ import scala.reflect.ClassTag
   */
 object Task { // format: off
   lazy val KEY_DEF = getClass.getName + "." + macros.valName
-  lazy val defKeyVType = new KvTpe[AnyRef](Task.KEY_DEF) {}
+  lazy val defKeyVType = new KvTpe[AnyRef](Task.KEY_DEF)
   lazy val defKeyVTypes: Set[KvTpe[_ <: AnyRef]] = defKeyVType
   private[lite] lazy val serialInParIndex = new AtomicLong(-1) // 递减
 
@@ -69,7 +69,7 @@ object Task { // format: off
       lite =>
       lazy val outKeyIndexed = lite.OUT_KEY(index)
       override protected[lite] val func = f
-      override protected[lite] def outs$() = new KvTpe[AnyRef](outKeyIndexed) {}
+      override protected[lite] def outs$() = new KvTpe[AnyRef](outKeyIndexed)
       override protected[lite] def newTask$() = new reflow.Task.Context {
         protected final def input(): IN = input[IN](Task.KEY_DEF).get
         protected final def output(vo: OUT): Unit = output(outKeyIndexed, vo)
@@ -282,7 +282,7 @@ final case class Serial[IN >: Null <: AnyRef, OUT >: Null <: AnyRef] private[lit
 (implicit in: ClassTag[IN], out: ClassTag[OUT]) extends AbsLite[IN, OUT] {
   /** 作为并行的其中一个子任务时，需要转换。 */
   def inPar(name: String = this._name, desc: String = null): Lite[IN, OUT] =
-    toSubWith(new KvTpe[AnyRef](OUT_KEY(Task.serialInParIndex.decrementAndGet)) {}, name, desc)
+    toSubWith(new KvTpe[AnyRef](OUT_KEY(Task.serialInParIndex.decrementAndGet)), name, desc)
 
   def toSub(name: String = this._name, desc: String = null): Lite[IN, OUT] =
     toSubWith(Task.defKeyVType, name, desc)
