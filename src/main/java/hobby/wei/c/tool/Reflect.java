@@ -25,10 +25,11 @@ import java.lang.reflect.WildcardType;
 import java.util.Locale;
 
 /**
- * 摘自Gson源码。
+ * 摘自`Gson`源码。
  *
  * @author Wei Chou(weichou2010@gmail.com)
- * @version 1.0, 02/07/2016
+ * @version 1.0, 02/07/2016;
+ *          1.1, 同步至 {@code Gson 2.10.1}
  */
 public class Reflect {
     public static Type[] getSuperclassTypeParameter(Class<?> subclass, boolean checkTypeVariable) {
@@ -38,35 +39,62 @@ public class Reflect {
         } else {
             final Type[] types = ((ParameterizedType) superclass).getActualTypeArguments();
             if (checkTypeVariable) {
-                for (Type t : types) {
-                    if (t instanceof TypeVariable) {
-                        throwClassIllegal(subclass);
-                    }
+                for (Type tpe : types) {
+                    checkTypeVariable(tpe);
                 }
             }
             return types;
         }
     }
 
-    public static Class<?> getRawType(Type type) {
-        if (type instanceof Class) {
-            return (Class) type;
-        } else if (type instanceof ParameterizedType) {
-            return (Class) ((ParameterizedType) type).getRawType();
-        } else if (type instanceof GenericArrayType) {
-            return Array.newInstance(getRawType(((GenericArrayType) type).getGenericComponentType()), 0).getClass();
-        } else if (type instanceof TypeVariable) {
-            return Object.class;
-        } else if (type instanceof WildcardType) {
-            return getRawType(((WildcardType) type).getUpperBounds()[0]);
-        } else {
-            return throwTypeIllegal(type);
+    /**
+     * 借鉴 {@code Gson 2.10.1}, 实测与上面效果一样（问题不在 scala/java, 而在 Android, 与 R8 有关，已找到原因）。
+     */
+    public static Type[] getSuperclassTypeParameterSafe(Class<?> subclass, boolean checkTypeVariable) {
+        final Type superclass = subclass.getGenericSuperclass();
+        if (superclass instanceof ParameterizedType) {
+            final Type[] types = ((ParameterizedType) superclass).getActualTypeArguments();
+            if (checkTypeVariable) {
+                for (Type tpe : types) {
+                    checkTypeVariable(tpe);
+                }
+            }
+            return types;
+        }
+        return throwClassIllegal(subclass);
+    }
+
+    public static void checkTypeVariable(Type tpe) {
+        // `TypeVariable`表示`T`占位符而不是具体类型，如`Xx<T>`而不是`Xx<java.util.ArrayList<?>>`。
+        // 区别于`WildcardType`。
+        if (tpe instanceof TypeVariable) {
+            // ((TypeVariable<?>)tpe).getBounds(); // 表示获取`T`参数表示的具体类，如：
+            // `java.util.ArrayList<?>`，这需要递归，具体看在第几层。
+            throwTypeIllegal(tpe);
         }
     }
 
-    public static Type[] getSubTypes(Type type) {
-        if (type instanceof ParameterizedType) {
-            return ((ParameterizedType) type).getActualTypeArguments();
+    public static Class<?> getRawType(Type tpe) {
+        if (tpe instanceof Class) {
+            return (Class<?>) tpe;
+        } else if (tpe instanceof ParameterizedType) {
+            return (Class<?>) ((ParameterizedType) tpe).getRawType();
+        } else if (tpe instanceof GenericArrayType) {
+            return Array.newInstance(getRawType(((GenericArrayType) tpe).getGenericComponentType()), 0).getClass();
+        } else if (tpe instanceof TypeVariable) {
+            // we could use the variable's bounds, but that won't work if there are multiple.
+            // having a raw type that's more general than necessary is okay
+            return Object.class;
+        } else if (tpe instanceof WildcardType) {
+            return getRawType(((WildcardType) tpe).getUpperBounds()[0]);
+        } else {
+            return throwTypeIllegal(tpe);
+        }
+    }
+
+    public static Type[] getSubTypes(Type tpe) {
+        if (tpe instanceof ParameterizedType) {
+            return ((ParameterizedType) tpe).getActualTypeArguments();
         } else {
             return EMPTY_TYPES;
         }
@@ -77,10 +105,9 @@ public class Reflect {
                 Locale.CHINA, "请确保类\"%s\"是泛型类的[匿名]子类。", subclass.getName()));
     }
 
-    private static Class<?> throwTypeIllegal(Type type) {
+    private static Class<?> throwTypeIllegal(Type tpe) {
         throw new IllegalArgumentException(String.format(
-                // Locale.CHINA, "不支持的类型\"%s\", 仅支持Class, ParameterizedType, or GenericArrayType.", type));
-                Locale.CHINA, "不支持的类型\"%s\", 请确认泛型参数是否正确。", type));
+                Locale.CHINA, "不支持的类型\"%s\", 请确认泛型参数是否正确。", tpe));
     }
 
     private static final Type[] EMPTY_TYPES = new Type[0];
