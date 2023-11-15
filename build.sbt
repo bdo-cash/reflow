@@ -6,7 +6,7 @@ name := baseDirectory.value.getName
 
 organization := "hobby.wei.c"
 
-version := "3.1.0"
+version := "3.1.2"
 
 scalaVersion := "2.12.18"
 
@@ -44,9 +44,9 @@ resolvers += "jitpack" at "https://jitpack.io"
 libraryDependencies ++= Seq(
   // 如果要用 jitpack 打包的话就加上，打完了再注掉。
   // 如果独立使用本库，应该启用本依赖。
-  "com.github.bdo-cash" % "annoguard" % "v1.0.7",
+  "com.github.bdo-cash" % "annoguard" % "v2.0.0",
   // 如果用 jitpack 打包 2.12.12, 这个包的引入也必须是 2.12.12。
-  "com.github.bdo-cash" % "scala-lang" % "9ae46c9fd4", // scala 2.12
+  "com.github.bdo-cash" % "scala-lang" % "60a29ca4c7", // scala 2.12
 
   // ScalaTest 的标准引用
   "junit"          % "junit"     % "[4.12,)"        % Test,

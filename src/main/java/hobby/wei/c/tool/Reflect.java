@@ -28,7 +28,8 @@ import java.util.Locale;
  * 摘自`Gson`源码。
  *
  * @author Wei Chou(weichou2010@gmail.com)
- * @version 1.0, 02/07/2016
+ * @version 1.0, 02/07/2016;
+ *          1.1, 同步至 {@code Gson 2.10.1}
  */
 public class Reflect {
     public static Type[] getSuperclassTypeParameter(Class<?> subclass, boolean checkTypeVariable) {
@@ -47,7 +48,7 @@ public class Reflect {
     }
 
     /**
-     * 借鉴 {@code Gson 2.10.1}, 实测与上面效果一样（问题不在 scala/java, 而在 Android, 与 R8 有关）。
+     * 借鉴 {@code Gson 2.10.1}, 实测与上面效果一样（问题不在 scala/java, 而在 Android, 与 R8 有关，已找到原因）。
      */
     public static Type[] getSuperclassTypeParameterSafe(Class<?> subclass, boolean checkTypeVariable) {
         final Type superclass = subclass.getGenericSuperclass();
@@ -63,7 +64,7 @@ public class Reflect {
         return throwClassIllegal(subclass);
     }
 
-    public static Type checkTypeVariable(Type tpe) {
+    public static void checkTypeVariable(Type tpe) {
         // `TypeVariable`表示`T`占位符而不是具体类型，如`Xx<T>`而不是`Xx<java.util.ArrayList<?>>`。
         // 区别于`WildcardType`。
         if (tpe instanceof TypeVariable) {
@@ -71,7 +72,6 @@ public class Reflect {
             // `java.util.ArrayList<?>`，这需要递归，具体看在第几层。
             throwTypeIllegal(tpe);
         }
-        return tpe;
     }
 
     public static Class<?> getRawType(Type tpe) {
